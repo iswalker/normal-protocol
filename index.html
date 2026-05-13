@@ -227,46 +227,17 @@
 
 <script>
   const COLUMNS = [
-    { key: "Item",              label: "Item",             cls: "item" },
-    { key: "Brand",             label: "Brand",            cls: "" },
-    { key: "Daily Qty",         label: "Qty / day",        cls: "qty" },
-    { key: "From",              label: "Source",           cls: "" },
-    { key: "Payment Structure", label: "Payment",          cls: "payment" },
-    { key: "Listing ID",        label: "Listing ID",       cls: "listing-id" },
+    { key: "item",       label: "Item",       cls: "item" },
+    { key: "brand",      label: "Brand",      cls: "" },
+    { key: "daily_qty",  label: "Qty / day",  cls: "qty" },
+    { key: "source",     label: "Source",     cls: "" },
+    { key: "payment",    label: "Payment",    cls: "payment" },
+    { key: "listing_id", label: "Listing ID", cls: "listing-id" },
   ];
 
   let allRows = [];
-  let sortCol = "Item";
+  let sortCol = "item";
   let sortAsc = true;
-
-  // Simple CSV parser that handles quoted fields
-  function parseCSV(text) {
-    const lines = text.trim().split(/\r?\n/);
-    const headers = parseLine(lines[0]);
-    return lines.slice(1).map(line => {
-      const vals = parseLine(line);
-      return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? ""]));
-    });
-  }
-
-  function parseLine(line) {
-    const result = [];
-    let cur = "";
-    let inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQuote = !inQuote;
-      } else if (ch === "," && !inQuote) {
-        result.push(cur.trim()); cur = "";
-      } else {
-        cur += ch;
-      }
-    }
-    result.push(cur.trim());
-    return result;
-  }
 
   function renderHeaders() {
     const tr = document.getElementById("header-row");
@@ -290,14 +261,13 @@
     const tbody = document.getElementById("table-body");
     const q = query.toLowerCase();
     let rows = allRows.filter(r =>
-      COLUMNS.some(c => (r[c.key] ?? "").toLowerCase().includes(q))
+      COLUMNS.some(c => String(r[c.key] ?? "").toLowerCase().includes(q))
     );
     rows.sort((a, b) => {
-      const av = (a[sortCol] ?? "").toLowerCase();
-      const bv = (b[sortCol] ?? "").toLowerCase();
-      const n = sortCol === "Daily Qty"
-        ? parseFloat(a[sortCol]) - parseFloat(b[sortCol])
-        : av < bv ? -1 : av > bv ? 1 : 0;
+      const n = sortCol === "daily_qty"
+        ? (parseFloat(a.daily_qty) || 0) - (parseFloat(b.daily_qty) || 0)
+        : String(a[sortCol] ?? "").toLowerCase() < String(b[sortCol] ?? "").toLowerCase() ? -1
+        : String(a[sortCol] ?? "").toLowerCase() > String(b[sortCol] ?? "").toLowerCase() ? 1 : 0;
       return sortAsc ? n : -n;
     });
 
@@ -309,12 +279,12 @@
 
     tbody.innerHTML = rows.map(r => `
       <tr>
-        <td class="item">${esc(r["Item"])}</td>
-        <td><span class="badge">${esc(r["Brand"])}</span></td>
-        <td class="qty">${esc(r["Daily Qty"])}</td>
-        <td>${esc(r["From"])}</td>
-        <td class="payment">${esc(r["Payment Structure"])}</td>
-        <td class="listing-id">${esc(r["Listing ID"])}</td>
+        <td class="item">${esc(r.item)}</td>
+        <td><span class="badge">${esc(r.brand)}</span></td>
+        <td class="qty">${esc(r.daily_qty)}</td>
+        <td>${esc(r.source)}</td>
+        <td class="payment">${esc(r.payment)}</td>
+        <td class="listing-id">${esc(r.listing_id)}</td>
       </tr>
     `).join("");
 
@@ -330,14 +300,13 @@
 
   async function init() {
     try {
-      const res = await fetch("intakes.csv");
+      const res = await fetch("/api/intakes");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      allRows = parseCSV(text);
+      allRows = await res.json();
       render();
     } catch (e) {
       document.getElementById("table-body").innerHTML =
-        `<tr><td colspan="${COLUMNS.length}" class="error">Failed to load intakes.csv — ${e.message}</td></tr>`;
+        `<tr><td colspan="${COLUMNS.length}" class="error">Failed to load data — ${e.message}</td></tr>`;
     }
   }
 

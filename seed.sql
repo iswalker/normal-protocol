@@ -1,0 +1,3 @@
+INSERT INTO intakes (item, brand, daily_qty, source, payment, listing_id) VALUES
+  ('Lumbrokinase', 'Canada RNA', 4, 'Femologist', '1% Loyalty + Customized Cash', 'Canada RNA - I'),
+  ('Drainage - Lymph', 'CellCore', 2, 'Blue Sky Vitamin', '20% Cyber Monday, 1.5% Rakuten, 3% AmEx + 7.5% loyalty', 'CellCore - I');

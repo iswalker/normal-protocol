@@ -1,0 +1,8 @@
+name = "normal-protocol"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "normal-protocol-db"
+database_id = "6ea89963-ae49-489d-b487-fe7c1c7ade4d"

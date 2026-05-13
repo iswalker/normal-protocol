@@ -3,9 +3,8 @@ Thumbs.db
 *.pptx
 Mockups.pptx
 Palette.png
-
-# wrangler files
-.wrangler
+.wrangler/
+.claude/
 .dev.vars*
 !.dev.vars.example
 .env*
