@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Normal Protocol — Intakes</title>
+  <link rel="icon" type="image/svg+xml" href="Logos/icon.svg" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream:  #F6F4EE;
+      --teal:   #79BDB1;
+      --ink:    #171A1C;
+      --ink-60: rgba(23,26,28,0.6);
+      --ink-12: rgba(23,26,28,0.12);
+      --radius: 10px;
+    }
+
+    body {
+      background: var(--cream);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 24px 32px 20px;
+      border-bottom: 1.5px solid var(--ink-12);
+    }
+
+    header img { width: 36px; height: 36px; }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+
+    header span {
+      font-size: 13px;
+      color: var(--ink-60);
+      margin-left: 2px;
+    }
+
+    main { padding: 28px 32px; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ink-60);
+    }
+
+    .search-wrap {
+      position: relative;
+    }
+
+    .search-wrap svg {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--ink-60);
+      pointer-events: none;
+    }
+
+    #search {
+      background: white;
+      border: 1.5px solid var(--ink-12);
+      border-radius: var(--radius);
+      padding: 7px 12px 7px 32px;
+      font-size: 13px;
+      color: var(--ink);
+      outline: none;
+      width: 220px;
+      transition: border-color 0.15s;
+    }
+
+    #search:focus { border-color: var(--teal); }
+    #search::placeholder { color: var(--ink-60); }
+
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: var(--radius);
+      border: 1.5px solid var(--ink-12);
+      background: white;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      background: var(--cream);
+      padding: 11px 16px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ink-60);
+      border-bottom: 1.5px solid var(--ink-12);
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s;
+    }
+
+    thead th:hover { color: var(--ink); }
+
+    thead th.sorted { color: var(--teal); }
+
+    thead th .sort-icon {
+      display: inline-block;
+      margin-left: 4px;
+      font-size: 10px;
+      opacity: 0.5;
+    }
+
+    thead th.sorted .sort-icon { opacity: 1; }
+
+    tbody tr {
+      border-bottom: 1px solid var(--ink-12);
+      transition: background 0.1s;
+    }
+
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--cream); }
+
+    tbody td {
+      padding: 12px 16px;
+      vertical-align: top;
+    }
+
+    td.item { font-weight: 500; }
+
+    td.qty {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(121,189,177,0.15);
+      color: var(--teal);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .listing-id {
+      font-size: 12px;
+      color: var(--ink-60);
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    .payment {
+      font-size: 12px;
+      color: var(--ink-60);
+      max-width: 260px;
+    }
+
+    .empty, .loading, .error {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--ink-60);
+    }
+
+    .error { color: #c0392b; }
+
+    #count {
+      font-size: 12px;
+      color: var(--ink-60);
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <img src="Logos/icon.svg" alt="Normal Protocol" />
+  <h1>Normal Protocol <span>/ Intakes</span></h1>
+</header>
+
+<main>
+  <div class="toolbar">
+    <span class="section-title">Daily Supplements</span>
+    <div class="search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input id="search" type="text" placeholder="Search items…" />
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr id="header-row"></tr>
+      </thead>
+      <tbody id="table-body">
+        <tr><td colspan="6" class="loading">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="count"></div>
+</main>
+
+<script>
+  const COLUMNS = [
+    { key: "Item",              label: "Item",             cls: "item" },
+    { key: "Brand",             label: "Brand",            cls: "" },
+    { key: "Daily Qty",         label: "Qty / day",        cls: "qty" },
+    { key: "From",              label: "Source",           cls: "" },
+    { key: "Payment Structure", label: "Payment",          cls: "payment" },
+    { key: "Listing ID",        label: "Listing ID",       cls: "listing-id" },
+  ];
+
+  let allRows = [];
+  let sortCol = "Item";
+  let sortAsc = true;
+
+  // Simple CSV parser that handles quoted fields
+  function parseCSV(text) {
+    const lines = text.trim().split(/\r?\n/);
+    const headers = parseLine(lines[0]);
+    return lines.slice(1).map(line => {
+      const vals = parseLine(line);
+      return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? ""]));
+    });
+  }
+
+  function parseLine(line) {
+    const result = [];
+    let cur = "";
+    let inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuote = !inQuote;
+      } else if (ch === "," && !inQuote) {
+        result.push(cur.trim()); cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  function renderHeaders() {
+    const tr = document.getElementById("header-row");
+    tr.innerHTML = "";
+    COLUMNS.forEach(col => {
+      const th = document.createElement("th");
+      const isSorted = sortCol === col.key;
+      if (isSorted) th.classList.add("sorted");
+      th.innerHTML = `${col.label}<span class="sort-icon">${isSorted ? (sortAsc ? "▲" : "▼") : "⇅"}</span>`;
+      th.addEventListener("click", () => {
+        if (sortCol === col.key) sortAsc = !sortAsc;
+        else { sortCol = col.key; sortAsc = true; }
+        render(document.getElementById("search").value);
+      });
+      tr.appendChild(th);
+    });
+  }
+
+  function render(query = "") {
+    renderHeaders();
+    const tbody = document.getElementById("table-body");
+    const q = query.toLowerCase();
+    let rows = allRows.filter(r =>
+      COLUMNS.some(c => (r[c.key] ?? "").toLowerCase().includes(q))
+    );
+    rows.sort((a, b) => {
+      const av = (a[sortCol] ?? "").toLowerCase();
+      const bv = (b[sortCol] ?? "").toLowerCase();
+      const n = sortCol === "Daily Qty"
+        ? parseFloat(a[sortCol]) - parseFloat(b[sortCol])
+        : av < bv ? -1 : av > bv ? 1 : 0;
+      return sortAsc ? n : -n;
+    });
+
+    if (rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="${COLUMNS.length}" class="empty">No results found.</td></tr>`;
+      document.getElementById("count").textContent = "";
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td class="item">${esc(r["Item"])}</td>
+        <td><span class="badge">${esc(r["Brand"])}</span></td>
+        <td class="qty">${esc(r["Daily Qty"])}</td>
+        <td>${esc(r["From"])}</td>
+        <td class="payment">${esc(r["Payment Structure"])}</td>
+        <td class="listing-id">${esc(r["Listing ID"])}</td>
+      </tr>
+    `).join("");
+
+    document.getElementById("count").textContent =
+      `${rows.length} item${rows.length !== 1 ? "s" : ""}`;
+  }
+
+  function esc(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  async function init() {
+    try {
+      const res = await fetch("intakes.csv");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      allRows = parseCSV(text);
+      render();
+    } catch (e) {
+      document.getElementById("table-body").innerHTML =
+        `<tr><td colspan="${COLUMNS.length}" class="error">Failed to load intakes.csv — ${e.message}</td></tr>`;
+    }
+  }
+
+  document.getElementById("search").addEventListener("input", e => render(e.target.value));
+
+  init();
+</script>
+</body>
+</html>
