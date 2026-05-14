@@ -217,7 +217,7 @@
         <tr id="header-row"></tr>
       </thead>
       <tbody id="table-body">
-        <tr><td colspan="6" class="loading">Loading…</td></tr>
+        <tr><td colspan="7" class="loading">Loading…</td></tr>
       </tbody>
     </table>
   </div>
@@ -227,17 +227,23 @@
 
 <script>
   const COLUMNS = [
-    { key: "item",       label: "Item",       cls: "item" },
-    { key: "brand",      label: "Brand",      cls: "" },
-    { key: "daily_qty",  label: "Qty / day",  cls: "qty" },
-    { key: "source",     label: "Source",     cls: "" },
-    { key: "payment",    label: "Payment",    cls: "payment" },
-    { key: "listing_id", label: "Listing ID", cls: "listing-id" },
+    { key: "item",              label: "Item",       cls: "item" },
+    { key: "brand",             label: "Brand",      cls: "" },
+    { key: "daily_qty",         label: "Qty / day",  cls: "qty" },
+    { key: "from",              label: "Source",     cls: "" },
+    { key: "Price",             label: "Price",      cls: "qty" },
+    { key: "payment_structure", label: "Payment",    cls: "payment" },
+    { key: "listing_id",        label: "Listing ID", cls: "listing-id" },
   ];
 
   let allRows = [];
   let sortCol = "item";
   let sortAsc = true;
+
+  function fmtPrice(v) {
+    const n = parseFloat(v);
+    return isNaN(n) ? "" : `$${n.toFixed(2)}`;
+  }
 
   function renderHeaders() {
     const tr = document.getElementById("header-row");
@@ -264,8 +270,9 @@
       COLUMNS.some(c => String(r[c.key] ?? "").toLowerCase().includes(q))
     );
     rows.sort((a, b) => {
-      const n = sortCol === "daily_qty"
-        ? (parseFloat(a.daily_qty) || 0) - (parseFloat(b.daily_qty) || 0)
+      const numeric = sortCol === "daily_qty" || sortCol === "Price";
+      const n = numeric
+        ? (parseFloat(a[sortCol]) || 0) - (parseFloat(b[sortCol]) || 0)
         : String(a[sortCol] ?? "").toLowerCase() < String(b[sortCol] ?? "").toLowerCase() ? -1
         : String(a[sortCol] ?? "").toLowerCase() > String(b[sortCol] ?? "").toLowerCase() ? 1 : 0;
       return sortAsc ? n : -n;
@@ -282,8 +289,9 @@
         <td class="item">${esc(r.item)}</td>
         <td><span class="badge">${esc(r.brand)}</span></td>
         <td class="qty">${esc(r.daily_qty)}</td>
-        <td>${esc(r.source)}</td>
-        <td class="payment">${esc(r.payment)}</td>
+        <td>${esc(r["from"])}</td>
+        <td class="qty">${fmtPrice(r.Price)}</td>
+        <td class="payment">${esc(r.payment_structure)}</td>
         <td class="listing-id">${esc(r.listing_id)}</td>
       </tr>
     `).join("");
