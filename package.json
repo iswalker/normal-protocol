@@ -5,7 +5,9 @@
   "description": "Normal Protocol — supplement intakes + ordering board (Cloudflare Pages + Turso)",
   "scripts": {
     "dev": "wrangler pages dev .",
-    "verify": "node scripts/verify-board.mjs"
+    "migrate": "node scripts/migrate-orders.mjs",
+    "verify": "node scripts/verify-board.mjs",
+    "verify:orders": "node scripts/verify-orders-integration.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0",

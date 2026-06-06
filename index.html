@@ -1074,17 +1074,54 @@
   let STATE; // { cardData, shipmentData }
   let structure;
 
-  function load() {
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
-    if (saved && saved.cardData && saved.structure) {
-      STATE = { cardData: saved.cardData, shipmentData: saved.shipmentData || {} };
-      structure = saved.structure;
-    } else {
+  // ── data layer: load the board from /api/orders (Turso); seed offline ──
+  async function load() {
+    try {
+      const res = await fetch('/api/orders');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      fromApi(await res.json());
+    } catch (e) {
+      console.warn('Board: /api/orders load failed, using seed —', e.message);
       const seed = JSON.parse(JSON.stringify(SB.SEED));
       STATE = { cardData: seed.cardData, shipmentData: seed.shipmentData };
       structure = seed.structure;
     }
+  }
+
+  // map { months, orders, items } -> board STATE + structure.
+  // Inventory-sourced fields (dose/amount/bottleSize/loggedOn) are absent for
+  // now; the board renders run-out as "—" until the Inventory sheet is wired.
+  function fromApi(data) {
+    const months = (data.months || []).slice().sort((a, b) => a.position - b.position);
+    const orders = data.orders || [];
+    const items = data.items || [];
+    const cardData = {}, shipmentData = {};
+    items.forEach((it) => {
+      cardData[it.order_item_id] = {
+        name: it.supplement,
+        price: it.price_per_bottle || 0,
+        qty: it.order_qty_bottles || 0,
+        includeInMonthTotal: !!it.include_in_total,
+      };
+    });
+    orders.forEach((o) => { shipmentData[o.order_id] = { name: o.merchant || 'Order' }; });
+
+    structure = months.map((m) => {
+      const blocks = [];
+      orders.filter((o) => o.month === m.month).forEach((o) => {
+        const cards = items
+          .filter((it) => it.order_id === o.order_id)
+          .sort((a, b) => a.item_position - b.item_position)
+          .map((it) => it.order_item_id);
+        blocks.push({ _pos: o.position, type: 'shipment', id: o.order_id, cards });
+      });
+      items.filter((it) => it.month === m.month && (it.order_id == null || it.order_id === ''))
+        .forEach((it) => blocks.push({ _pos: it.block_position, type: 'card', id: it.order_item_id }));
+      blocks.sort((a, b) => (a._pos || 0) - (b._pos || 0));
+      blocks.forEach((b) => delete b._pos);
+      return { id: m.month, name: m.month, sub: String(m.year || ''), spent: m.spent || 0, blocks };
+    });
+    STATE = { cardData, shipmentData };
   }
 
   function esc(s) {
@@ -1234,29 +1271,40 @@
     const c = STATE.cardData[id];
     if (!c) return 0;
     const r = SB.calc(c);
-    const tier = SB.tier(r.curDaysLeft, thr());
+    // run-out needs Inventory (dose/amount/loggedOn); absent until the sheet is wired
+    const hasInv = c.dose != null && c.amount != null && c.loggedOn != null;
+    const tier = hasInv ? SB.tier(r.curDaysLeft, thr()) : 'ok';
     const compact = board.classList.contains('layout-compact');
     const df = compact ? SB.fmtDateShort : SB.fmtDate;
 
     cardEl.classList.toggle('tier-soon', tier === 'soon');
     cardEl.classList.toggle('tier-out', tier === 'out');
-    cardEl.classList.toggle('has-order', r.hasOrder);
+    cardEl.classList.toggle('has-order', hasInv && r.hasOrder);
     cardEl.classList.toggle('counted', !!c.includeInMonthTotal);
 
     cardEl.querySelector('.status').textContent =
-      tier === 'out' ? 'OUT' : tier === 'soon' ? 'SOON' : 'OK';
+      !hasInv ? '—' : tier === 'out' ? 'OUT' : tier === 'soon' ? 'SOON' : 'OK';
 
     const dl = cardEl.querySelector('.daysleft');
-    setDays(dl.querySelector('.now'), r.curDaysLeft);
-    setDays(dl.querySelector('.next'), r.newDaysLeft);
-
     const ro = cardEl.querySelector('.runout');
-    ro.querySelector('.now').textContent = df(r.curRunOut);
-    ro.querySelector('.next').textContent = df(r.newRunOut);
-
-    cardEl.querySelector('.onhand').textContent = SB.fmtUnits(r.onHand);
-    cardEl.querySelector('.dose').textContent = String(+r.dose.toFixed(1));
-    cardEl.querySelector('.bsize').textContent = String(r.bottle);
+    const dash = (span) => {
+      const n = span.querySelector('.n'), u = span.querySelector('.u');
+      if (n) { n.textContent = '—'; if (u) u.textContent = ''; } else { span.textContent = '—'; }
+    };
+    if (hasInv) {
+      setDays(dl.querySelector('.now'), r.curDaysLeft);
+      setDays(dl.querySelector('.next'), r.newDaysLeft);
+      ro.querySelector('.now').textContent = df(r.curRunOut);
+      ro.querySelector('.next').textContent = df(r.newRunOut);
+      cardEl.querySelector('.onhand').textContent = SB.fmtUnits(r.onHand);
+      cardEl.querySelector('.dose').textContent = String(+r.dose.toFixed(1));
+      cardEl.querySelector('.bsize').textContent = String(r.bottle);
+    } else {
+      [dl.querySelector('.now'), dl.querySelector('.next'), ro.querySelector('.now'), ro.querySelector('.next')].forEach(dash);
+      cardEl.querySelector('.onhand').textContent = '—';
+      cardEl.querySelector('.dose').textContent = '—';
+      cardEl.querySelector('.bsize').textContent = '—';
+    }
     cardEl.querySelector('.ototal .amt').textContent = SB.fmtMoney(r.cost);
 
     cardEl.querySelectorAll('input[data-field]').forEach((inp) => {
@@ -1313,43 +1361,66 @@
   }
   window.SBoard.recalc = recalcAll;
 
-  // ── persistence ──
-  function serialize() {
-    const struct = [...board.querySelectorAll('.month')].map((m) => ({
-      id: m.dataset.id,
-      name: m.querySelector('.mname').textContent.trim(),
-      sub: m.querySelector('.msub').textContent.trim(),
-      spent: monthSpent(m),
-      blocks: [...m.querySelector('.month-list').children]
-        .filter((n) => n.classList.contains('shipment') || n.classList.contains('card'))
-        .map((n) => {
-          if (n.classList.contains('shipment')) {
-            return {
-              type: 'shipment', id: n.dataset.id,
-              cards: [...n.querySelectorAll(':scope .ship-body > .card')].map((c) => c.dataset.id),
-            };
-          }
-          return { type: 'card', id: n.dataset.id };
-        }),
-    }));
-    const liveCards = new Set(), liveShips = new Set();
-    struct.forEach((m) => m.blocks.forEach((b) => {
-      if (b.type === 'shipment') { liveShips.add(b.id); b.cards.forEach((c) => liveCards.add(c)); }
-      else liveCards.add(b.id);
-    }));
-    const cardData = {}, shipmentData = {};
-    liveCards.forEach((id) => { if (STATE.cardData[id]) cardData[id] = STATE.cardData[id]; });
-    liveShips.forEach((id) => { if (STATE.shipmentData[id]) shipmentData[id] = STATE.shipmentData[id]; });
-    return { cardData, shipmentData, structure: struct };
+  // ── persistence: serialize the DOM to the /api/orders shape and PUT it ──
+  function pushItem(items, id, orderId, month, blockPos, itemPos) {
+    const c = STATE.cardData[id] || {};
+    items.push({
+      order_item_id: id,
+      order_id: orderId,
+      month,
+      block_position: blockPos,
+      item_position: itemPos,
+      supplement: c.name || '',
+      price_per_bottle: Number(c.price) || 0,
+      order_qty_bottles: Number(c.qty) || 0,
+      include_in_total: c.includeInMonthTotal ? 1 : 0,
+    });
+  }
+  function toApi() {
+    const months = [], orders = [], items = [];
+    [...board.querySelectorAll('.month')].forEach((m, mi) => {
+      const month = m.querySelector('.mname').textContent.trim();
+      months.push({
+        month,
+        year: parseInt(m.querySelector('.msub').textContent.trim(), 10) || null,
+        spent: monthSpent(m),
+        position: mi + 1,
+      });
+      const blocks = [...m.querySelector('.month-list').children]
+        .filter((n) => n.classList.contains('shipment') || n.classList.contains('card'));
+      blocks.forEach((n, bi) => {
+        const blockPos = bi + 1;
+        if (n.classList.contains('shipment')) {
+          const oid = n.dataset.id;
+          const s = STATE.shipmentData[oid] || {};
+          orders.push({ order_id: oid, month, merchant: s.name || '', position: blockPos, status: 'Staged' });
+          [...n.querySelectorAll(':scope .ship-body > .card')].forEach((cardEl, ci) => {
+            pushItem(items, cardEl.dataset.id, oid, month, blockPos, ci + 1);
+          });
+        } else {
+          pushItem(items, n.dataset.id, null, month, blockPos, 1);
+        }
+      });
+    });
+    return { months, orders, items };
   }
 
   let saveTimer = null;
-  function persist() {
-    try { localStorage.setItem(KEY, JSON.stringify(serialize())); } catch (e) {}
+  async function persist() {
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toApi()),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (e) {
+      console.error('Board: save to /api/orders failed —', e.message);
+    }
   }
   function persistSoon() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(persist, 250);
+    saveTimer = setTimeout(persist, 400);
   }
 
   // ── drag and drop (SortableJS, nested) ──
@@ -1533,10 +1604,10 @@
   // ── public API (lazy init from the tab switcher) ──
   let booted = false;
   window.SupplementBoard = {
-    init() {
+    async init() {
       if (booted) return;
       booted = true;
-      load();
+      await load();
       render();
       const asof = document.getElementById('board-asof');
       if (asof) asof.textContent = SB.fmtDate(SB.today());
