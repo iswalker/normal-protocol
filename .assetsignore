@@ -1,0 +1,14 @@
+node_modules
+scripts
+.git
+.dev.vars*
+*.log
+package.json
+package-lock.json
+wrangler.jsonc
+wrangler.toml
+schema.sql
+seed.sql
+*.csv
+*.pbix
+design_handoff_supplement_board

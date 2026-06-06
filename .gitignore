@@ -11,3 +11,7 @@ Palette.png
 !.dev.vars.example
 .env*
 !.env.example
+
+# wrangler / node logs
+*.log
+.wrangler/
