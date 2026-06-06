@@ -29,26 +29,25 @@
       min-height: 100vh;
     }
 
+    :root { --cream-dark: #ECE7DA; }
+
     header {
       display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 24px 32px 20px;
+      align-items: stretch;
+      gap: 16px;
+      padding: 0 24px;
+      min-height: 46px;
+      background: var(--cream-dark);
       border-bottom: 1.5px solid var(--ink-12);
     }
 
-    header img { width: 36px; height: 36px; }
-
-    header h1 {
-      font-size: 18px;
+    .brand { display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 0; }
+    .brand img { width: 26px; height: 26px; }
+    .brand h1 {
+      font-size: 16px;
       font-weight: 600;
       letter-spacing: -0.3px;
-    }
-
-    header span {
-      font-size: 13px;
-      color: var(--ink-60);
-      margin-left: 2px;
+      white-space: nowrap;
     }
 
     main { padding: 28px 32px; }
@@ -283,21 +282,15 @@
       padding: 4px 10px 4px 34px;
     }
 
-    /* ── Tab navigation ── */
-    .tabs {
-      display: flex;
-      gap: 4px;
-      padding: 0 32px;
-      border-bottom: 1.5px solid var(--ink-12);
-    }
+    /* ── Tab navigation (centered in the top bar) ── */
+    .tabs { display: flex; align-items: stretch; gap: 2px; }
 
     .tab-btn {
       appearance: none;
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
-      margin-bottom: -1.5px;
-      padding: 11px 14px;
+      padding: 0 16px;
       font-size: 13px;
       font-weight: 600;
       color: var(--ink-60);
@@ -308,9 +301,12 @@
     .tab-btn:hover { color: var(--ink); }
 
     .tab-btn.active {
-      color: var(--teal);
-      border-bottom-color: var(--teal);
+      color: #3f8f87;
+      border-bottom-color: #3f8f87;
     }
+
+    /* right side of the top bar (kept empty as a flex spacer so tabs stay centered) */
+    .header-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
@@ -337,35 +333,16 @@
       --shadow-pop: 0 10px 28px rgba(28, 36, 38, .16);
       --font-ui: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
       --font-num: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
-      background: var(--b-bg);
+      background: var(--cream);
       color: var(--b-ink);
       font-family: var(--font-ui);
       -webkit-font-smoothing: antialiased;
+      /* own scroll pane filling the viewport below the header, so the horizontal
+         scrollbar is pinned to the bottom of the screen rather than mid-page */
+      height: calc(100vh - 48px);
+      overflow: auto;
     }
 
-    /* board sub-bar (live-as-of + reset) */
-    #tab-board .board-bar {
-      display: flex; align-items: center; gap: 10px;
-      padding: 12px 24px; background: var(--paper);
-      border-bottom: 1px solid var(--line);
-    }
-    #tab-board .board-bar .spacer { flex: 1; }
-    #tab-board .asof {
-      font-family: var(--font-num); font-size: 11.5px; color: var(--ink-3);
-      display: flex; align-items: center; gap: 7px;
-    }
-    #tab-board .asof b { color: var(--ink-2); font-weight: 500; }
-    #tab-board .pulse {
-      width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
-      box-shadow: 0 0 0 0 rgba(112, 196, 187, .6); animation: sb-pulse 2.4s infinite;
-    }
-    #tab-board .reset-btn {
-      font-family: var(--font-ui); font-size: 11.5px; font-weight: 500;
-      color: var(--ink-2); background: transparent; cursor: pointer;
-      border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px;
-      transition: all .12s;
-    }
-    #tab-board .reset-btn:hover { border-color: var(--out); color: var(--out); background: var(--out-tint); }
     @keyframes sb-pulse {
       0% { box-shadow: 0 0 0 0 rgba(112, 196, 187, .5); }
       70% { box-shadow: 0 0 0 7px rgba(112, 196, 187, 0); }
@@ -375,18 +352,17 @@
     /* ── board scroller ── */
     #tab-board .board {
       display: flex; gap: 18px; align-items: flex-start;
-      padding: 22px 24px 64px;
-      min-height: calc(100vh - 200px);
-      overflow-x: auto;
+      padding: 22px 24px 24px;
+      min-height: 100%;
     }
 
     /* ── month column ── */
     #tab-board .month {
       flex: 0 0 590px; width: 590px;
       display: flex; flex-direction: column;
-      background: #e7eced; border: 1px solid #dde3e4; border-radius: 14px;
+      background: #fff; border: 1px solid #dde3e4; border-radius: 14px;
     }
-    #tab-board .month-head { padding: 11px 15px; display: flex; align-items: center; gap: 12px; }
+    #tab-board .month-head { padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
     #tab-board .month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
     #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; outline: none; }
     #tab-board .month-title .msub { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); }
@@ -397,7 +373,7 @@
     #tab-board .month-metrics { margin-left: auto; display: flex; align-items: center; }
     #tab-board .metric {
       display: flex; flex-direction: column; align-items: flex-end;
-      padding: 0 11px; border-left: 1px solid #d7dedf; line-height: 1.15;
+      padding: 0 9px; border-left: 1px solid #d7dedf; line-height: 1.15;
     }
     #tab-board .metric:first-child { border-left: 0; }
     #tab-board .metric:last-child { padding-right: 0; }
@@ -430,16 +406,25 @@
       display: flex; flex-direction: column; gap: 9px;
     }
     #tab-board .month-list > * { flex: 0 0 auto; }
-    #tab-board .month-foot { display: flex; gap: 7px; padding: 10px 11px; border-top: 1px solid #dde3e4; }
+
+    /* add buttons that live inline in the month / shipment header rows */
+    #tab-board .month-head .add-btn, #tab-board .ship-head .add-btn {
+      flex: 0 0 auto; height: 26px; padding: 0 14px; gap: 5px;
+      border: 1px solid #c4cdd0; border-radius: 8px; background: rgba(255, 255, 255, .7);
+      font-size: 11.5px; color: var(--ink-2);
+    }
+    #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
+      border-color: var(--accent); color: var(--accent-deep); background: #fff;
+    }
 
     /* ── shipment block ── */
     #tab-board .shipment {
-      background: var(--paper); border: 1px solid var(--line); border-radius: 11px;
+      background: var(--accent-tint); border: 1px solid #cfe6e2; border-radius: 11px;
       box-shadow: var(--shadow-card); overflow: hidden;
     }
     #tab-board .ship-head {
-      display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 8px;
-      background: linear-gradient(var(--accent-tint), #f3faf9); border-bottom: 1px solid #dcebe8;
+      display: flex; align-items: center; gap: 8px; padding: 8px 9px;
+      background: transparent;
     }
     #tab-board .ship-head .truck {
       width: 22px; height: 22px; border-radius: 6px; flex: none;
@@ -466,9 +451,8 @@
     #tab-board .ship-body:empty::after {
       content: 'Drop a card here'; display: block; text-align: center; padding: 10px 0;
       font-size: 11px; color: var(--ink-3); font-family: var(--font-num);
-      border: 1px dashed var(--line); border-radius: 8px;
+      border: 1px dashed #bcd8d2; border-radius: 8px;
     }
-    #tab-board .ship-foot { padding: 0 9px 9px; }
 
     /* ── card ── */
     #tab-board .card {
@@ -595,8 +579,7 @@
       font-size: 12px; font-weight: 500; cursor: pointer; transition: all .12s;
     }
     #tab-board .add-btn:hover { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
-    #tab-board .add-btn svg { width: 13px; height: 13px; }
-    #tab-board .ship-foot .add-btn { height: 30px; font-size: 11.5px; }
+    #tab-board .add-btn svg { width: 12px; height: 12px; }
 
     /* sortable helpers */
     #tab-board .sb-ghost { opacity: .4; }
@@ -669,14 +652,16 @@
 <body>
 
 <header>
-  <img src="Logos/icon.svg" alt="Normal Protocol" />
-  <h1>Normal Protocol <span id="app-subtitle">/ Intakes</span></h1>
+  <div class="brand">
+    <img src="Logos/icon.svg" alt="Normal Protocol" />
+    <h1>Normal Protocol</h1>
+  </div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="intakes">Intakes</button>
+    <button class="tab-btn" data-tab="board">Supplement Board</button>
+  </nav>
+  <div class="header-right"></div>
 </header>
-
-<nav class="tabs">
-  <button class="tab-btn active" data-tab="intakes">Intakes</button>
-  <button class="tab-btn" data-tab="board">Supplement Board</button>
-</nav>
 
 <main id="tab-intakes" class="tab-panel active">
   <div class="toolbar">
@@ -704,12 +689,6 @@
 </main>
 
 <section id="tab-board" class="tab-panel">
-  <div class="board-bar">
-    <span class="section-title" style="text-transform:none;letter-spacing:normal;font-weight:600;">Supplement Ordering <span style="color:var(--ink-3);font-weight:500;">· planner</span></span>
-    <span class="spacer"></span>
-    <button class="reset-btn" id="board-reset" title="Clear saved board and reload the seed">Reset board</button>
-    <span class="asof"><span class="pulse"></span>live as of <b id="board-asof">—</b></span>
-  </div>
   <div id="board" class="board layout-compact"></div>
 </section>
 
@@ -929,22 +908,28 @@
 
   init();
 
-  // ── Tab switching ──
-  const SUBTITLES = { intakes: "/ Intakes", board: "/ Supplement Board" };
+  // ── Tab switching (persisted across reloads) ──
+  const TAB_KEY = "np_active_tab";
   let boardInitialized = false;
   function activateTab(tab) {
     document.querySelectorAll(".tab-btn").forEach(b =>
       b.classList.toggle("active", b.dataset.tab === tab));
     document.querySelectorAll(".tab-panel").forEach(p =>
       p.classList.toggle("active", p.id === `tab-${tab}`));
-    document.getElementById("app-subtitle").textContent = SUBTITLES[tab] || "";
     if (tab === "board" && !boardInitialized) {
       boardInitialized = true;
       window.SupplementBoard.init();
     }
+    try { localStorage.setItem(TAB_KEY, tab); } catch (e) {}
   }
   document.querySelectorAll(".tab-btn").forEach(btn =>
     btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
+  // restore the last-open tab once all scripts (incl. the board) have parsed
+  document.addEventListener("DOMContentLoaded", () => {
+    let saved = "intakes";
+    try { saved = localStorage.getItem(TAB_KEY) || "intakes"; } catch (e) {}
+    if (saved === "board") activateTab("board");
+  });
 </script>
 
 <script src="vendor/Sortable.min.js"></script>
@@ -1040,7 +1025,7 @@
     },
     structure: [
       {
-        id: 'm_jun', name: 'June', sub: '2026', spent: 480,
+        id: 'm_jun', name: 'Jun', sub: '2026', spent: 480,
         blocks: [
           { type: 'shipment', id: 's_bluesky_jun', cards: ['atp', 'drainage', 'para2', 'serratia'] },
           { type: 'card', id: 'lymph' },
@@ -1048,13 +1033,13 @@
         ],
       },
       {
-        id: 'm_jul', name: 'July', sub: '2026', spent: 0,
+        id: 'm_jul', name: 'Jul', sub: '2026', spent: 0,
         blocks: [
           { type: 'shipment', id: 's_fullscript', cards: ['para1', 'brain'] },
         ],
       },
       {
-        id: 'm_aug', name: 'August', sub: '2026', spent: 0,
+        id: 'm_aug', name: 'Aug', sub: '2026', spent: 0,
         blocks: [
           { type: 'shipment', id: 's_bluesky_aug', cards: ['thymus'] },
         ],
@@ -1074,7 +1059,7 @@
 <script>
 (function () {
   const SB = window.SB;
-  const KEY = 'sb_state_v6';
+  const KEY = 'sb_state_v7';
   const board = document.getElementById('board');
 
   window.SBoard = window.SBoard || { threshold: 10 };
@@ -1180,10 +1165,10 @@
           <span class="scount">0</span>
         </div>
         <div class="ship-total"><span class="amt">$0.00</span></div>
+        <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <button class="del" data-act="del-ship" title="Remove shipment">×</button>
       </div>
       <div class="ship-body" data-list="shipment">${cards}</div>
-      <div class="ship-foot"><button class="add-btn" data-act="add-card-ship">${ICON.plus} Add item</button></div>
     </div>`;
   }
 
@@ -1200,6 +1185,8 @@
           <span class="msub">${esc(m.sub || '')}</span>
           <span class="mcount">0</span>
         </div>
+        <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
+        <button class="add-btn month-add" data-act="add-card-month">${ICON.plus} Item</button>
         <div class="month-metrics">
           <div class="metric spent">
             <span class="mk">Spent</span>
@@ -1220,10 +1207,6 @@
         </div>
       </div>
       <div class="month-list" data-list="month">${m.blocks.map(blockHTML).join('')}</div>
-      <div class="month-foot">
-        <button class="add-btn" data-act="add-ship">${ICON.plus} Shipment</button>
-        <button class="add-btn" data-act="add-card-month">${ICON.plus} Item</button>
-      </div>
     </div>`;
   }
 
