@@ -8,6 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- Google Identity Services (OAuth token client) + gapi (Drive Picker) for the Inventory tab -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://apis.google.com/js/api.js" async defer></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -305,8 +308,13 @@
       border-bottom-color: #3f8f87;
     }
 
-    /* right side of the top bar (kept empty as a flex spacer so tabs stay centered) */
+    /* right side of the top bar — board-only Inventory controls */
     .header-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
+    .board-controls { display: none; align-items: center; gap: 10px; }
+    .board-controls.show { display: flex; }
+    .inv-status { font-size: 11.5px; color: var(--ink-60); white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+    .inv-status.ok { color: #3f8f87; }
+    .inv-status.err { color: #c0392b; }
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
@@ -660,7 +668,13 @@
     <button class="tab-btn active" data-tab="intakes">Intakes</button>
     <button class="tab-btn" data-tab="board">Supplement Board</button>
   </nav>
-  <div class="header-right"></div>
+  <div class="header-right">
+    <span class="board-controls" id="board-controls">
+      <span class="inv-status" id="inv-status">Inventory not connected</span>
+      <button class="reset-btn" id="connect-inventory">Connect Inventory</button>
+      <button class="reset-btn" id="change-inventory" hidden>Change</button>
+    </span>
+  </div>
 </header>
 
 <main id="tab-intakes" class="tab-panel active">
@@ -916,6 +930,8 @@
       b.classList.toggle("active", b.dataset.tab === tab));
     document.querySelectorAll(".tab-panel").forEach(p =>
       p.classList.toggle("active", p.id === `tab-${tab}`));
+    const bc = document.getElementById("board-controls");
+    if (bc) bc.classList.toggle("show", tab === "board");
     if (tab === "board" && !boardInitialized) {
       boardInitialized = true;
       window.SupplementBoard.init();
@@ -1625,10 +1641,199 @@
       localStorage.removeItem(KEY);
       location.reload();
     },
+    // merge Inventory (by supplement name) into the cards so run-out computes.
+    // invMap: { "<name lowercased>": { dose, goodUntil: Date, supplyDays } }
+    // Synthesizes the calc() inputs: loggedOn=today, amount=daysLeft*dose (so
+    // curRunOut == Good Until), bottleSize=supplyDays*dose (so ordering a bottle
+    // extends the runway by supplyDays). Not persisted — Orders stays staging-only.
+    applyInventory(invMap) {
+      if (!STATE || !STATE.cardData) return 0;
+      let matched = 0;
+      Object.values(STATE.cardData).forEach((c) => {
+        const inv = invMap[String(c.name || '').trim().toLowerCase()];
+        if (inv && inv.dose > 0 && inv.goodUntil) {
+          const daysLeft = Math.max(0, SB.daysBetween(SB.today(), inv.goodUntil));
+          c.dose = inv.dose;
+          c.loggedOn = isoToday();
+          c.amount = daysLeft * inv.dose;
+          c.bottleSize = (inv.supplyDays || 0) * inv.dose;
+          matched++;
+        }
+      });
+      recalcAll();
+      return matched;
+    },
   };
 
   const resetBtn = document.getElementById('board-reset');
   if (resetBtn) resetBtn.addEventListener('click', () => window.SupplementBoard.reset());
+})();
+</script>
+
+<!-- ── Inventory: Google OAuth (GIS) + Drive Picker + Sheets read ──
+     The user picks their Inventory spreadsheet; the file id is cached locally.
+     We read the "Inventory" tab via the Sheets API with the user's token and
+     merge dose / Good Until / Supply Days into the board (by supplement name).
+     Client ID + API key are public client-side values; restrict the API key by
+     HTTP referrer in the Google Cloud console. -->
+<script>
+(function () {
+  const GOOGLE = {
+    clientId: '590352770305-b0agcr5v4c6e38taq7271gop7lub1q7u.apps.googleusercontent.com',
+    apiKey: 'AIzaSyBTCb_yIVLNUcx1M3UlOeIwQQWmH2TYT2E',
+    scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets.readonly',
+  };
+  const FILE_KEY = 'np_inventory_file';
+
+  const statusEl = () => document.getElementById('inv-status');
+  const connectBtn = document.getElementById('connect-inventory');
+  const changeBtn = document.getElementById('change-inventory');
+
+  function setStatus(text, cls) {
+    const el = statusEl(); if (!el) return;
+    el.textContent = text;
+    el.classList.remove('ok', 'err');
+    if (cls) el.classList.add(cls);
+  }
+  function getCachedFile() {
+    try { return JSON.parse(localStorage.getItem(FILE_KEY)); } catch (e) { return null; }
+  }
+  function setCachedFile(f) { try { localStorage.setItem(FILE_KEY, JSON.stringify(f)); } catch (e) {} }
+
+  // wait for the async-loaded Google libraries
+  function waitFor(test, ms = 8000) {
+    return new Promise((resolve, reject) => {
+      const t0 = Date.now();
+      (function tick() {
+        if (test()) return resolve();
+        if (Date.now() - t0 > ms) return reject(new Error('Google libraries failed to load'));
+        setTimeout(tick, 100);
+      })();
+    });
+  }
+
+  let tokenClient = null;
+  function getToken() {
+    return new Promise((resolve, reject) => {
+      if (!tokenClient) {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE.clientId, scope: GOOGLE.scopes, callback: () => {},
+        });
+      }
+      tokenClient.callback = (resp) =>
+        resp && resp.access_token ? resolve(resp.access_token) : reject(new Error(resp && resp.error || 'No token'));
+      tokenClient.error_callback = (err) => reject(new Error(err && err.type || 'OAuth error'));
+      tokenClient.requestAccessToken({ prompt: '' });
+    });
+  }
+
+  function pickFile(token) {
+    return new Promise((resolve, reject) => {
+      gapi.load('picker', { callback: () => {
+        try {
+          const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
+            .setSelectFolderEnabled(false).setMode(google.picker.DocsViewMode.LIST);
+          const picker = new google.picker.PickerBuilder()
+            .setOAuthToken(token)
+            .setDeveloperKey(GOOGLE.apiKey)
+            .addView(view)
+            .setTitle('Choose your Inventory spreadsheet')
+            .setCallback((data) => {
+              if (data.action === google.picker.Action.PICKED) {
+                const d = data.docs[0]; resolve({ id: d.id, name: d.name });
+              } else if (data.action === google.picker.Action.CANCEL) { resolve(null); }
+            })
+            .build();
+          picker.setVisible(true);
+        } catch (e) { reject(e); }
+      } });
+    });
+  }
+
+  async function sheetsGet(token, path) {
+    const r = await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + path, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!r.ok) throw new Error('Sheets API ' + r.status + (r.status === 403 ? ' (sheet not shared / scope denied)' : ''));
+    return r.json();
+  }
+
+  async function readInventory(token, fileId) {
+    const meta = await sheetsGet(token, fileId + '?fields=sheets.properties.title');
+    const titles = (meta.sheets || []).map((s) => s.properties.title);
+    const title = titles.find((t) => /inventory/i.test(t)) || titles[0];
+    if (!title) throw new Error('No sheets found in that file');
+    const vals = await sheetsGet(token, fileId + '/values/' + encodeURIComponent(title) + '?majorDimension=ROWS');
+    return { title, rows: vals.values || [] };
+  }
+
+  function parseSheetDate(s) {
+    s = String(s == null ? '' : s).trim();
+    const p = s.split('/');
+    if (p.length < 2) return null;
+    const mo = parseInt(p[0], 10), d = parseInt(p[1], 10);
+    if (isNaN(mo) || isNaN(d)) return null;
+    let y = p[2] != null ? parseInt(p[2], 10) : NaN;
+    if (isNaN(y)) y = new Date().getFullYear();
+    else if (y < 100) y += 2000;
+    return new Date(y, mo - 1, d);
+  }
+
+  function buildInvMap(rows) {
+    const norm = (s) => String(s == null ? '' : s).trim();
+    const hi = rows.findIndex((r) => r && r.map(norm).includes('Name') && r.map(norm).includes('Good Until'));
+    if (hi < 0) throw new Error("Couldn't find a header row with 'Name' + 'Good Until'");
+    const header = rows[hi].map(norm);
+    const ci = (n) => header.indexOf(n);
+    const idx = { name: ci('Name'), qty: ci('Qty'), qty2: ci('2nd Qty'), good: ci('Good Until'), supply: ci('Supply Days') };
+    const map = {};
+    for (let i = hi + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const name = norm(r[idx.name]);
+      if (!name || name === 'Summary') continue;
+      const key = name.toLowerCase();
+      if (map[key]) continue;
+      const dose = Number(norm(r[idx.qty])) || (idx.qty2 >= 0 ? Number(norm(r[idx.qty2])) : 0) || 0;
+      map[key] = { name, dose, goodUntil: parseSheetDate(norm(r[idx.good])), supplyDays: Number(norm(r[idx.supply])) || 0 };
+    }
+    return map;
+  }
+
+  async function run(forcePick) {
+    if (!window.SupplementBoard || !window.SupplementBoard.applyInventory) {
+      setStatus('Open the board first', 'err'); return;
+    }
+    setStatus('Connecting…');
+    try {
+      await waitFor(() => window.google && google.accounts && google.accounts.oauth2 && window.gapi);
+      const token = await getToken();
+      let file = getCachedFile();
+      if (forcePick || !file) {
+        file = await pickFile(token);
+        if (!file) { refreshLabels(); return; }
+        setCachedFile(file);
+      }
+      setStatus('Reading “' + file.name + '”…');
+      const { rows } = await readInventory(token, file.id);
+      const matched = window.SupplementBoard.applyInventory(buildInvMap(rows));
+      setStatus('Inventory: ' + file.name + ' · ' + matched + ' matched', 'ok');
+      refreshLabels();
+    } catch (e) {
+      console.error('Inventory connect failed:', e);
+      setStatus('Connect failed: ' + e.message, 'err');
+    }
+  }
+
+  function refreshLabels() {
+    const file = getCachedFile();
+    if (connectBtn) connectBtn.textContent = file ? 'Refresh Inventory' : 'Connect Inventory';
+    if (changeBtn) changeBtn.hidden = !file;
+    if (file) { const el = statusEl(); if (el && !el.classList.contains('ok') && !el.classList.contains('err')) setStatus('Inventory: ' + file.name + ' (click Refresh)'); }
+  }
+
+  if (connectBtn) connectBtn.addEventListener('click', () => run(false));
+  if (changeBtn) changeBtn.addEventListener('click', () => run(true));
+  refreshLabels();
 })();
 </script>
 </body>
