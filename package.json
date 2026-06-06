@@ -1,0 +1,14 @@
+{
+  "name": "normal-protocol",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Normal Protocol — supplement intakes + ordering board (Cloudflare Pages + Turso)",
+  "scripts": {
+    "dev": "wrangler pages dev .",
+    "verify": "node scripts/verify-board.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0",
+    "wrangler": "^4.0.0"
+  }
+}

@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Normal Protocol — Intakes</title>
   <link rel="icon" type="image/svg+xml" href="Logos/icon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -279,16 +282,403 @@
       color: #c0392b;
       padding: 4px 10px 4px 34px;
     }
+
+    /* ── Tab navigation ── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 0 32px;
+      border-bottom: 1.5px solid var(--ink-12);
+    }
+
+    .tab-btn {
+      appearance: none;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1.5px;
+      padding: 11px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-60);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab-btn:hover { color: var(--ink); }
+
+    .tab-btn.active {
+      color: var(--teal);
+      border-bottom-color: var(--teal);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+  </style>
+
+  <!-- ── Supplement Board styles (compact layout, scoped to #tab-board) ── -->
+  <style>
+    #tab-board {
+      --accent: #70c4bb;
+      --accent-deep: #3f8f87;
+      --accent-tint: #eaf6f4;
+      --b-ink: #1c2426;
+      --ink-2: #51606a;
+      --ink-3: #8a979e;
+      --line: #e4e9ea;
+      --line-soft: #eef2f2;
+      --b-bg: #eef1f2;
+      --paper: #ffffff;
+      --soon: #e08a3c;
+      --soon-tint: #fdf3e8;
+      --out: #d6504a;
+      --out-tint: #fbecea;
+      --shadow-card: 0 1px 2px rgba(28, 36, 38, .06), 0 1px 1px rgba(28, 36, 38, .04);
+      --shadow-pop: 0 10px 28px rgba(28, 36, 38, .16);
+      --font-ui: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+      --font-num: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+      background: var(--b-bg);
+      color: var(--b-ink);
+      font-family: var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* board sub-bar (live-as-of + reset) */
+    #tab-board .board-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 24px; background: var(--paper);
+      border-bottom: 1px solid var(--line);
+    }
+    #tab-board .board-bar .spacer { flex: 1; }
+    #tab-board .asof {
+      font-family: var(--font-num); font-size: 11.5px; color: var(--ink-3);
+      display: flex; align-items: center; gap: 7px;
+    }
+    #tab-board .asof b { color: var(--ink-2); font-weight: 500; }
+    #tab-board .pulse {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(112, 196, 187, .6); animation: sb-pulse 2.4s infinite;
+    }
+    #tab-board .reset-btn {
+      font-family: var(--font-ui); font-size: 11.5px; font-weight: 500;
+      color: var(--ink-2); background: transparent; cursor: pointer;
+      border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px;
+      transition: all .12s;
+    }
+    #tab-board .reset-btn:hover { border-color: var(--out); color: var(--out); background: var(--out-tint); }
+    @keyframes sb-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(112, 196, 187, .5); }
+      70% { box-shadow: 0 0 0 7px rgba(112, 196, 187, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(112, 196, 187, 0); }
+    }
+
+    /* ── board scroller ── */
+    #tab-board .board {
+      display: flex; gap: 18px; align-items: flex-start;
+      padding: 22px 24px 64px;
+      min-height: calc(100vh - 200px);
+      overflow-x: auto;
+    }
+
+    /* ── month column ── */
+    #tab-board .month {
+      flex: 0 0 590px; width: 590px;
+      display: flex; flex-direction: column;
+      background: #e7eced; border: 1px solid #dde3e4; border-radius: 14px;
+    }
+    #tab-board .month-head { padding: 11px 15px; display: flex; align-items: center; gap: 12px; }
+    #tab-board .month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
+    #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; outline: none; }
+    #tab-board .month-title .msub { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); }
+    #tab-board .month-title .mcount {
+      font-family: var(--font-num); font-size: 10px;
+      color: var(--ink-3); background: #dbe2e3; padding: 1px 7px; border-radius: 20px;
+    }
+    #tab-board .month-metrics { margin-left: auto; display: flex; align-items: center; }
+    #tab-board .metric {
+      display: flex; flex-direction: column; align-items: flex-end;
+      padding: 0 11px; border-left: 1px solid #d7dedf; line-height: 1.15;
+    }
+    #tab-board .metric:first-child { border-left: 0; }
+    #tab-board .metric:last-child { padding-right: 0; }
+    #tab-board .metric .mk {
+      font-size: 8.5px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+    }
+    #tab-board .metric .mv {
+      font-family: var(--font-num); font-size: 14.5px; font-weight: 500;
+      margin-top: 2px; letter-spacing: -.01em;
+    }
+    #tab-board .metric.is-total .mv { color: var(--accent-deep); font-weight: 600; }
+    #tab-board .metric.is-max .mv { color: var(--ink-2); }
+    #tab-board .mv-money { display: inline-flex; align-items: baseline; }
+    #tab-board .mv-money .pfx { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); margin-right: 1px; }
+    #tab-board .spent-input {
+      width: 56px; border: 0; background: transparent; padding: 0;
+      font-family: var(--font-num); font-size: 14.5px; font-weight: 500;
+      text-align: right; color: var(--b-ink); outline: none; -moz-appearance: textfield;
+      border-bottom: 1px dashed transparent; min-width: 1.5ch;
+    }
+    #tab-board .spent-input:hover { border-bottom-color: #c2ccce; }
+    #tab-board .spent-input:focus { border-bottom-color: var(--accent); }
+    #tab-board .spent-input::-webkit-inner-spin-button,
+    #tab-board .spent-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    #tab-board .field label .lbl-sub { color: var(--ink-3); font-weight: 500; }
+
+    #tab-board .month-list {
+      min-height: 40px; padding: 4px 11px 11px;
+      display: flex; flex-direction: column; gap: 9px;
+    }
+    #tab-board .month-list > * { flex: 0 0 auto; }
+    #tab-board .month-foot { display: flex; gap: 7px; padding: 10px 11px; border-top: 1px solid #dde3e4; }
+
+    /* ── shipment block ── */
+    #tab-board .shipment {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 11px;
+      box-shadow: var(--shadow-card); overflow: hidden;
+    }
+    #tab-board .ship-head {
+      display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 8px;
+      background: linear-gradient(var(--accent-tint), #f3faf9); border-bottom: 1px solid #dcebe8;
+    }
+    #tab-board .ship-head .truck {
+      width: 22px; height: 22px; border-radius: 6px; flex: none;
+      background: #fff; border: 1px solid #cfe6e2; color: var(--accent-deep);
+      display: grid; place-items: center;
+    }
+    #tab-board .ship-head .truck svg { width: 13px; height: 13px; }
+    #tab-board .ship-id { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 7px; }
+    #tab-board .ship-name {
+      font-size: 13px; font-weight: 600; letter-spacing: -.01em; outline: none;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    }
+    #tab-board .ship-name:focus { text-overflow: clip; overflow: visible; }
+    #tab-board .ship-id .scount {
+      flex: none; font-family: var(--font-num); font-size: 10px; color: var(--ink-3);
+      background: #d6e6e2; padding: 1px 7px; border-radius: 20px;
+    }
+    #tab-board .ship-total {
+      font-family: var(--font-num); font-size: 14px; font-weight: 600;
+      color: var(--accent-deep); text-align: right; padding-left: 4px;
+    }
+    #tab-board .ship-body { padding: 9px; display: flex; flex-direction: column; gap: 9px; min-height: 30px; }
+    #tab-board .ship-body > * { flex: 0 0 auto; }
+    #tab-board .ship-body:empty::after {
+      content: 'Drop a card here'; display: block; text-align: center; padding: 10px 0;
+      font-size: 11px; color: var(--ink-3); font-family: var(--font-num);
+      border: 1px dashed var(--line); border-radius: 8px;
+    }
+    #tab-board .ship-foot { padding: 0 9px 9px; }
+
+    /* ── card ── */
+    #tab-board .card {
+      position: relative; background: var(--paper); border: 1px solid var(--line);
+      border-radius: 10px; box-shadow: var(--shadow-card); padding: 10px 11px 11px;
+    }
+    #tab-board .month-list > .card { border-style: dashed; border-color: #cdd6d8; }
+    #tab-board .card.tier-soon { border-left: 3px solid var(--soon); }
+    #tab-board .card.tier-out { border-left: 3px solid var(--out); }
+    #tab-board .card-top { display: flex; align-items: flex-start; gap: 7px; }
+    #tab-board .grip {
+      flex: none; width: 16px; align-self: stretch; cursor: grab;
+      color: #c4cdd0; margin: -2px 0 -2px -3px;
+      display: flex; align-items: flex-start; padding-top: 2px;
+      opacity: 0; transition: opacity .12s;
+    }
+    #tab-board .grip svg { width: 11px; height: 16px; }
+    #tab-board .card:hover .grip, #tab-board .shipment:hover > .ship-head .grip { opacity: 1; }
+    #tab-board .grip:active { cursor: grabbing; }
+    #tab-board .card-name {
+      flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600;
+      letter-spacing: -.01em; line-height: 1.25; outline: none;
+    }
+    #tab-board .card-name:empty::before { content: 'Name'; color: var(--ink-3); }
+    #tab-board .badge {
+      flex: none; font-family: var(--font-num); font-size: 9.5px; font-weight: 600;
+      letter-spacing: .04em; text-transform: uppercase; padding: 3px 6px;
+      border-radius: 20px; line-height: 1; color: var(--ink-3); background: var(--line-soft);
+    }
+    #tab-board .tier-soon .badge { color: var(--soon); background: var(--soon-tint); }
+    #tab-board .tier-out .badge { color: var(--out); background: var(--out-tint); }
+    #tab-board .proj { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    #tab-board .proj .cell { min-width: 0; }
+    #tab-board .proj .pk {
+      font-size: 9px; font-weight: 600; letter-spacing: .07em;
+      text-transform: uppercase; color: var(--ink-3); text-align: center;
+    }
+    #tab-board .proj .pv { display: flex; align-items: baseline; gap: 5px; margin-top: 2px; justify-content: center; }
+    #tab-board .proj .now {
+      font-family: var(--font-num); font-weight: 500; color: var(--b-ink);
+      font-size: 19px; line-height: 1; letter-spacing: -.02em;
+    }
+    #tab-board .proj .now .u { font-size: 11px; color: var(--ink-3); margin-left: 1px; }
+    #tab-board .proj .runout .now { font-size: 15px; }
+    #tab-board .tier-soon .proj .daysleft .now { color: var(--soon); }
+    #tab-board .tier-out .proj .daysleft .now { color: var(--out); }
+    #tab-board .proj .arrow { color: var(--ink-3); font-size: 12px; opacity: 0; width: 0; transition: opacity .15s; }
+    #tab-board .proj .next { font-family: var(--font-num); font-weight: 500; color: var(--accent-deep); opacity: 0; width: 0; overflow: hidden; }
+    #tab-board .proj .daysleft .next { font-size: 19px; line-height: 1; letter-spacing: -.02em; }
+    #tab-board .proj .daysleft .next .u { font-size: 11px; color: var(--accent); }
+    #tab-board .proj .runout .next { font-size: 15px; }
+    #tab-board .card.has-order .proj .now {
+      color: var(--ink-3); font-size: 13px; text-decoration: line-through; text-decoration-color: #c9d2d4;
+    }
+    #tab-board .card.has-order .proj .runout .now { font-size: 11px; }
+    #tab-board .card.has-order .proj .arrow { opacity: 1; width: auto; }
+    #tab-board .card.has-order .proj .next { opacity: 1; width: auto; overflow: visible; }
+    #tab-board .order {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+      margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--line);
+    }
+    #tab-board .field { display: flex; flex-direction: column; gap: 3px; }
+    #tab-board .field label {
+      font-size: 9px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--ink-3);
+    }
+    #tab-board .input-wrap {
+      display: flex; align-items: center; gap: 2px;
+      background: #f7f9f9; border: 1px solid var(--line); border-radius: 7px;
+      padding: 0 8px; height: 30px; transition: border-color .12s, background .12s;
+    }
+    #tab-board .input-wrap:focus-within { border-color: var(--accent); background: #fff; }
+    #tab-board .input-wrap .pfx, #tab-board .input-wrap .sfx {
+      font-family: var(--font-num); font-size: 11px; color: var(--ink-3); flex: none;
+    }
+    #tab-board .input-wrap input {
+      width: 100%; min-width: 0; border: 0; background: transparent; outline: none;
+      font-family: var(--font-num); font-size: 13px; color: var(--b-ink);
+      -moz-appearance: textfield; text-align: right;
+    }
+    #tab-board .input-wrap input::-webkit-inner-spin-button,
+    #tab-board .input-wrap input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    #tab-board .card-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    #tab-board .meta { font-family: var(--font-num); font-size: 10.5px; color: var(--ink-3); }
+    #tab-board .meta b { color: var(--ink-2); font-weight: 500; }
+    #tab-board .card-foot .ototal { margin-left: auto; font-family: var(--font-num); font-size: 14px; font-weight: 500; }
+    #tab-board .card-foot .ototal small {
+      font-size: 9px; color: var(--ink-3); letter-spacing: .05em;
+      font-weight: 600; text-transform: uppercase; margin-right: 5px;
+    }
+    #tab-board .incl-toggle {
+      flex: none; border: 0; background: transparent; padding: 0; cursor: pointer;
+      display: inline-flex; align-items: center; margin-left: 2px;
+    }
+    #tab-board .incl-toggle .sw {
+      width: 30px; height: 17px; border-radius: 20px; background: #d2d9da;
+      position: relative; transition: background .15s;
+    }
+    #tab-board .incl-toggle .sw i {
+      position: absolute; top: 2px; left: 2px; width: 13px; height: 13px;
+      border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2);
+      transition: transform .15s;
+    }
+    #tab-board .incl-toggle:hover .sw { background: #c3ccce; }
+    #tab-board .card.counted .incl-toggle .sw { background: var(--accent); }
+    #tab-board .card.counted .incl-toggle:hover .sw { background: var(--accent-deep); }
+    #tab-board .card.counted .incl-toggle .sw i { transform: translateX(13px); }
+    #tab-board .month-list > .card .badge.loose-tag { display: inline-block; }
+    #tab-board .badge.loose-tag { display: none; background: #eef2f2; color: var(--ink-3); }
+    #tab-board .del {
+      position: absolute; top: 7px; right: 7px; width: 20px; height: 20px;
+      border: 0; border-radius: 6px; background: transparent; color: var(--ink-3);
+      cursor: pointer; opacity: 0; transition: opacity .12s, background .12s, color .12s;
+      display: grid; place-items: center; font-size: 14px; line-height: 1;
+    }
+    #tab-board .card:hover .del, #tab-board .ship-head:hover .del { opacity: 1; }
+    #tab-board .del:hover { background: var(--out-tint); color: var(--out); }
+    #tab-board .ship-head .del { position: static; opacity: 0; }
+    #tab-board .shipment:hover .ship-head .del { opacity: 1; }
+    #tab-board .add-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+      height: 34px; border: 1px dashed #c4cdd0; border-radius: 9px;
+      background: transparent; color: var(--ink-2); font-family: var(--font-ui);
+      font-size: 12px; font-weight: 500; cursor: pointer; transition: all .12s;
+    }
+    #tab-board .add-btn:hover { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
+    #tab-board .add-btn svg { width: 13px; height: 13px; }
+    #tab-board .ship-foot .add-btn { height: 30px; font-size: 11.5px; }
+
+    /* sortable helpers */
+    #tab-board .sb-ghost { opacity: .4; }
+    #tab-board .sb-chosen { box-shadow: var(--shadow-pop); }
+    #tab-board .sb-drag { transform: rotate(1.5deg); }
+    #tab-board .month-list.sb-over, #tab-board .ship-body.sb-over { outline: 2px dashed var(--accent); outline-offset: -3px; border-radius: 10px; }
+
+    /* ── COMPACT layout — one dense grid row per card ── */
+    #tab-board .board.layout-compact .month-list { gap: 5px; }
+    #tab-board .board.layout-compact .ship-body { gap: 5px; padding: 6px; }
+    #tab-board .board.layout-compact .card { padding: 6px 11px; overflow: hidden; }
+    #tab-board .board.layout-compact .card-body {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) 162px 82px 84px 22px;
+      grid-template-areas: "top proj order foot del";
+      align-items: center; column-gap: 9px;
+    }
+    #tab-board .board.layout-compact .badge,
+    #tab-board .board.layout-compact .proj .pk,
+    #tab-board .board.layout-compact .meta,
+    #tab-board .board.layout-compact .input-wrap .sfx { display: none; }
+    #tab-board .board.layout-compact .month-list > .card .badge.loose-tag { display: none; }
+    #tab-board .board.layout-compact .card-top { grid-area: top; min-width: 0; gap: 5px; align-items: center; }
+    #tab-board .board.layout-compact .grip { width: 12px; align-self: center; padding-top: 0; height: auto; }
+    #tab-board .board.layout-compact .card-name {
+      font-size: 13px; line-height: 1.2; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #tab-board .board.layout-compact .proj {
+      grid-area: proj; margin: 0; display: flex; gap: 11px;
+      align-items: baseline; white-space: nowrap; justify-content: center; padding-right: 15px;
+    }
+    #tab-board .board.layout-compact .proj .cell { display: flex; align-items: baseline; gap: 4px; }
+    #tab-board .board.layout-compact .proj .pv { margin: 0; gap: 4px; }
+    #tab-board .board.layout-compact .proj .now { font-size: 13px; }
+    #tab-board .board.layout-compact .proj .runout .now { font-size: 12px; }
+    #tab-board .board.layout-compact .proj .next { font-size: 13px; }
+    #tab-board .board.layout-compact .proj .runout .next { font-size: 12px; }
+    #tab-board .board.layout-compact .card.has-order .proj .now { font-size: 10px; }
+    #tab-board .board.layout-compact .card.has-order .proj .runout .now { font-size: 9px; }
+    #tab-board .board.layout-compact .order {
+      grid-area: order; margin: 0; padding: 0; border: 0;
+      display: flex; gap: 7px; align-items: center; justify-content: flex-end;
+    }
+    #tab-board .board.layout-compact .order .field { flex-direction: row; align-items: center; gap: 4px; }
+    #tab-board .board.layout-compact .order .field label { margin: 0; }
+    #tab-board .board.layout-compact .order .field:nth-child(1) label { display: none; }
+    #tab-board .board.layout-compact .order .field:nth-child(2) label { font-size: 0; }
+    #tab-board .board.layout-compact .order .field:nth-child(2) label::before {
+      content: '×'; font-size: 13px; font-weight: 500; color: var(--ink-3);
+    }
+    #tab-board .board.layout-compact .order .field label .lbl-sub { display: none; }
+    #tab-board .board.layout-compact .input-wrap { height: 24px; padding: 0 6px; }
+    #tab-board .board.layout-compact .input-wrap input { font-size: 12px; width: 2ch; }
+    #tab-board .board.layout-compact .card-foot {
+      grid-area: foot; justify-self: stretch; justify-content: flex-end;
+      align-items: center; gap: 7px; margin: 0;
+    }
+    #tab-board .board.layout-compact .incl-toggle .sw { width: 26px; height: 15px; }
+    #tab-board .board.layout-compact .incl-toggle .sw i { width: 11px; height: 11px; }
+    #tab-board .board.layout-compact .card.counted .incl-toggle .sw i { transform: translateX(11px); }
+    #tab-board .board.layout-compact .card-foot .ototal small { display: none; }
+    #tab-board .board.layout-compact .card-foot .ototal .amt { font-size: 13px; }
+    #tab-board .board.layout-compact .card-body > .del {
+      position: static; grid-area: del; opacity: .4; width: 18px; height: 18px;
+    }
+    #tab-board .board.layout-compact .card:hover .card-body > .del { opacity: 1; }
   </style>
 </head>
 <body>
 
 <header>
   <img src="Logos/icon.svg" alt="Normal Protocol" />
-  <h1>Normal Protocol <span>/ Intakes</span></h1>
+  <h1>Normal Protocol <span id="app-subtitle">/ Intakes</span></h1>
 </header>
 
-<main>
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="intakes">Intakes</button>
+  <button class="tab-btn" data-tab="board">Supplement Board</button>
+</nav>
+
+<main id="tab-intakes" class="tab-panel active">
   <div class="toolbar">
     <span class="section-title">Daily Supplements</span>
     <div class="search-wrap">
@@ -312,6 +702,16 @@
 
   <div id="count"></div>
 </main>
+
+<section id="tab-board" class="tab-panel">
+  <div class="board-bar">
+    <span class="section-title" style="text-transform:none;letter-spacing:normal;font-weight:600;">Supplement Ordering <span style="color:var(--ink-3);font-weight:500;">· planner</span></span>
+    <span class="spacer"></span>
+    <button class="reset-btn" id="board-reset" title="Clear saved board and reload the seed">Reset board</button>
+    <span class="asof"><span class="pulse"></span>live as of <b id="board-asof">—</b></span>
+  </div>
+  <div id="board" class="board layout-compact"></div>
+</section>
 
 <script>
   const COLUMNS = [
@@ -528,6 +928,654 @@
   document.getElementById("search").addEventListener("input", e => render(e.target.value));
 
   init();
+
+  // ── Tab switching ──
+  const SUBTITLES = { intakes: "/ Intakes", board: "/ Supplement Board" };
+  let boardInitialized = false;
+  function activateTab(tab) {
+    document.querySelectorAll(".tab-btn").forEach(b =>
+      b.classList.toggle("active", b.dataset.tab === tab));
+    document.querySelectorAll(".tab-panel").forEach(p =>
+      p.classList.toggle("active", p.id === `tab-${tab}`));
+    document.getElementById("app-subtitle").textContent = SUBTITLES[tab] || "";
+    if (tab === "board" && !boardInitialized) {
+      boardInitialized = true;
+      window.SupplementBoard.init();
+    }
+  }
+  document.querySelectorAll(".tab-btn").forEach(btn =>
+    btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
+</script>
+
+<script src="vendor/Sortable.min.js"></script>
+
+<!-- ── Supplement Board: domain logic (ported verbatim from prototype/data.js) ── -->
+<script>
+(function () {
+  const DAY = 86400000;
+
+  function today() { return new Date(); }
+  function parseDate(iso) { return new Date(iso + 'T00:00:00'); }
+  function addDays(d, n) { return new Date(d.getTime() + n * DAY); }
+  function daysBetween(a, b) { return (b - a) / DAY; }
+
+  function calc(c) {
+    const dose = Number(c.dose) || 1;                  // caps/day
+    const bottle = Number(c.bottleSize) || 0;          // caps/bottle
+    const t = today();
+    const logged = parseDate(c.loggedOn);
+    const elapsed = Math.max(0, daysBetween(logged, t));
+    const onHand = c.amount - dose * elapsed;           // may be < 0 (overdue)
+
+    const curDaysLeft = onHand / dose;
+    const curRunOut = addDays(logged, c.amount / dose);
+
+    const qty = Number(c.qty) || 0;                     // BOTTLES
+    const added = qty * bottle;
+    const newOnHand = onHand + added;
+    const newDaysLeft = newOnHand / dose;
+    const newRunOut = addDays(t, newDaysLeft);
+
+    const price = Number(c.price) || 0;                 // per bottle
+    const cost = price * qty;
+
+    return {
+      dose, bottle, onHand, curDaysLeft, curRunOut,
+      qty, added, newOnHand, newDaysLeft, newRunOut, price, cost,
+      hasOrder: qty > 0,
+    };
+  }
+
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  function fmtDate(d) {
+    const now = today();
+    const base = `${MON[d.getMonth()]} ${d.getDate()}`;
+    return d.getFullYear() !== now.getFullYear()
+      ? `${base}, ’${String(d.getFullYear()).slice(2)}` : base;
+  }
+  function fmtDateShort(d) {
+    const now = today();
+    const base = `${d.getMonth() + 1}/${d.getDate()}`;
+    return d.getFullYear() !== now.getFullYear()
+      ? `${base}/${String(d.getFullYear()).slice(2)}` : base;
+  }
+  function fmtMoney(n) {
+    return '$' + (Number(n) || 0).toLocaleString('en-US',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtMoney0(n) {
+    return '$' + Math.round(Number(n) || 0).toLocaleString('en-US');
+  }
+  function fmtUnits(n) {
+    const r = Math.round(n);
+    return r < 0 ? '0' : `${r}`;
+  }
+
+  function tier(days, threshold) {
+    if (days <= 0) return 'out';
+    if (days < threshold) return 'soon';
+    return 'ok';
+  }
+
+  const SEED = {
+    cardData: {
+      drainage:  { name: 'Drainage Activator', amount: 62,  dose: 6,  bottleSize: 120, loggedOn: '2026-06-04', price: 45, qty: 1, includeInMonthTotal: true },
+      biotoxin1: { name: 'BioToxin',           amount: 53,  dose: 4,  bottleSize: 120, loggedOn: '2026-06-04', price: 48, qty: 1, includeInMonthTotal: true },
+      atp:       { name: 'ATP',                amount: 110, dose: 11, bottleSize: 120, loggedOn: '2026-06-04', price: 63, qty: 1, includeInMonthTotal: true },
+      para2:     { name: 'Para 2',             amount: 65,  dose: 8,  bottleSize: 120, loggedOn: '2026-06-04', price: 40, qty: 1, includeInMonthTotal: true },
+      serratia:  { name: 'Serratia',           amount: 9,   dose: 1,  bottleSize: 180, loggedOn: '2026-06-04', price: 54, qty: 1, includeInMonthTotal: false },
+      biotoxin2: { name: 'BioToxin',           amount: 66,  dose: 4,  bottleSize: 120, loggedOn: '2026-05-29', price: 48, qty: 1, includeInMonthTotal: true },
+      lymph:     { name: 'LymphActiv',         amount: 40,  dose: 2,  bottleSize: 60,  loggedOn: '2026-06-04', price: 36, qty: 1, includeInMonthTotal: true },
+      para1:     { name: 'Para 1',             amount: 151, dose: 4,  bottleSize: 120, loggedOn: '2026-06-04', price: 42, qty: 1, includeInMonthTotal: false },
+      brain:     { name: 'Brain',              amount: 105, dose: 2,  bottleSize: 180, loggedOn: '2026-05-29', price: 58, qty: 1, includeInMonthTotal: true },
+      thymus:    { name: 'Thymus',             amount: 249, dose: 3,  bottleSize: 180, loggedOn: '2026-05-29', price: 39, qty: 1, includeInMonthTotal: true },
+    },
+    shipmentData: {
+      s_bluesky_jun: { name: 'Blue Sky Vitamin' },
+      s_cellcore:    { name: 'CellCore Direct' },
+      s_fullscript:  { name: 'Fullscript' },
+      s_bluesky_aug: { name: 'Blue Sky Vitamin' },
+    },
+    structure: [
+      {
+        id: 'm_jun', name: 'June', sub: '2026', spent: 480,
+        blocks: [
+          { type: 'shipment', id: 's_bluesky_jun', cards: ['atp', 'drainage', 'para2', 'serratia'] },
+          { type: 'card', id: 'lymph' },
+          { type: 'shipment', id: 's_cellcore', cards: ['biotoxin1', 'biotoxin2'] },
+        ],
+      },
+      {
+        id: 'm_jul', name: 'July', sub: '2026', spent: 0,
+        blocks: [
+          { type: 'shipment', id: 's_fullscript', cards: ['para1', 'brain'] },
+        ],
+      },
+      {
+        id: 'm_aug', name: 'August', sub: '2026', spent: 0,
+        blocks: [
+          { type: 'shipment', id: 's_bluesky_aug', cards: ['thymus'] },
+        ],
+      },
+    ],
+  };
+
+  window.SB = {
+    DAY, today, parseDate, addDays, daysBetween,
+    calc, fmtDate, fmtDateShort, fmtMoney, fmtMoney0, fmtUnits, tier,
+    SEED,
+  };
+})();
+</script>
+
+<!-- ── Supplement Board: render / nested drag-and-drop / inline edit / totals / persistence ── -->
+<script>
+(function () {
+  const SB = window.SB;
+  const KEY = 'sb_state_v6';
+  const board = document.getElementById('board');
+
+  window.SBoard = window.SBoard || { threshold: 10 };
+  const thr = () => window.SBoard.threshold || 10;
+
+  const ICON = {
+    grip: `<svg viewBox="0 0 8 16" fill="currentColor"><circle cx="2" cy="3" r="1.3"/><circle cx="6" cy="3" r="1.3"/><circle cx="2" cy="8" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="2" cy="13" r="1.3"/><circle cx="6" cy="13" r="1.3"/></svg>`,
+    truck: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h11v9H1z"/><path d="M12 8h4l3 3v3h-7z"/><circle cx="5" cy="16.5" r="1.6"/><circle cx="16" cy="16.5" r="1.6"/></svg>`,
+    plus: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>`,
+  };
+
+  let STATE; // { cardData, shipmentData }
+  let structure;
+
+  function load() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+    if (saved && saved.cardData && saved.structure) {
+      STATE = { cardData: saved.cardData, shipmentData: saved.shipmentData || {} };
+      structure = saved.structure;
+    } else {
+      const seed = JSON.parse(JSON.stringify(SB.SEED));
+      STATE = { cardData: seed.cardData, shipmentData: seed.shipmentData };
+      structure = seed.structure;
+    }
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function isoToday() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  function uid(p) { return p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+  function el(html) {
+    const t = document.createElement('template');
+    t.innerHTML = html.trim();
+    return t.content.firstElementChild;
+  }
+
+  // ── builders ──
+  function cardHTML(id) {
+    const c = STATE.cardData[id];
+    return `
+    <div class="card" data-id="${id}" data-kind="card">
+      <div class="card-body">
+        <div class="card-top">
+          <span class="grip block-grip card-grip" title="Drag">${ICON.grip}</span>
+          <div class="card-name" contenteditable="true" spellcheck="false" data-field="name">${esc(c.name)}</div>
+          <span class="badge loose-tag">Loose</span>
+          <span class="badge status">OK</span>
+        </div>
+        <div class="proj">
+          <div class="cell daysleft">
+            <div class="pk">Days left</div>
+            <div class="pv">
+              <span class="now"><span class="n">0</span><span class="u">d</span></span>
+              <span class="arrow">→</span>
+              <span class="next"><span class="n">0</span><span class="u">d</span></span>
+            </div>
+          </div>
+          <div class="cell runout">
+            <div class="pk">Runs out</div>
+            <div class="pv">
+              <span class="now">—</span>
+              <span class="arrow">→</span>
+              <span class="next">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="order">
+          <div class="field">
+            <label>Price <span class="lbl-sub">/ bottle</span></label>
+            <div class="input-wrap"><span class="pfx">$</span><input type="number" step="0.01" min="0" inputmode="decimal" data-field="price" value="${c.price}"></div>
+          </div>
+          <div class="field">
+            <label>Order <span class="lbl-sub">bottles</span></label>
+            <div class="input-wrap"><input type="number" step="1" min="0" inputmode="numeric" data-field="qty" value="${c.qty}"><span class="sfx">btl</span></div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <span class="meta">on hand <b class="onhand">0</b> · <b class="dose">0</b>/day · <b class="bsize">0</b>/btl</span>
+          <span class="ototal"><small>Order</small><span class="amt">$0.00</span></span>
+          <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month’s Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
+        </div>
+        <button class="del" data-act="del-card" title="Remove item" aria-label="Remove item">×</button>
+      </div>
+    </div>`;
+  }
+
+  function shipmentHTML(block) {
+    const s = STATE.shipmentData[block.id] || { name: 'Shipment' };
+    const cards = block.cards.map(cardHTML).join('');
+    return `
+    <div class="shipment" data-id="${block.id}" data-kind="shipment">
+      <div class="ship-head">
+        <span class="grip block-grip" title="Drag shipment">${ICON.grip}</span>
+        <span class="truck">${ICON.truck}</span>
+        <div class="ship-id">
+          <span class="ship-name" contenteditable="true" spellcheck="false" data-field="name">${esc(s.name)}</span>
+          <span class="scount">0</span>
+        </div>
+        <div class="ship-total"><span class="amt">$0.00</span></div>
+        <button class="del" data-act="del-ship" title="Remove shipment">×</button>
+      </div>
+      <div class="ship-body" data-list="shipment">${cards}</div>
+      <div class="ship-foot"><button class="add-btn" data-act="add-card-ship">${ICON.plus} Add item</button></div>
+    </div>`;
+  }
+
+  function blockHTML(block) {
+    return block.type === 'shipment' ? shipmentHTML(block) : cardHTML(block.id);
+  }
+
+  function monthHTML(m) {
+    return `
+    <div class="month" data-id="${m.id}">
+      <div class="month-head">
+        <div class="month-title">
+          <span class="mname" contenteditable="true" spellcheck="false" data-field="name">${esc(m.name)}</span>
+          <span class="msub">${esc(m.sub || '')}</span>
+          <span class="mcount">0</span>
+        </div>
+        <div class="month-metrics">
+          <div class="metric spent">
+            <span class="mk">Spent</span>
+            <span class="mv mv-money"><span class="pfx">$</span><input class="spent-input" type="number" min="0" step="0.01" inputmode="decimal" value="${Number(m.spent) || 0}"></span>
+          </div>
+          <div class="metric">
+            <span class="mk">Shipments</span>
+            <span class="mv shipv">$0.00</span>
+          </div>
+          <div class="metric is-total">
+            <span class="mk">Planned</span>
+            <span class="mv plannedv">$0.00</span>
+          </div>
+          <div class="metric is-max">
+            <span class="mk">Max</span>
+            <span class="mv maxv">$0.00</span>
+          </div>
+        </div>
+      </div>
+      <div class="month-list" data-list="month">${m.blocks.map(blockHTML).join('')}</div>
+      <div class="month-foot">
+        <button class="add-btn" data-act="add-ship">${ICON.plus} Shipment</button>
+        <button class="add-btn" data-act="add-card-month">${ICON.plus} Item</button>
+      </div>
+    </div>`;
+  }
+
+  function render() {
+    board.innerHTML = structure.map(monthHTML).join('');
+    board.querySelectorAll('.month-list').forEach(makeMonthSortable);
+    board.querySelectorAll('.ship-body').forEach(makeShipSortable);
+    board.querySelectorAll('.spent-input').forEach(sizeSpent);
+    recalcAll();
+  }
+
+  function sizeSpent(input) {
+    const len = Math.max(1, String(input.value).length);
+    input.style.width = (len + 1.5) + 'ch';
+  }
+
+  // ── per-card update ──
+  function setDays(span, val) {
+    const n = span.querySelector('.n');
+    n.textContent = Math.max(0, Math.round(val));
+  }
+
+  function updateCard(cardEl) {
+    const id = cardEl.dataset.id;
+    const c = STATE.cardData[id];
+    if (!c) return 0;
+    const r = SB.calc(c);
+    const tier = SB.tier(r.curDaysLeft, thr());
+    const compact = board.classList.contains('layout-compact');
+    const df = compact ? SB.fmtDateShort : SB.fmtDate;
+
+    cardEl.classList.toggle('tier-soon', tier === 'soon');
+    cardEl.classList.toggle('tier-out', tier === 'out');
+    cardEl.classList.toggle('has-order', r.hasOrder);
+    cardEl.classList.toggle('counted', !!c.includeInMonthTotal);
+
+    cardEl.querySelector('.status').textContent =
+      tier === 'out' ? 'OUT' : tier === 'soon' ? 'SOON' : 'OK';
+
+    const dl = cardEl.querySelector('.daysleft');
+    setDays(dl.querySelector('.now'), r.curDaysLeft);
+    setDays(dl.querySelector('.next'), r.newDaysLeft);
+
+    const ro = cardEl.querySelector('.runout');
+    ro.querySelector('.now').textContent = df(r.curRunOut);
+    ro.querySelector('.next').textContent = df(r.newRunOut);
+
+    cardEl.querySelector('.onhand').textContent = SB.fmtUnits(r.onHand);
+    cardEl.querySelector('.dose').textContent = String(+r.dose.toFixed(1));
+    cardEl.querySelector('.bsize').textContent = String(r.bottle);
+    cardEl.querySelector('.ototal .amt').textContent = SB.fmtMoney(r.cost);
+
+    cardEl.querySelectorAll('input[data-field]').forEach((inp) => {
+      if (compact) {
+        const len = Math.max(1, String(inp.value).length);
+        inp.style.width = (len + 1.2) + 'ch';
+      } else if (inp.style.width) {
+        inp.style.width = '';
+      }
+    });
+
+    return r.cost;
+  }
+
+  // ── totals ──
+  function monthSpent(monthEl) {
+    const i = monthEl.querySelector('.spent-input');
+    return i ? (Number(i.value) || 0) : 0;
+  }
+
+  function recalcAll() {
+    board.querySelectorAll('.month').forEach((monthEl) => {
+      const list = monthEl.querySelector('.month-list');
+      let shipSum = 0, plannedItems = 0, maxItems = 0, itemCount = 0;
+
+      [...list.children].forEach((node) => {
+        if (node.classList.contains('shipment')) {
+          let sTot = 0, sCount = 0;
+          node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
+            const cost = updateCard(cardEl);
+            const inc = STATE.cardData[cardEl.dataset.id] && STATE.cardData[cardEl.dataset.id].includeInMonthTotal;
+            maxItems += cost;
+            if (inc) { sTot += cost; plannedItems += cost; } // toggled-off rows leave the shipment subtotal
+            sCount++;
+          });
+          node.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
+          node.querySelector('.scount').textContent = sCount;
+          shipSum += sTot;
+          itemCount += sCount;
+        } else if (node.classList.contains('card')) {
+          const cost = updateCard(node);
+          maxItems += cost;
+          if (STATE.cardData[node.dataset.id] && STATE.cardData[node.dataset.id].includeInMonthTotal) plannedItems += cost;
+          itemCount++;
+        }
+      });
+
+      const spent = monthSpent(monthEl);
+      monthEl.querySelector('.shipv').textContent = SB.fmtMoney(shipSum);
+      monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
+      monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
+      monthEl.querySelector('.mcount').textContent = `${itemCount}`;
+    });
+  }
+  window.SBoard.recalc = recalcAll;
+
+  // ── persistence ──
+  function serialize() {
+    const struct = [...board.querySelectorAll('.month')].map((m) => ({
+      id: m.dataset.id,
+      name: m.querySelector('.mname').textContent.trim(),
+      sub: m.querySelector('.msub').textContent.trim(),
+      spent: monthSpent(m),
+      blocks: [...m.querySelector('.month-list').children]
+        .filter((n) => n.classList.contains('shipment') || n.classList.contains('card'))
+        .map((n) => {
+          if (n.classList.contains('shipment')) {
+            return {
+              type: 'shipment', id: n.dataset.id,
+              cards: [...n.querySelectorAll(':scope .ship-body > .card')].map((c) => c.dataset.id),
+            };
+          }
+          return { type: 'card', id: n.dataset.id };
+        }),
+    }));
+    const liveCards = new Set(), liveShips = new Set();
+    struct.forEach((m) => m.blocks.forEach((b) => {
+      if (b.type === 'shipment') { liveShips.add(b.id); b.cards.forEach((c) => liveCards.add(c)); }
+      else liveCards.add(b.id);
+    }));
+    const cardData = {}, shipmentData = {};
+    liveCards.forEach((id) => { if (STATE.cardData[id]) cardData[id] = STATE.cardData[id]; });
+    liveShips.forEach((id) => { if (STATE.shipmentData[id]) shipmentData[id] = STATE.shipmentData[id]; });
+    return { cardData, shipmentData, structure: struct };
+  }
+
+  let saveTimer = null;
+  function persist() {
+    try { localStorage.setItem(KEY, JSON.stringify(serialize())); } catch (e) {}
+  }
+  function persistSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(persist, 250);
+  }
+
+  // ── drag and drop (SortableJS, nested) ──
+  const afterDrag = () => { recalcAll(); persist(); };
+  const COMMON = {
+    animation: 160, easing: 'cubic-bezier(.2,.7,.3,1)',
+    filter: 'input,[contenteditable],button',
+    preventOnFilter: false,
+    ghostClass: 'sb-ghost', chosenClass: 'sb-chosen', dragClass: 'sb-drag',
+    // forceFallback: use SortableJS's own pointer-driven drag clone instead of
+    // native HTML5 DnD — renders the designed rotate/pop-shadow on the dragged
+    // card, escapes the overflow:hidden clipping on shipments/compact cards, and
+    // behaves consistently across browsers.
+    forceFallback: true, fallbackOnBody: true, swapThreshold: 0.65,
+  };
+  function makeMonthSortable(listEl) {
+    new Sortable(listEl, Object.assign({}, COMMON, {
+      group: { name: 'sb', pull: true, put: true },
+      draggable: '.card, .shipment',
+      handle: '.block-grip',
+      onEnd: afterDrag,
+    }));
+  }
+  function makeShipSortable(bodyEl) {
+    new Sortable(bodyEl, Object.assign({}, COMMON, {
+      group: { name: 'sb', pull: true, put: (to, from, drag) => drag.classList.contains('card') },
+      draggable: '.card',
+      handle: '.card-grip',
+      onEnd: afterDrag,
+    }));
+  }
+
+  // ── editing ──
+  board.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.matches('input[data-field]')) {
+      const cardEl = t.closest('.card');
+      const c = STATE.cardData[cardEl.dataset.id];
+      c[t.dataset.field] = t.value === '' ? 0 : Number(t.value);
+      updateCard(cardEl);
+      recalcTotalsFor(cardEl);
+      persistSoon();
+    } else if (t.matches('.card-name')) {
+      STATE.cardData[t.closest('.card').dataset.id].name = t.textContent;
+      persistSoon();
+    } else if (t.matches('.ship-name')) {
+      const ship = t.closest('.shipment');
+      (STATE.shipmentData[ship.dataset.id] || (STATE.shipmentData[ship.dataset.id] = {})).name = t.textContent;
+      persistSoon();
+    } else if (t.matches('.spent-input')) {
+      sizeSpent(t);
+      recalcTotalsFor(t);
+      persistSoon();
+    } else if (t.matches('.mname')) {
+      persistSoon();
+    }
+  });
+
+  function recalcTotalsFor(node) {
+    const monthEl = node.closest('.month');
+    if (!monthEl) return;
+    const list = monthEl.querySelector('.month-list');
+    let shipSum = 0, plannedItems = 0, maxItems = 0;
+    [...list.children].forEach((n) => {
+      if (n.classList.contains('shipment')) {
+        let sTot = 0;
+        n.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
+          const c = STATE.cardData[cardEl.dataset.id];
+          const cost = c ? SB.calc(c).cost : 0;
+          maxItems += cost;
+          if (c && c.includeInMonthTotal) { sTot += cost; plannedItems += cost; } // toggled-off rows leave the shipment subtotal
+        });
+        n.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
+        shipSum += sTot;
+      } else if (n.classList.contains('card')) {
+        const c = STATE.cardData[n.dataset.id];
+        const cost = c ? SB.calc(c).cost : 0;
+        maxItems += cost;
+        if (c && c.includeInMonthTotal) plannedItems += cost;
+      }
+    });
+    const spent = monthSpent(monthEl);
+    monthEl.querySelector('.shipv').textContent = SB.fmtMoney(shipSum);
+    monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
+    monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
+  }
+
+  // ── actions (add / delete / toggle) ──
+  board.addEventListener('click', (e) => {
+    const act = e.target.closest('[data-act]');
+    if (!act) return;
+    const a = act.dataset.act;
+
+    if (a === 'toggle-include') {
+      e.preventDefault();
+      const cardEl = act.closest('.card');
+      const c = STATE.cardData[cardEl.dataset.id];
+      c.includeInMonthTotal = !c.includeInMonthTotal;
+      cardEl.classList.toggle('counted', c.includeInMonthTotal);
+      recalcTotalsFor(cardEl);
+      persist();
+      return;
+    }
+    if (a === 'del-card') {
+      const cardEl = act.closest('.card');
+      cardEl.remove();
+      recalcAll(); persist();
+      return;
+    }
+    if (a === 'del-ship') {
+      act.closest('.shipment').remove();
+      recalcAll(); persist();
+      return;
+    }
+    if (a === 'add-card-ship') {
+      const body = act.closest('.shipment').querySelector('.ship-body');
+      const id = newCard();
+      const node = el(cardHTML(id));
+      body.appendChild(node);
+      finishAdd(node);
+      return;
+    }
+    if (a === 'add-card-month') {
+      const list = act.closest('.month').querySelector('.month-list');
+      const id = newCard();
+      const node = el(cardHTML(id));
+      list.appendChild(node);
+      finishAdd(node);
+      return;
+    }
+    if (a === 'add-ship') {
+      const list = act.closest('.month').querySelector('.month-list');
+      const sid = uid('s_');
+      STATE.shipmentData[sid] = { name: 'New merchant' };
+      const node = el(shipmentHTML({ type: 'shipment', id: sid, cards: [] }));
+      list.appendChild(node);
+      makeShipSortable(node.querySelector('.ship-body'));
+      recalcAll(); persist();
+      const nm = node.querySelector('.ship-name');
+      nm.focus(); selectAll(nm);
+      return;
+    }
+  });
+
+  function newCard() {
+    const id = uid('c_');
+    STATE.cardData[id] = {
+      name: 'New supplement', amount: 30, dose: 1, bottleSize: 30,
+      loggedOn: isoToday(), price: 0, qty: 0, includeInMonthTotal: true,
+    };
+    return id;
+  }
+  function finishAdd(node) {
+    recalcAll(); persist();
+    const nm = node.querySelector('.card-name');
+    nm.focus(); selectAll(nm);
+  }
+  function selectAll(node) {
+    const r = document.createRange();
+    r.selectNodeContents(node);
+    const s = window.getSelection();
+    s.removeAllRanges(); s.addRange(r);
+  }
+
+  board.addEventListener('blur', (e) => {
+    if (e.target.matches('[contenteditable]')) persist();
+  }, true);
+  board.addEventListener('paste', (e) => {
+    if (e.target.matches('[contenteditable]')) {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, text);
+    }
+  });
+  board.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('[contenteditable]')) {
+      e.preventDefault(); e.target.blur();
+    }
+  });
+
+  // ── public API (lazy init from the tab switcher) ──
+  let booted = false;
+  window.SupplementBoard = {
+    init() {
+      if (booted) return;
+      booted = true;
+      load();
+      render();
+      const asof = document.getElementById('board-asof');
+      if (asof) asof.textContent = SB.fmtDate(SB.today());
+
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => {
+          board.querySelectorAll('.spent-input').forEach(sizeSpent);
+          recalcAll();
+        });
+      }
+      // keep the live countdown honest across midnight
+      setInterval(recalcAll, 60 * 60 * 1000);
+    },
+    reset() {
+      localStorage.removeItem(KEY);
+      location.reload();
+    },
+  };
+
+  const resetBtn = document.getElementById('board-reset');
+  if (resetBtn) resetBtn.addEventListener('click', () => window.SupplementBoard.reset());
+})();
 </script>
 </body>
 </html>

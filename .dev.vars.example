@@ -1,0 +1,5 @@
+# Copy to `.dev.vars` (git-ignored) for `npm run dev` (wrangler pages dev).
+# These back the /api/intakes and /api/suppliers Pages Functions (Turso HTTP API).
+# The Supplement Board tab is pure localStorage and needs NEITHER of these.
+TURSO_URL="https://your-db-name.turso.io"
+TURSO_TOKEN="your-turso-auth-token"
