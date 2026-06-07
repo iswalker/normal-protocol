@@ -617,33 +617,42 @@
     .sb-dragging #tab-board .shipment { overflow: visible; }
 
     /* ── Column alignment in compact mode ─────────────────────────────────
-       All dollar amounts (month Max / ship subtotal / card order total) and
-       all run-out dates share a common right border, matching the card grid.
+       Target column positions from .shipment inner right:
+         card foot right edge         = 18(card padding)+22(del)+9(gap) = 49px
+         card $ amount right          = 49+26(toggle)+7(gap)            = 82px
+         card proj (full col) right   = 49+9+84+9+82+9                  = 233px
+         card proj runout right edge  = 233+15(proj padding-right)      = 248px
 
-       Measured from .shipment inner right:
-         card foot right edge   = 18+22+9  = 49px
-         card $ amount right    = 49+26+7  = 82px  (after toggle)
-         card run-out right     = 49+9+84+9+82+9+15 = 257px (proj right padding)
+       Loose cards (direct .month-list children) lack the ship wrapper:
+         ship border(1)+ship-body padding(6) = 7px per side.
+         margin:0 7px compensates so loose cards align with shipment cards.
 
-       ship-head is position:relative; ship-total and ship-min-date are
-       pulled out of flex flow (absolute) and positioned to match card columns.
-       month-metrics gets margin-right:80px so Max aligns with 82+12=94px
-       from .month inner right (80 = 94 - 14px month-head padding).        */
+       Month PLANNED metric aligns with the dollar amount column (Planned is
+       the meaningful "what you'll spend" total). Max is re-ordered before
+       Planned via CSS order so Planned is rightmost at the alignment column.
+       margin-right:80px on month-metrics → PLANNED right = 80+14 = 94px
+       from .month inner right, matching the 82+12 = 94px from .shipment.   */
     #tab-board .board.layout-compact .ship-head { position: relative; }
     #tab-board .board.layout-compact .ship-head .ship-total {
       position: absolute; right: 82px; width: 84px;
       text-align: right; margin: 0;
       top: 50%; transform: translateY(-50%);
     }
+    /* ship-min-date spans the full proj column (162px), text right-aligned
+       with 15px right padding to match the proj column's own padding */
     #tab-board .board.layout-compact .ship-min-date {
-      position: absolute; right: 257px; width: 68px;
-      text-align: right; margin: 0;
+      position: absolute; right: 233px; width: 162px;
+      text-align: right; padding-right: 15px; margin: 0;
       top: 50%; transform: translateY(-50%);
     }
     /* del stays at far-right of the flex row now that ship-total is absolute */
     #tab-board .board.layout-compact .ship-head > .del { margin-left: auto; }
-    /* month metrics: offset so Max value aligns with card dollar amount column */
+    /* month metrics: Planned last (rightmost = aligned with $ column), Max before it */
     #tab-board .board.layout-compact .month-metrics { margin-right: 80px; }
+    #tab-board .board.layout-compact .metric.is-max { order: 2; padding-right: 9px; }
+    #tab-board .board.layout-compact .metric.is-total { order: 3; padding-right: 0; }
+    /* loose cards: add 7px margin each side so they align with shipment cards */
+    #tab-board .board.layout-compact .month-list > .card { margin: 0 7px; }
 
     /* ── Untracked (free-text) cards: no proj column, name is editable ── */
     #tab-board .card.card--untracked .status { display: none; }
