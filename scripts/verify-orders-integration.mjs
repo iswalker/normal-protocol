@@ -64,9 +64,11 @@ try {
   check('board loaded 3 months from Turso', (await months.count()) === 3, `got ${await months.count()}`);
   const june = months.nth(0);
   check('Jun name from Turso = "Jun"', (await june.locator('.mname').innerText()).trim() === 'Jun');
+  // Spent is now YNAB-derived (not persisted); shows $0.00 without a live YNAB token
+  check('Jun Spent=$0.00 (YNAB not connected)', (await june.locator('.spentv').innerText()) === '$0.00', await june.locator('.spentv').innerText());
   check('Jun Shipments=$244.00', (await june.locator('.shipv').innerText()) === '$244.00', await june.locator('.shipv').innerText());
-  check('Jun Planned=$760.00', (await june.locator('.plannedv').innerText()) === '$760.00', await june.locator('.plannedv').innerText());
-  check('Jun Max=$814.00', (await june.locator('.maxv').innerText()) === '$814.00', await june.locator('.maxv').innerText());
+  check('Jun Planned=$280.00 (0 spent + toggle-ON items)', (await june.locator('.plannedv').innerText()) === '$280.00', await june.locator('.plannedv').innerText());
+  check('Jun Max=$334.00 (0 spent + all items)', (await june.locator('.maxv').innerText()) === '$334.00', await june.locator('.maxv').innerText());
 
   const blueSky = june.locator('.shipment').nth(0);
   const atp = blueSky.locator('.card').nth(0);

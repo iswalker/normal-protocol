@@ -14,10 +14,10 @@
 import { run, text, int, real } from './turso.mjs';
 
 const months = [
-  // month, year, spent, position
-  ['Jun', 2026, 480, 1],
-  ['Jul', 2026, 0, 2],
-  ['Aug', 2026, 0, 3],
+  // month, year, position
+  ['Jun', 2026, 1],
+  ['Jul', 2026, 2],
+  ['Aug', 2026, 3],
 ];
 
 const orders = [
@@ -49,7 +49,6 @@ const ddl = [
   `CREATE TABLE order_months (
      month    TEXT PRIMARY KEY,
      year     INTEGER,
-     spent    REAL DEFAULT 0,
      position INTEGER
    )`,
   `CREATE TABLE orders (
@@ -75,9 +74,9 @@ const ddl = [
 ];
 
 const inserts = [
-  ...months.map(([m, y, s, p]) => ({
-    sql: 'INSERT INTO order_months (month, year, spent, position) VALUES (?, ?, ?, ?)',
-    args: [text(m), int(y), real(s), int(p)],
+  ...months.map(([m, y, p]) => ({
+    sql: 'INSERT INTO order_months (month, year, position) VALUES (?, ?, ?)',
+    args: [text(m), int(y), int(p)],
   })),
   ...orders.map(([id, m, mer, p, st]) => ({
     sql: 'INSERT INTO orders (order_id, month, merchant, position, status) VALUES (?, ?, ?, ?, ?)',

@@ -78,11 +78,13 @@ try {
   const shipv = await txt(june.locator('.shipv'));
   const plannedv = await txt(june.locator('.plannedv'));
   const maxv = await txt(june.locator('.maxv'));
-  const spent = await june.locator('.spent-input').inputValue();
-  check('June Spent input = 480', spent === '480', `got ${spent}`);
+  // Spent is now YNAB-derived, not persisted. Offline/seed mode shows $0.00.
+  const spentTxt = await txt(june.locator('.spentv'));
+  check('June Spent display = $0.00 (YNAB not connected)', spentTxt === '$0.00', `got ${spentTxt}`);
   check('June Shipments = $244.00 (Serratia off)', shipv === '$244.00', `got ${shipv}`);
-  check('June Planned = $760.00', plannedv === '$760.00', `got ${plannedv}`);
-  check('June Max = $814.00', maxv === '$814.00', `got ${maxv}`);
+  // Planned = Spent($0) + toggle-ON items; Max = Spent($0) + all items
+  check('June Planned = $280.00 (Serratia off, $0 spent)', plannedv === '$280.00', `got ${plannedv}`);
+  check('June Max = $334.00 ($0 spent + all items)', maxv === '$334.00', `got ${maxv}`);
 
   // Blue Sky is June's first shipment; subtotal excludes the toggled-off Serratia
   const blueSky = june.locator('.shipment').nth(0);
@@ -104,7 +106,7 @@ try {
   const plannedv2 = await txt(june.locator('.plannedv'));
   check('toggling Serratia ON → Blue Sky subtotal $202.00', blueSkySub2 === '$202.00', `got ${blueSkySub2}`);
   check('toggling Serratia ON → June Shipments $298.00', shipv2 === '$298.00', `got ${shipv2}`);
-  check('toggling Serratia ON → June Planned $814.00', plannedv2 === '$814.00', `got ${plannedv2}`);
+  check('toggling Serratia ON → June Planned $334.00 ($0 spent)', plannedv2 === '$334.00', `got ${plannedv2}`);
   // revert
   await serratia.locator('.incl-toggle').click();
   await page.waitForTimeout(100);

@@ -396,18 +396,7 @@
     }
     #tab-board .metric.is-total .mv { color: var(--accent-deep); font-weight: 600; }
     #tab-board .metric.is-max .mv { color: var(--ink-2); }
-    #tab-board .mv-money { display: inline-flex; align-items: baseline; }
-    #tab-board .mv-money .pfx { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); margin-right: 1px; }
-    #tab-board .spent-input {
-      width: 56px; border: 0; background: transparent; padding: 0;
-      font-family: var(--font-num); font-size: 14.5px; font-weight: 500;
-      text-align: right; color: var(--b-ink); outline: none; -moz-appearance: textfield;
-      border-bottom: 1px dashed transparent; min-width: 1.5ch;
-    }
-    #tab-board .spent-input:hover { border-bottom-color: #c2ccce; }
-    #tab-board .spent-input:focus { border-bottom-color: var(--accent); }
-    #tab-board .spent-input::-webkit-inner-spin-button,
-    #tab-board .spent-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    #tab-board .metric.spent .mv { color: var(--b-ink); }
     #tab-board .field label .lbl-sub { color: var(--ink-3); font-weight: 500; }
 
     #tab-board .month-list {
@@ -1075,7 +1064,7 @@
     },
     structure: [
       {
-        id: 'm_jun', name: 'Jun', sub: '2026', spent: 480,
+        id: 'm_jun', name: 'Jun', sub: '2026',
         blocks: [
           { type: 'shipment', id: 's_bluesky_jun', cards: ['atp', 'drainage', 'para2', 'serratia'] },
           { type: 'card', id: 'lymph' },
@@ -1083,13 +1072,13 @@
         ],
       },
       {
-        id: 'm_jul', name: 'Jul', sub: '2026', spent: 0,
+        id: 'm_jul', name: 'Jul', sub: '2026',
         blocks: [
           { type: 'shipment', id: 's_fullscript', cards: ['para1', 'brain'] },
         ],
       },
       {
-        id: 'm_aug', name: 'Aug', sub: '2026', spent: 0,
+        id: 'm_aug', name: 'Aug', sub: '2026',
         blocks: [
           { type: 'shipment', id: 's_bluesky_aug', cards: ['thymus'] },
         ],
@@ -1123,7 +1112,8 @@
 
   let STATE; // { cardData, shipmentData }
   let structure;
-  let INV_MAP = {}; // lowercased-name -> Inventory row (set by applyInventory)
+  let INV_MAP = {};     // lowercased-name -> Inventory row (set by applyInventory)
+  let SPENT_BY_MONTH = {}; // month name -> $ amount (set by YNAB sync)
 
   // ── data layer: load the board from /api/orders (Turso); seed offline ──
   async function load() {
@@ -1170,7 +1160,7 @@
         .forEach((it) => blocks.push({ _pos: it.block_position, type: 'card', id: it.order_item_id }));
       blocks.sort((a, b) => (a._pos || 0) - (b._pos || 0));
       blocks.forEach((b) => delete b._pos);
-      return { id: m.month, name: m.month, sub: String(m.year || ''), spent: m.spent || 0, blocks };
+      return { id: m.month, name: m.month, sub: String(m.year || ''), blocks };
     });
     STATE = { cardData, shipmentData };
   }
@@ -1278,7 +1268,7 @@
         <div class="month-metrics">
           <div class="metric spent">
             <span class="mk">Spent</span>
-            <span class="mv mv-money"><span class="pfx">$</span><input class="spent-input" type="number" min="0" step="0.01" inputmode="decimal" value="${Number(m.spent) || 0}"></span>
+            <span class="mv spentv">$0.00</span>
           </div>
           <div class="metric">
             <span class="mk">Shipments</span>
@@ -1302,13 +1292,7 @@
     board.innerHTML = structure.map(monthHTML).join('');
     board.querySelectorAll('.month-list').forEach(makeMonthSortable);
     board.querySelectorAll('.ship-body').forEach(makeShipSortable);
-    board.querySelectorAll('.spent-input').forEach(sizeSpent);
     recalcAll();
-  }
-
-  function sizeSpent(input) {
-    const len = Math.max(1, String(input.value).length);
-    input.style.width = (len + 1.5) + 'ch';
   }
 
   // ── per-card update ──
@@ -1372,8 +1356,8 @@
 
   // ── totals ──
   function monthSpent(monthEl) {
-    const i = monthEl.querySelector('.spent-input');
-    return i ? (Number(i.value) || 0) : 0;
+    const name = monthEl.querySelector('.mname')?.textContent.trim();
+    return SPENT_BY_MONTH[name] || 0;
   }
 
   function recalcAll() {
@@ -1404,6 +1388,8 @@
       });
 
       const spent = monthSpent(monthEl);
+      const spentEl = monthEl.querySelector('.spentv');
+      if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
       monthEl.querySelector('.shipv').textContent = SB.fmtMoney(shipSum);
       monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
       monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
@@ -1434,7 +1420,6 @@
       months.push({
         month,
         year: parseInt(m.querySelector('.msub').textContent.trim(), 10) || null,
-        spent: monthSpent(m),
         position: mi + 1,
       });
       const blocks = [...m.querySelector('.month-list').children]
@@ -1521,10 +1506,6 @@
       const ship = t.closest('.shipment');
       (STATE.shipmentData[ship.dataset.id] || (STATE.shipmentData[ship.dataset.id] = {})).name = t.textContent;
       persistSoon();
-    } else if (t.matches('.spent-input')) {
-      sizeSpent(t);
-      recalcTotalsFor(t);
-      persistSoon();
     } else if (t.matches('.mname')) {
       persistSoon();
     }
@@ -1554,6 +1535,8 @@
       }
     });
     const spent = monthSpent(monthEl);
+    const spentEl = monthEl.querySelector('.spentv');
+    if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
     monthEl.querySelector('.shipv').textContent = SB.fmtMoney(shipSum);
     monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
     monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
@@ -1756,10 +1739,7 @@
       if (asof) asof.textContent = SB.fmtDate(SB.today());
 
       if (document.fonts && document.fonts.ready) {
-        document.fonts.ready.then(() => {
-          board.querySelectorAll('.spent-input').forEach(sizeSpent);
-          recalcAll();
-        });
+        document.fonts.ready.then(recalcAll);
       }
       // keep the live countdown honest across midnight
       setInterval(recalcAll, 60 * 60 * 1000);
@@ -1773,13 +1753,12 @@
     // apply YNAB-derived "Spent" values per month name (e.g. { Jun: 480.50 })
     applyYnabSpent(spentByMonth) {
       if (!board) return;
+      Object.assign(SPENT_BY_MONTH, spentByMonth);
       board.querySelectorAll('.month').forEach((monthEl) => {
         const name = monthEl.querySelector('.mname').textContent.trim();
         if (!(name in spentByMonth)) return;
-        const inp = monthEl.querySelector('.spent-input');
-        if (!inp) return;
-        inp.value = spentByMonth[name].toFixed(2);
-        sizeSpent(inp);
+        const el = monthEl.querySelector('.spentv');
+        if (el) el.textContent = SB.fmtMoney(spentByMonth[name]);
       });
       recalcAll();
       persist();

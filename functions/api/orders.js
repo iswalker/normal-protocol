@@ -49,7 +49,7 @@ const num = (v) => (v == null ? null : Number(v));
 export async function onRequestGet({ env }) {
   try {
     const results = await pipeline(env, [
-      exec("SELECT month, year, spent, position FROM order_months ORDER BY position"),
+      exec("SELECT month, year, position FROM order_months ORDER BY position"),
       exec("SELECT order_id, month, merchant, position, status, notes FROM orders ORDER BY position"),
       exec(
         `SELECT order_item_id, order_id, month, block_position, item_position, supplement,
@@ -58,7 +58,7 @@ export async function onRequestGet({ env }) {
       ),
     ]);
     const months = rowsFrom(results[0]).map((m) => ({
-      month: m.month, year: num(m.year), spent: num(m.spent) || 0, position: num(m.position),
+      month: m.month, year: num(m.year), position: num(m.position),
     }));
     const orders = rowsFrom(results[1]).map((o) => ({
       order_id: o.order_id, month: o.month, merchant: o.merchant,
@@ -94,8 +94,8 @@ export async function onRequestPut({ request, env }) {
   ];
   for (const m of months) {
     reqs.push(exec(
-      "INSERT INTO order_months (month, year, spent, position) VALUES (?, ?, ?, ?)",
-      [T(m.month), I(m.year), F(m.spent), I(m.position)]
+      "INSERT INTO order_months (month, year, position) VALUES (?, ?, ?)",
+      [T(m.month), I(m.year), I(m.position)]
     ));
   }
   for (const o of orders) {
