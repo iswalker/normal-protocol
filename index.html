@@ -417,10 +417,13 @@
 
     /* add buttons that live inline in the month / shipment header rows */
     #tab-board .month-head .add-btn, #tab-board .ship-head .add-btn {
+      position: relative; /* anchor for the picker dropdown */
       flex: 0 0 auto; height: 26px; padding: 0 14px; gap: 5px;
       border: 1px solid #c4cdd0; border-radius: 8px; background: rgba(255, 255, 255, .7);
       font-size: 11.5px; color: var(--ink-2);
     }
+    /* push the $ total to the far right */
+    #tab-board .ship-head .ship-total { margin-left: auto; }
     #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     }
@@ -440,7 +443,7 @@
       display: grid; place-items: center;
     }
     #tab-board .ship-head .truck svg { width: 13px; height: 13px; }
-    #tab-board .ship-id { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 7px; }
+    #tab-board .ship-id { min-width: 0; flex: 0 1 auto; display: flex; align-items: baseline; gap: 7px; margin-right: 0; }
     #tab-board .ship-name {
       font-size: 13px; font-weight: 600; letter-spacing: -.01em; outline: none;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
@@ -513,7 +516,7 @@
     #tab-board .proj .daysleft .next .u { font-size: 11px; color: var(--accent); }
     #tab-board .proj .runout .next { font-size: 15px; }
     #tab-board .card.has-order .proj .now {
-      color: var(--ink-3); font-size: 13px; text-decoration: line-through; text-decoration-color: #c9d2d4;
+      color: var(--ink-3); font-size: 13px;
     }
     #tab-board .card.has-order .proj .runout .now { font-size: 11px; }
     #tab-board .card.has-order .proj .arrow { opacity: 1; width: auto; }
@@ -588,6 +591,26 @@
     }
     #tab-board .add-btn:hover { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
     #tab-board .add-btn svg { width: 12px; height: 12px; }
+
+    /* ── Inventory item picker dropdown ── */
+    .inv-picker {
+      position: absolute; top: calc(100% + 4px); left: 0; z-index: 200;
+      background: #fff; border: 1px solid var(--line); border-radius: 10px;
+      box-shadow: var(--shadow-pop); width: 260px; overflow: hidden;
+    }
+    .inv-picker-search {
+      width: 100%; border: 0; border-bottom: 1px solid var(--line); outline: none;
+      padding: 9px 12px; font-family: var(--font-ui); font-size: 13px; color: var(--b-ink);
+      background: #f7f9f9; border-radius: 10px 10px 0 0;
+    }
+    .inv-picker-list { list-style: none; margin: 0; padding: 4px 0; max-height: 220px; overflow-y: auto; }
+    .inv-picker-opt {
+      padding: 7px 13px; font-size: 13px; cursor: pointer; color: var(--b-ink);
+      transition: background .1s; outline: none;
+    }
+    .inv-picker-opt:hover, .inv-picker-opt:focus { background: var(--accent-tint); }
+    .inv-picker-free { color: var(--accent-deep); font-style: italic; }
+    .inv-picker-empty { padding: 7px 13px; font-size: 12px; color: var(--ink-3); font-style: italic; }
 
     /* sortable helpers */
     #tab-board .sb-ghost { opacity: .4; }
@@ -1082,13 +1105,14 @@
   const thr = () => window.SBoard.threshold || 10;
 
   const ICON = {
-    grip: `<svg viewBox="0 0 8 16" fill="currentColor"><circle cx="2" cy="3" r="1.3"/><circle cx="6" cy="3" r="1.3"/><circle cx="2" cy="8" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="2" cy="13" r="1.3"/><circle cx="6" cy="13" r="1.3"/></svg>`,
+    grip: `<svg viewBox="0 0 8 16" width="11" height="16" fill="currentColor"><circle cx="2" cy="3" r="1.3"/><circle cx="6" cy="3" r="1.3"/><circle cx="2" cy="8" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="2" cy="13" r="1.3"/><circle cx="6" cy="13" r="1.3"/></svg>`,
     truck: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h11v9H1z"/><path d="M12 8h4l3 3v3h-7z"/><circle cx="5" cy="16.5" r="1.6"/><circle cx="16" cy="16.5" r="1.6"/></svg>`,
     plus: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>`,
   };
 
   let STATE; // { cardData, shipmentData }
   let structure;
+  let INV_MAP = {}; // lowercased-name -> Inventory row (set by applyInventory)
 
   // ── data layer: load the board from /api/orders (Turso); seed offline ──
   async function load() {
@@ -1217,8 +1241,8 @@
           <span class="ship-name" contenteditable="true" spellcheck="false" data-field="name">${esc(s.name)}</span>
           <span class="scount">0</span>
         </div>
-        <div class="ship-total"><span class="amt">$0.00</span></div>
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
+        <div class="ship-total"><span class="amt">$0.00</span></div>
         <button class="del" data-act="del-ship" title="Remove shipment">×</button>
       </div>
       <div class="ship-body" data-list="shipment">${cards}</div>
@@ -1553,18 +1577,12 @@
     }
     if (a === 'add-card-ship') {
       const body = act.closest('.shipment').querySelector('.ship-body');
-      const id = newCard();
-      const node = el(cardHTML(id));
-      body.appendChild(node);
-      finishAdd(node);
+      showItemPicker(act, (id) => { body.appendChild(el(cardHTML(id))); finishAdd(body.lastElementChild); });
       return;
     }
     if (a === 'add-card-month') {
       const list = act.closest('.month').querySelector('.month-list');
-      const id = newCard();
-      const node = el(cardHTML(id));
-      list.appendChild(node);
-      finishAdd(node);
+      showItemPicker(act, (id) => { list.appendChild(el(cardHTML(id))); finishAdd(list.lastElementChild); });
       return;
     }
     if (a === 'add-ship') {
@@ -1581,18 +1599,116 @@
     }
   });
 
-  function newCard() {
+  function newCard(name) {
     const id = uid('c_');
+    const inv = INV_MAP[(name || '').trim().toLowerCase()];
     STATE.cardData[id] = {
-      name: 'New supplement', amount: 30, dose: 1, bottleSize: 30,
-      loggedOn: isoToday(), price: 0, qty: 0, includeInMonthTotal: true,
+      name: name || 'New supplement',
+      amount: inv ? inv.amount : 0,
+      dose: inv ? inv.dose : 0,
+      bottleSize: inv ? inv.bottleSize : 0,
+      loggedOn: inv ? inv.loggedOn : isoToday(),
+      price: 0, qty: 0, includeInMonthTotal: true,
     };
     return id;
   }
   function finishAdd(node) {
     recalcAll(); persist();
+    // focus the name only when Inventory didn't provide one (free-text fallback)
     const nm = node.querySelector('.card-name');
-    nm.focus(); selectAll(nm);
+    if (nm) nm.focus();
+  }
+
+  // ── Inventory picklist shown when "+ Item" is clicked ──────────────────
+  let activePicker = null;
+  function showItemPicker(anchor, onSelect) {
+    closeItemPicker();
+    const names = Object.values(INV_MAP).map((v) => v.name).sort((a, b) => a.localeCompare(b));
+    const picker = document.createElement('div');
+    picker.className = 'inv-picker';
+    picker.innerHTML = `
+      <input class="inv-picker-search" type="text" placeholder="Search or type a name…" autocomplete="off" />
+      <ul class="inv-picker-list"></ul>`;
+
+    const input = picker.querySelector('.inv-picker-search');
+    const list = picker.querySelector('.inv-picker-list');
+
+    function renderList(q) {
+      const matches = q ? names.filter((n) => n.toLowerCase().includes(q.toLowerCase())) : names;
+      list.innerHTML = '';
+      // "Use as typed" option when the query doesn't exactly match an Inventory item
+      if (q && !names.some((n) => n.toLowerCase() === q.toLowerCase())) {
+        const li = document.createElement('li');
+        li.className = 'inv-picker-opt inv-picker-free';
+        li.tabIndex = 0;
+        li.textContent = `+ Add "${q}"`;
+        li.dataset.name = q;
+        list.appendChild(li);
+      }
+      matches.slice(0, 50).forEach((n) => {
+        const li = document.createElement('li');
+        li.className = 'inv-picker-opt';
+        li.tabIndex = 0;
+        li.textContent = n;
+        li.dataset.name = n;
+        list.appendChild(li);
+      });
+      if (!matches.length && !q) {
+        const li = document.createElement('li');
+        li.className = 'inv-picker-empty';
+        li.textContent = 'No Inventory connected — type a name';
+        list.appendChild(li);
+      }
+    }
+
+    function commit(name) {
+      closeItemPicker();
+      const id = newCard(name);
+      onSelect(id);
+    }
+
+    input.addEventListener('input', () => renderList(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeItemPicker(); return; }
+      if (e.key === 'Enter') {
+        const first = list.querySelector('.inv-picker-opt');
+        if (first) commit(first.dataset.name);
+        else if (input.value.trim()) commit(input.value.trim());
+      }
+      if (e.key === 'ArrowDown') { e.preventDefault(); list.querySelector('.inv-picker-opt')?.focus(); }
+    });
+    list.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.target.closest('.inv-picker-opt')?.click(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); e.target.nextElementSibling?.focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); const p = e.target.previousElementSibling; if (p) p.focus(); else input.focus(); }
+      if (e.key === 'Escape') closeItemPicker();
+    });
+    list.addEventListener('click', (e) => {
+      const opt = e.target.closest('.inv-picker-opt');
+      if (opt) commit(opt.dataset.name);
+    });
+
+    // position below the anchor button
+    anchor.style.position = 'relative';
+    anchor.appendChild(picker);
+    activePicker = picker;
+    renderList('');
+    input.focus();
+
+    setTimeout(() => {
+      document.addEventListener('click', outsideClick, true);
+    }, 0);
+    function outsideClick(e) {
+      if (!picker.contains(e.target) && e.target !== anchor) closeItemPicker();
+    }
+    picker._outsideClick = outsideClick;
+  }
+
+  function closeItemPicker() {
+    if (!activePicker) return;
+    document.removeEventListener('click', activePicker._outsideClick, true);
+    activePicker.remove();
+    activePicker = null;
   }
   function selectAll(node) {
     const r = document.createRange();
@@ -1647,6 +1763,7 @@
     // Not persisted — Orders stays staging-only.
     applyInventory(invMap) {
       if (!STATE || !STATE.cardData) return 0;
+      INV_MAP = invMap; // keep for the add-item picker
       let matched = 0;
       Object.values(STATE.cardData).forEach((c) => {
         const inv = invMap[String(c.name || '').trim().toLowerCase()];
