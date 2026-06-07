@@ -321,7 +321,7 @@
     .tab-panel.active { display: block; }
   </style>
 
-  <!-- ── Supplement Board styles (compact layout, scoped to #tab-board) ── -->
+  <!-- ── Next Orders styles (compact layout, scoped to #tab-board) ── -->
   <style>
     #tab-board {
       --accent: #70c4bb;
@@ -412,8 +412,12 @@
       border: 1px solid #c4cdd0; border-radius: 8px; background: rgba(255, 255, 255, .7);
       font-size: 11.5px; color: var(--ink-2);
     }
-    /* push the $ total to the far right */
-    #tab-board .ship-head .ship-total { margin-left: auto; }
+    /* push the $ total to the far right; min-date sits between + Item and total */
+    #tab-board .ship-min-date {
+      font-family: var(--font-num); font-size: 12px; color: var(--accent-deep);
+      white-space: nowrap; flex: 0 0 auto; margin-left: auto;
+    }
+    #tab-board .ship-head .ship-total { margin-left: 12px; }
     #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     }
@@ -680,7 +684,7 @@
   </div>
   <nav class="tabs">
     <button class="tab-btn active" data-tab="intakes">Intakes</button>
-    <button class="tab-btn" data-tab="board">Supplement Board</button>
+    <button class="tab-btn" data-tab="board">Next Orders</button>
   </nav>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
@@ -973,7 +977,7 @@
 
 <script src="vendor/Sortable.min.js"></script>
 
-<!-- ── Supplement Board: domain logic (ported verbatim from prototype/data.js) ── -->
+<!-- ── Next Orders: domain logic (ported verbatim from prototype/data.js) ── -->
 <script>
 (function () {
   const DAY = 86400000;
@@ -1094,7 +1098,7 @@
 })();
 </script>
 
-<!-- ── Supplement Board: render / nested drag-and-drop / inline edit / totals / persistence ── -->
+<!-- ── Next Orders: render / nested drag-and-drop / inline edit / totals / persistence ── -->
 <script>
 (function () {
   const SB = window.SB;
@@ -1115,17 +1119,28 @@
   let INV_MAP = {};     // lowercased-name -> Inventory row (set by applyInventory)
   let SPENT_BY_MONTH = {}; // month name -> $ amount (set by YNAB sync)
 
-  // ── data layer: load the board from /api/orders (Turso); seed offline ──
+  // ── data layer: load the board from /api/orders (Turso) ──
   async function load() {
     try {
       const res = await fetch('/api/orders');
       if (!res.ok) throw new Error('HTTP ' + res.status);
       fromApi(await res.json());
     } catch (e) {
-      console.warn('Board: /api/orders load failed, using seed —', e.message);
-      const seed = JSON.parse(JSON.stringify(SB.SEED));
-      STATE = { cardData: seed.cardData, shipmentData: seed.shipmentData };
-      structure = seed.structure;
+      if (e instanceof TypeError) {
+        // Network error: server not running. Don't corrupt the visible state
+        // with the seed — just show a clear message and leave the board empty.
+        STATE = { cardData: {}, shipmentData: {} };
+        structure = [];
+        const bar = document.getElementById('board');
+        if (bar) bar.innerHTML = `<div style="padding:40px 24px;font-family:var(--font-ui);color:var(--ink-3);font-size:13px;">⚠ Could not reach the board API — is the dev server running?<br><code style="font-size:11px;margin-top:8px;display:block;">npm run dev:local</code></div>`;
+      } else {
+        // HTTP error from the server itself — show what went wrong.
+        STATE = { cardData: {}, shipmentData: {} };
+        structure = [];
+        console.error('Board: /api/orders load failed —', e.message);
+        const bar = document.getElementById('board');
+        if (bar) bar.innerHTML = `<div style="padding:40px 24px;font-family:var(--font-ui);color:var(--ink-3);font-size:13px;">⚠ Board load error: ${e.message}</div>`;
+      }
     }
   }
 
@@ -1243,6 +1258,7 @@
           <span class="scount">0</span>
         </div>
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
+        <span class="ship-min-date"></span>
         <div class="ship-total"><span class="amt">$0.00</span></div>
         <button class="del" data-act="del-ship" title="Remove shipment">×</button>
       </div>
@@ -1367,16 +1383,26 @@
 
       [...list.children].forEach((node) => {
         if (node.classList.contains('shipment')) {
-          let sTot = 0, sCount = 0;
+          let sTot = 0, sCount = 0, minRunOut = null;
           node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
             const cost = updateCard(cardEl);
-            const inc = STATE.cardData[cardEl.dataset.id] && STATE.cardData[cardEl.dataset.id].includeInMonthTotal;
+            const c = STATE.cardData[cardEl.dataset.id];
+            const inc = c && c.includeInMonthTotal;
             maxItems += cost;
-            if (inc) { sTot += cost; plannedItems += cost; } // toggled-off rows leave the shipment subtotal
+            if (inc) { sTot += cost; plannedItems += cost; }
             sCount++;
+            // track min new run-out across all ordered cards (needs Inventory data)
+            if (c && c.dose && c.loggedOn) {
+              const r = SB.calc(c);
+              if (r.hasOrder && isFinite(r.newRunOut)) {
+                if (!minRunOut || r.newRunOut < minRunOut) minRunOut = r.newRunOut;
+              }
+            }
           });
           node.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
           node.querySelector('.scount').textContent = sCount;
+          const md = node.querySelector('.ship-min-date');
+          if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
           shipSum += sTot;
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
@@ -1443,6 +1469,8 @@
 
   let saveTimer = null;
   async function persist() {
+    // Never wipe Turso data if the board failed to load (structure would be empty).
+    if (!structure || structure.length === 0) return;
     try {
       const res = await fetch('/api/orders', {
         method: 'PUT',
@@ -1518,14 +1546,20 @@
     let shipSum = 0, plannedItems = 0, maxItems = 0;
     [...list.children].forEach((n) => {
       if (n.classList.contains('shipment')) {
-        let sTot = 0;
+        let sTot = 0, minRunOut = null;
         n.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           const c = STATE.cardData[cardEl.dataset.id];
-          const cost = c ? SB.calc(c).cost : 0;
+          const r = c ? SB.calc(c) : null;
+          const cost = r ? r.cost : 0;
           maxItems += cost;
-          if (c && c.includeInMonthTotal) { sTot += cost; plannedItems += cost; } // toggled-off rows leave the shipment subtotal
+          if (c && c.includeInMonthTotal) { sTot += cost; plannedItems += cost; }
+          if (c && c.dose && c.loggedOn && r && r.hasOrder && isFinite(r.newRunOut)) {
+            if (!minRunOut || r.newRunOut < minRunOut) minRunOut = r.newRunOut;
+          }
         });
         n.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
+        const md = n.querySelector('.ship-min-date');
+        if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
         shipSum += sTot;
       } else if (n.classList.contains('card')) {
         const c = STATE.cardData[n.dataset.id];
@@ -1865,9 +1899,7 @@
       window.SupplementBoard.applyYnabSpent(spentByMonth);
     }
 
-    const months = Object.keys(spentByMonth);
-    const summary = months.map(m => `${m} $${spentByMonth[m].toFixed(0)}`).join(' · ');
-    setStatus(summary || 'synced', 'ok');
+    setStatus('synced', 'ok');
     try { localStorage.setItem('np_ynab_last_sync', new Date().toISOString()); } catch {}
     refreshLabels();
   }

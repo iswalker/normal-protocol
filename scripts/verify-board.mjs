@@ -25,10 +25,47 @@ const TYPES = {
   '.ico': 'image/x-icon', '.png': 'image/png',
 };
 
-// ── tiny static server; /api/* returns a stub so the Intakes fetch fails fast ──
+// Seed data mirroring the demo board — keeps verify-board fully offline (no Turso needed)
+const MOCK_ORDERS = JSON.stringify({
+  months: [
+    { month: 'Jun', year: 2026, position: 1 },
+    { month: 'Jul', year: 2026, position: 2 },
+    { month: 'Aug', year: 2026, position: 3 },
+  ],
+  orders: [
+    { order_id: 'ord_bluesky_jun', month: 'Jun', merchant: 'Blue Sky Vitamin', position: 1, status: 'Staged', notes: null },
+    { order_id: 'ord_cellcore',    month: 'Jun', merchant: 'CellCore Direct',  position: 3, status: 'Staged', notes: null },
+    { order_id: 'ord_fullscript',  month: 'Jul', merchant: 'Fullscript',       position: 1, status: 'Staged', notes: null },
+    { order_id: 'ord_bluesky_aug', month: 'Aug', merchant: 'Blue Sky Vitamin', position: 1, status: 'Staged', notes: null },
+  ],
+  items: [
+    { order_item_id: 'oi_atp',       order_id: 'ord_bluesky_jun', month: 'Jun', block_position: 1, item_position: 1, supplement: 'ATP',                price_per_bottle: 63, order_qty_bottles: 1, include_in_total: true,  notes: null },
+    { order_item_id: 'oi_drainage',  order_id: 'ord_bluesky_jun', month: 'Jun', block_position: 1, item_position: 2, supplement: 'Drainage Activator', price_per_bottle: 45, order_qty_bottles: 1, include_in_total: true,  notes: null },
+    { order_item_id: 'oi_para2',     order_id: 'ord_bluesky_jun', month: 'Jun', block_position: 1, item_position: 3, supplement: 'Para 2',             price_per_bottle: 40, order_qty_bottles: 1, include_in_total: true,  notes: null },
+    { order_item_id: 'oi_serratia',  order_id: 'ord_bluesky_jun', month: 'Jun', block_position: 1, item_position: 4, supplement: 'Serratia',           price_per_bottle: 54, order_qty_bottles: 1, include_in_total: false, notes: null },
+    { order_item_id: 'oi_lymph',     order_id: null,              month: 'Jun', block_position: 2, item_position: 1, supplement: 'LymphActiv',          price_per_bottle: 36, order_qty_bottles: 1, include_in_total: true,  notes: null },
+    { order_item_id: 'oi_biotoxin1', order_id: 'ord_cellcore',    month: 'Jun', block_position: 3, item_position: 1, supplement: 'BioToxin',           price_per_bottle: 48, order_qty_bottles: 1, include_in_total: true,  notes: null },
+    { order_item_id: 'oi_biotoxin2', order_id: 'ord_cellcore',    month: 'Jun', block_position: 3, item_position: 2, supplement: 'BioToxin',           price_per_bottle: 48, order_qty_bottles: 1, include_in_total: true,  notes: null },
+    { order_item_id: 'oi_para1',     order_id: 'ord_fullscript',  month: 'Jul', block_position: 1, item_position: 1, supplement: 'Para 1',             price_per_bottle: 42, order_qty_bottles: 1, include_in_total: false, notes: null },
+    { order_item_id: 'oi_brain',     order_id: 'ord_fullscript',  month: 'Jul', block_position: 1, item_position: 2, supplement: 'Brain',              price_per_bottle: 58, order_qty_bottles: 1, include_in_total: true,  notes: null },
+    { order_item_id: 'oi_thymus',    order_id: 'ord_bluesky_aug', month: 'Aug', block_position: 1, item_position: 1, supplement: 'Thymus',             price_per_bottle: 39, order_qty_bottles: 1, include_in_total: true,  notes: null },
+  ],
+});
+
+// ── tiny static server; /api/orders -> mock data; other /api/* -> stub ──
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/api/orders' && req.method === 'GET') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(MOCK_ORDERS);
+      return;
+    }
+    if (url.pathname === '/api/orders' && req.method === 'PUT') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"ok":true}');
+      return;
+    }
     if (url.pathname.startsWith('/api/')) {
       res.writeHead(502, { 'content-type': 'application/json' });
       res.end('{"error":"stub — no backend in verify"}');
@@ -41,8 +78,8 @@ const server = createServer(async (req, res) => {
     const body = await readFile(file);
     res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream' });
     res.end(body);
-  } catch {
-    res.writeHead(404); res.end('not found');
+  } catch (e) {
+    if (!res.headersSent) { res.writeHead(e && e.code === 'ENOENT' ? 404 : 500); res.end('not found'); }
   }
 });
 
@@ -59,12 +96,18 @@ const page = await browser.newPage({ viewport: { width: 1700, height: 1000 } });
 const consoleErrors = [];
 page.on('pageerror', (e) => consoleErrors.push(String(e)));
 
+const consoleLines = [];
+page.on('console', m => consoleLines.push(m.type() + ': ' + m.text()));
+
 try {
   await page.goto(base, { waitUntil: 'load' });
 
   // open the board tab
   await page.click('.tab-btn[data-tab="board"]');
-  await page.waitForSelector('#tab-board.active #board .month', { timeout: 5000 });
+  await page.waitForSelector('#tab-board.active #board .month', { timeout: 10000 }).catch(async (err) => {
+    console.error('Board did not render. Console output:\n' + consoleLines.slice(-20).join('\n'));
+    throw err;
+  });
   await page.waitForFunction(() => document.fonts && document.fonts.status === 'loaded').catch(() => {});
   await page.waitForTimeout(300); // let recalc settle
 
@@ -91,11 +134,10 @@ try {
   const blueSkySub = await txt(blueSky.locator('.ship-total .amt'));
   check('Blue Sky subtotal = $148.00 (Serratia off)', blueSkySub === '$148.00', `got ${blueSkySub}`);
 
-  // ATP is Blue Sky's first card → SOON
+  // ATP: without Inventory, run-out shows — and tier is neutral (no colored edge)
   const atp = blueSky.locator('.card').nth(0);
   const atpStatus = await txt(atp.locator('.status'));
-  check('ATP card tier = SOON', atpStatus === 'SOON' && (await atp.getAttribute('class')).includes('tier-soon'),
-    `status=${atpStatus}`);
+  check('ATP card status = — (no Inventory)', atpStatus === '—', `status=${atpStatus}`);
 
   // toggle Serratia ON → it re-enters Blue Sky subtotal + month metrics
   const serratia = blueSky.locator('.card').nth(3); // atp, drainage, para2, serratia

@@ -42,9 +42,10 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) { res.writeHead(502); res.end('{}'); return; }
     let p = decodeURIComponent(url.pathname); if (p === '/' || p === '') p = '/index.html';
     const file = normalize(join(ROOT, p));
+    const body = await readFile(file); // read before writeHead so ENOENT doesn't leave headers half-sent
     res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream' });
-    res.end(await readFile(file));
-  } catch (e) { res.writeHead(500); res.end(String(e)); }
+    res.end(body);
+  } catch (e) { if (!res.headersSent) { res.writeHead(e.code === 'ENOENT' ? 404 : 500); res.end(String(e)); } }
 });
 
 const checks = []; const check = (n, ok, d='') => checks.push({ n, ok, d });
@@ -53,11 +54,16 @@ const base = `http://localhost:${server.address().port}`;
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1700, height: 1000 } });
 const errs = []; page.on('pageerror', (e) => errs.push(String(e)));
+const consoleMsgs = []; page.on('console', m => consoleMsgs.push(m.type() + ': ' + m.text()));
 
 try {
   await page.goto(base, { waitUntil: 'load' });
   await page.click('.tab-btn[data-tab="board"]');
-  await page.waitForSelector('#tab-board.active #board .month', { timeout: 5000 });
+  await page.waitForSelector('#tab-board.active #board .month', { timeout: 10000 }).catch(async (err) => {
+    console.error('Board did not render. Console:\n' + consoleMsgs.slice(-30).join('\n'));
+    console.error('Board HTML:\n' + await page.$eval('#board', el => el.innerHTML.slice(0, 500)).catch(() => 'N/A'));
+    throw err;
+  });
   await page.waitForTimeout(400);
 
   const months = page.locator('#board .month');
