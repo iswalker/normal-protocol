@@ -1,5 +1,9 @@
+function httpUrl(env) {
+  return env.TURSO_URL.replace(/^libsql:\/\//, "https://").replace(/\/$/, "");
+}
+
 export async function onRequestGet({ env }) {
-  const res = await fetch(`${env.TURSO_URL}/v2/pipeline`, {
+  const res = await fetch(`${httpUrl(env)}/v2/pipeline`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${env.TURSO_TOKEN}`,
