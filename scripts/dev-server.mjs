@@ -53,11 +53,16 @@ const server = createServer(async (req, res) => {
     let p = decodeURIComponent(url.pathname); if (p === '/' || p === '') p = '/index.html';
     const file = normalize(join(ROOT, p));
     if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
+    // read file BEFORE writeHead so a missing-file error doesn't leave headers half-sent
+    const body = await readFile(file);
     res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream' });
-    res.end(await readFile(file));
+    res.end(body);
   } catch (e) {
-    res.writeHead(e.code === 'ENOENT' ? 404 : 500);
-    res.end(String(e && e.message || e));
+    // guard against calling writeHead twice if the error occurred after headers were sent
+    if (!res.headersSent) {
+      res.writeHead(e.code === 'ENOENT' ? 404 : 500);
+      res.end(String(e && e.message || e));
+    }
   }
 });
 
