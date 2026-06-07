@@ -1642,21 +1642,19 @@
       location.reload();
     },
     // merge Inventory (by supplement name) into the cards so run-out computes.
-    // invMap: { "<name lowercased>": { dose, goodUntil: Date, supplyDays } }
-    // Synthesizes the calc() inputs: loggedOn=today, amount=daysLeft*dose (so
-    // curRunOut == Good Until), bottleSize=supplyDays*dose (so ordering a bottle
-    // extends the runway by supplyDays). Not persisted — Orders stays staging-only.
+    // invMap: { "<name lowercased>": { amount, bottleSize, dose, loggedOn(ISO) } }
+    // These are exactly calc()'s inputs, so the board's native run-out math runs.
+    // Not persisted — Orders stays staging-only.
     applyInventory(invMap) {
       if (!STATE || !STATE.cardData) return 0;
       let matched = 0;
       Object.values(STATE.cardData).forEach((c) => {
         const inv = invMap[String(c.name || '').trim().toLowerCase()];
-        if (inv && inv.dose > 0 && inv.goodUntil) {
-          const daysLeft = Math.max(0, SB.daysBetween(SB.today(), inv.goodUntil));
+        if (inv && inv.dose > 0 && inv.loggedOn) {
+          c.amount = inv.amount;
+          c.bottleSize = inv.bottleSize;
           c.dose = inv.dose;
-          c.loggedOn = isoToday();
-          c.amount = daysLeft * inv.dose;
-          c.bottleSize = (inv.supplyDays || 0) * inv.dose;
+          c.loggedOn = inv.loggedOn;
           matched++;
         }
       });
@@ -1758,13 +1756,26 @@
     return r.json();
   }
 
+  // header row = an "Item" cell plus an inventory column
+  function findHeader(rows) {
+    return rows.findIndex((r) => {
+      if (!r) return false;
+      const low = r.map((c) => String(c == null ? '' : c).trim().toLowerCase());
+      return low.indexOf('item') >= 0 && (low.indexOf('daily dose') >= 0 || low.indexOf('run out') >= 0 || low.indexOf('amount') >= 0);
+    });
+  }
+
   async function readInventory(token, fileId) {
     const meta = await sheetsGet(token, fileId + '?fields=sheets.properties.title');
-    const titles = (meta.sheets || []).map((s) => s.properties.title);
-    const title = titles.find((t) => /inventory/i.test(t)) || titles[0];
-    if (!title) throw new Error('No sheets found in that file');
+    const titles = (meta.sheets || []).map((s) => s.properties.title).filter(Boolean);
+    const title = titles.find((t) => t.trim().toLowerCase() === 'inventory')
+               || titles.find((t) => /inventory/i.test(t));
+    if (!title) throw new Error('No "Inventory" tab found. Tabs: ' + titles.join(', '));
     const vals = await sheetsGet(token, fileId + '/values/' + encodeURIComponent(title) + '?majorDimension=ROWS');
-    return { title, rows: vals.values || [] };
+    const rows = vals.values || [];
+    const hi = findHeader(rows);
+    if (hi < 0) throw new Error('The "Inventory" tab has no "Item" header row');
+    return { title, rows, hi };
   }
 
   function parseSheetDate(s) {
@@ -1779,22 +1790,33 @@
     return new Date(y, mo - 1, d);
   }
 
-  function buildInvMap(rows) {
+  function toISO(s) {
+    const d = parseSheetDate(s);
+    if (!d) return null;
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  // Inventory columns: Item | Amount | Bottle Size | Logged On | Daily Dose | Run Out
+  // (Expected Runway / Run Out are the sheet's own derived columns; the board recomputes.)
+  function buildInvMap(rows, hi) {
     const norm = (s) => String(s == null ? '' : s).trim();
-    const hi = rows.findIndex((r) => r && r.map(norm).includes('Name') && r.map(norm).includes('Good Until'));
-    if (hi < 0) throw new Error("Couldn't find a header row with 'Name' + 'Good Until'");
-    const header = rows[hi].map(norm);
-    const ci = (n) => header.indexOf(n);
-    const idx = { name: ci('Name'), qty: ci('Qty'), qty2: ci('2nd Qty'), good: ci('Good Until'), supply: ci('Supply Days') };
+    const header = rows[hi].map((c) => norm(c).toLowerCase());
+    const ci = (n) => header.indexOf(n.toLowerCase());
+    const idx = { item: ci('Item'), amount: ci('Amount'), bottle: ci('Bottle Size'), logged: ci('Logged On'), dose: ci('Daily Dose') };
     const map = {};
     for (let i = hi + 1; i < rows.length; i++) {
       const r = rows[i] || [];
-      const name = norm(r[idx.name]);
-      if (!name || name === 'Summary') continue;
+      const name = norm(r[idx.item]);
+      if (!name || name.toLowerCase() === 'summary') continue;
       const key = name.toLowerCase();
-      if (map[key]) continue;
-      const dose = Number(norm(r[idx.qty])) || (idx.qty2 >= 0 ? Number(norm(r[idx.qty2])) : 0) || 0;
-      map[key] = { name, dose, goodUntil: parseSheetDate(norm(r[idx.good])), supplyDays: Number(norm(r[idx.supply])) || 0 };
+      if (map[key]) continue; // first row wins on duplicate names
+      map[key] = {
+        name,
+        amount: idx.amount >= 0 ? (Number(norm(r[idx.amount])) || 0) : 0,
+        bottleSize: idx.bottle >= 0 ? (Number(norm(r[idx.bottle])) || 0) : 0,
+        dose: idx.dose >= 0 ? (Number(norm(r[idx.dose])) || 0) : 0,
+        loggedOn: idx.logged >= 0 ? toISO(norm(r[idx.logged])) : null,
+      };
     }
     return map;
   }
@@ -1814,8 +1836,8 @@
         setCachedFile(file);
       }
       setStatus('Reading “' + file.name + '”…');
-      const { rows } = await readInventory(token, file.id);
-      const matched = window.SupplementBoard.applyInventory(buildInvMap(rows));
+      const { rows, hi } = await readInventory(token, file.id);
+      const matched = window.SupplementBoard.applyInventory(buildInvMap(rows, hi));
       setStatus('Inventory: ' + file.name + ' · ' + matched + ' matched', 'ok');
       refreshLabels();
     } catch (e) {
