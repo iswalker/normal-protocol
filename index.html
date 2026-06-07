@@ -312,9 +312,10 @@
     .header-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
     .board-controls { display: none; align-items: center; gap: 10px; }
     .board-controls.show { display: flex; }
-    .inv-status { font-size: 11.5px; color: var(--ink-60); white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
-    .inv-status.ok { color: #3f8f87; }
-    .inv-status.err { color: #c0392b; }
+    .inv-status, .ynab-status { font-size: 11.5px; color: var(--ink-60); white-space: nowrap; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+    .inv-status.ok, .ynab-status.ok { color: #3f8f87; }
+    .inv-status.err, .ynab-status.err { color: #c0392b; }
+    .board-controls-divider { width: 1px; height: 18px; background: var(--ink-12); flex-shrink: 0; }
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
@@ -694,6 +695,10 @@
   </nav>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
+      <span class="ynab-status" id="ynab-status"></span>
+      <button class="reset-btn" id="sync-ynab" hidden>Sync YNAB</button>
+      <button class="reset-btn" id="connect-ynab">+ YNAB</button>
+      <span class="board-controls-divider"></span>
       <span class="inv-status" id="inv-status">Inventory not connected</span>
       <button class="reset-btn" id="connect-inventory">Connect Inventory</button>
       <button class="reset-btn" id="change-inventory" hidden>Change</button>
@@ -1758,10 +1763,26 @@
       }
       // keep the live countdown honest across midnight
       setInterval(recalcAll, 60 * 60 * 1000);
+      // notify other modules (e.g. YNAB) that the board is ready
+      document.dispatchEvent(new CustomEvent('boardReady'));
     },
     reset() {
       localStorage.removeItem(KEY);
       location.reload();
+    },
+    // apply YNAB-derived "Spent" values per month name (e.g. { Jun: 480.50 })
+    applyYnabSpent(spentByMonth) {
+      if (!board) return;
+      board.querySelectorAll('.month').forEach((monthEl) => {
+        const name = monthEl.querySelector('.mname').textContent.trim();
+        if (!(name in spentByMonth)) return;
+        const inp = monthEl.querySelector('.spent-input');
+        if (!inp) return;
+        inp.value = spentByMonth[name].toFixed(2);
+        sizeSpent(inp);
+      });
+      recalcAll();
+      persist();
     },
     // merge Inventory (by supplement name) into the cards so run-out computes.
     // invMap: { "<name lowercased>": { amount, bottleSize, dose, loggedOn(ISO) } }
@@ -1788,6 +1809,135 @@
 
   const resetBtn = document.getElementById('board-reset');
   if (resetBtn) resetBtn.addEventListener('click', () => window.SupplementBoard.reset());
+})();
+</script>
+
+<!-- ── YNAB: Personal Access Token + category-group sum for "Spent" ──
+     The user pastes their YNAB PAT once; it's cached in localStorage.
+     On sync (manual or on board open), we fetch each visible month from
+     /budgets/last-used/months/{yyyy-mm-01}, sum activity for all categories
+     in the "Health" category group (milliunits ÷ 1000, negated since
+     spending is stored as negative), and write it into the Spent input.
+     The YNAB API is CORS-enabled so this runs entirely in the browser. -->
+<script>
+(function () {
+  const YNAB_BASE = 'https://api.ynab.com/v1';
+  const TOKEN_KEY = 'np_ynab_token';
+  const BUDGET_KEY = 'np_ynab_budget_id';
+  const HEALTH_GROUP = 'Health';
+  const MON3 = { Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',
+                 Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12' };
+
+  const statusEl = document.getElementById('ynab-status');
+  const syncBtn   = document.getElementById('sync-ynab');
+  const connectBtn = document.getElementById('connect-ynab');
+
+  function setStatus(text, cls) {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.className = 'ynab-status' + (cls ? ' ' + cls : '');
+  }
+  function getToken() { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } }
+  function getBudgetId() { try { return localStorage.getItem(BUDGET_KEY); } catch { return null; } }
+
+  async function ynabFetch(path, token) {
+    const r = await fetch(YNAB_BASE + path, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (r.status === 401) throw new Error('invalid-token');
+    if (!r.ok) throw new Error('YNAB API ' + r.status);
+    return r.json();
+  }
+
+  async function sync(token) {
+    setStatus('Syncing…');
+    // resolve budget ID (cached to avoid an extra round-trip)
+    let budgetId = getBudgetId();
+    if (!budgetId) {
+      const data = await ynabFetch('/budgets/last-used', token);
+      budgetId = data.data.budget.id;
+      try { localStorage.setItem(BUDGET_KEY, budgetId); } catch {}
+    }
+
+    // collect visible months from the board DOM
+    const board = document.getElementById('board');
+    if (!board) { setStatus('Board not loaded', 'err'); return; }
+    const monthEls = [...board.querySelectorAll('.month')];
+    const spentByMonth = {};
+
+    for (const monthEl of monthEls) {
+      const name = monthEl.querySelector('.mname')?.textContent.trim();
+      const year = parseInt(monthEl.querySelector('.msub')?.textContent.trim(), 10);
+      const mm = MON3[name];
+      if (!mm || !year) continue;
+
+      const ynabMonth = `${year}-${mm}-01`;
+      const data = await ynabFetch(`/budgets/${budgetId}/months/${ynabMonth}`, token);
+      const cats = data.data.month.categories || [];
+      const activityMilliunits = cats
+        .filter(c => c.category_group_name === HEALTH_GROUP && !c.deleted)
+        .reduce((s, c) => s + c.activity, 0);
+
+      // YNAB spending = negative activity; negate to get positive "spent"
+      spentByMonth[name] = Math.round(Math.abs(activityMilliunits)) / 1000;
+    }
+
+    if (window.SupplementBoard?.applyYnabSpent) {
+      window.SupplementBoard.applyYnabSpent(spentByMonth);
+    }
+
+    const months = Object.keys(spentByMonth);
+    const summary = months.map(m => `${m} $${spentByMonth[m].toFixed(0)}`).join(' · ');
+    setStatus(summary || 'synced', 'ok');
+    try { localStorage.setItem('np_ynab_last_sync', new Date().toISOString()); } catch {}
+    refreshLabels();
+  }
+
+  async function runSync(token) {
+    token = token || getToken();
+    if (!token) return;
+    try {
+      await sync(token);
+    } catch (e) {
+      if (e.message === 'invalid-token') {
+        setStatus('Invalid token', 'err');
+        try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(BUDGET_KEY); } catch {}
+        refreshLabels();
+      } else {
+        setStatus('Sync failed: ' + e.message, 'err');
+      }
+    }
+  }
+
+  function promptForToken() {
+    const t = window.prompt(
+      'Paste your YNAB Personal Access Token.\n\n' +
+      'Find it at: app.ynab.com → Account Settings → Developer Settings → New Token',
+      ''
+    );
+    if (!t || !t.trim()) return;
+    const token = t.trim();
+    try { localStorage.setItem(TOKEN_KEY, token); localStorage.removeItem(BUDGET_KEY); } catch {}
+    refreshLabels();
+    runSync(token);
+  }
+
+  function refreshLabels() {
+    const hasToken = !!getToken();
+    if (connectBtn) connectBtn.textContent = hasToken ? 'YNAB ✓' : '+ YNAB';
+    if (syncBtn) syncBtn.hidden = !hasToken;
+    if (!hasToken && statusEl) statusEl.textContent = '';
+  }
+
+  if (connectBtn) connectBtn.addEventListener('click', promptForToken);
+  if (syncBtn) syncBtn.addEventListener('click', () => runSync());
+
+  // auto-sync when the board tab is opened (if token exists and board is ready)
+  document.addEventListener('boardReady', () => {
+    if (getToken()) runSync();
+  });
+
+  refreshLabels();
 })();
 </script>
 
