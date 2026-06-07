@@ -616,6 +616,35 @@
     /* allow drag clone to escape overflow:hidden on .shipment */
     .sb-dragging #tab-board .shipment { overflow: visible; }
 
+    /* ── Column alignment in compact mode ─────────────────────────────────
+       All dollar amounts (month Max / ship subtotal / card order total) and
+       all run-out dates share a common right border, matching the card grid.
+
+       Measured from .shipment inner right:
+         card foot right edge   = 18+22+9  = 49px
+         card $ amount right    = 49+26+7  = 82px  (after toggle)
+         card run-out right     = 49+9+84+9+82+9+15 = 257px (proj right padding)
+
+       ship-head is position:relative; ship-total and ship-min-date are
+       pulled out of flex flow (absolute) and positioned to match card columns.
+       month-metrics gets margin-right:80px so Max aligns with 82+12=94px
+       from .month inner right (80 = 94 - 14px month-head padding).        */
+    #tab-board .board.layout-compact .ship-head { position: relative; }
+    #tab-board .board.layout-compact .ship-head .ship-total {
+      position: absolute; right: 82px; width: 84px;
+      text-align: right; margin: 0;
+      top: 50%; transform: translateY(-50%);
+    }
+    #tab-board .board.layout-compact .ship-min-date {
+      position: absolute; right: 257px; width: 68px;
+      text-align: right; margin: 0;
+      top: 50%; transform: translateY(-50%);
+    }
+    /* del stays at far-right of the flex row now that ship-total is absolute */
+    #tab-board .board.layout-compact .ship-head > .del { margin-left: auto; }
+    /* month metrics: offset so Max value aligns with card dollar amount column */
+    #tab-board .board.layout-compact .month-metrics { margin-right: 80px; }
+
     /* ── Untracked (free-text) cards: no proj column, name is editable ── */
     #tab-board .card.card--untracked .status { display: none; }
     #tab-board .board.layout-compact .card.card--untracked .proj { display: none; }
@@ -2010,18 +2039,40 @@
     });
   }
 
+  const HINT_KEY = 'np_google_hint';
+  function getHint() { try { return localStorage.getItem(HINT_KEY) || ''; } catch { return ''; } }
+  function setHint(h) { try { if (h) localStorage.setItem(HINT_KEY, h); } catch {} }
+
   let tokenClient = null;
-  function getToken() {
+  // silent=true: use prompt:'none' (no popup, fails fast if interaction needed)
+  // silent=false: use prompt:'' (shows account picker if required)
+  // hint: pre-selects the last-used Google account so the user doesn't have to pick every time
+  function getToken(silent = false) {
     return new Promise((resolve, reject) => {
-      if (!tokenClient) {
+      const hint = getHint();
+      // Rebuild client when hint changes (e.g., after first login stores email)
+      if (!tokenClient || tokenClient._hint !== hint) {
         tokenClient = google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE.clientId, scope: GOOGLE.scopes, callback: () => {},
+          ...(hint ? { hint } : {}),
         });
+        tokenClient._hint = hint;
       }
-      tokenClient.callback = (resp) =>
-        resp && resp.access_token ? resolve(resp.access_token) : reject(new Error(resp && resp.error || 'No token'));
+      tokenClient.callback = async (resp) => {
+        if (resp && resp.access_token) {
+          // Cache the account email as a hint for next time
+          if (!hint) {
+            fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: 'Bearer ' + resp.access_token },
+            }).then(r => r.ok ? r.json() : null).then(u => { if (u && u.email) setHint(u.email); }).catch(() => {});
+          }
+          resolve(resp.access_token);
+        } else {
+          reject(new Error(resp && resp.error || 'No token'));
+        }
+      };
       tokenClient.error_callback = (err) => reject(new Error(err && err.type || 'OAuth error'));
-      tokenClient.requestAccessToken({ prompt: '' });
+      tokenClient.requestAccessToken({ prompt: silent ? 'none' : '' });
     });
   }
 
@@ -2154,28 +2205,37 @@
     return map;
   }
 
-  async function run(forcePick) {
+  // silent=true: called automatically on load — no popups, fails quietly
+  // forcePick=true: always show the Drive Picker even if file is cached
+  async function run(forcePick, silent = false) {
     if (!window.SupplementBoard || !window.SupplementBoard.applyInventory) {
-      setStatus('Open the board first', 'err'); return;
+      if (!silent) setStatus('Open the board first', 'err');
+      return;
     }
-    setStatus('Connecting…');
+    if (!silent) setStatus('Connecting…');
     try {
       await waitFor(() => window.google && google.accounts && google.accounts.oauth2 && window.gapi);
-      const token = await getToken();
+      const token = await getToken(silent);
       let file = getCachedFile();
       if (forcePick || !file) {
+        if (silent) return; // never show Picker automatically
         file = await pickFile(token);
         if (!file) { refreshLabels(); return; }
         setCachedFile(file);
       }
-      setStatus('Reading “' + file.name + '”…');
+      if (!silent) setStatus('Reading “' + file.name + '”…');
       const { rows, hi } = await readInventory(token, file.id);
       const matched = window.SupplementBoard.applyInventory(buildInvMap(rows, hi));
       setStatus('Inventory: ' + file.name + ' · ' + matched + ' matched', 'ok');
       refreshLabels();
     } catch (e) {
+      const silentErrors = ['interaction_required', 'consent_required', 'access_denied',
+                            'immediate_failed', 'popup_closed', 'popup_failed_to_open'];
+      if (silent && (silentErrors.some(s => e.message.includes(s)) || e.message === 'No token')) {
+        return; // needs UI interaction — user can click Refresh Inventory manually
+      }
       console.error('Inventory connect failed:', e);
-      setStatus('Connect failed: ' + e.message, 'err');
+      if (!silent) setStatus('Connect failed: ' + e.message, 'err');
     }
   }
 
@@ -2190,9 +2250,9 @@
   if (changeBtn) changeBtn.addEventListener('click', () => run(true));
   refreshLabels();
 
-  // auto-refresh Inventory each time the board tab is ready (same as YNAB)
+  // auto-refresh Inventory silently on board load — no popups, no error display
   document.addEventListener('boardReady', () => {
-    if (getCachedFile()) run(false).catch(() => {});
+    if (getCachedFile()) run(false, true).catch(() => {});
   });
 })();
 </script>
