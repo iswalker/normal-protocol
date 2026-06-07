@@ -1802,21 +1802,54 @@
     const norm = (s) => String(s == null ? '' : s).trim();
     const header = rows[hi].map((c) => norm(c).toLowerCase());
     const ci = (n) => header.indexOf(n.toLowerCase());
-    const idx = { item: ci('Item'), amount: ci('Amount'), bottle: ci('Bottle Size'), logged: ci('Logged On'), dose: ci('Daily Dose') };
-    const map = {};
+    const idx = {
+      item: ci('Item'), amount: ci('Amount'), bottle: ci('Bottle Size'),
+      logged: ci('Logged On'), dose: ci('Daily Dose'), type: ci('Type'),
+    };
+
+    // collect all rows per item
+    const groups = {};
     for (let i = hi + 1; i < rows.length; i++) {
       const r = rows[i] || [];
       const name = norm(r[idx.item]);
       if (!name || name.toLowerCase() === 'summary') continue;
       const key = name.toLowerCase();
-      if (map[key]) continue; // first row wins on duplicate names
-      map[key] = {
-        name,
-        amount: idx.amount >= 0 ? (Number(norm(r[idx.amount])) || 0) : 0,
-        bottleSize: idx.bottle >= 0 ? (Number(norm(r[idx.bottle])) || 0) : 0,
+      // default to Reconcile when no Type column exists (backward-compatible)
+      const type = idx.type >= 0 ? (norm(r[idx.type]) || 'Reconcile') : 'Reconcile';
+      const loggedDate = idx.logged >= 0 ? parseSheetDate(norm(r[idx.logged])) : null;
+      if (!groups[key]) groups[key] = { name, recs: [] };
+      groups[key].recs.push({
+        type,
+        loggedDate,
+        amount: Number(norm(r[idx.amount])) || 0,
         dose: idx.dose >= 0 ? (Number(norm(r[idx.dose])) || 0) : 0,
-        loggedOn: idx.logged >= 0 ? toISO(norm(r[idx.logged])) : null,
-      };
+        bottleSize: idx.bottle >= 0 ? (Number(norm(r[idx.bottle])) || 0) : 0,
+      });
+    }
+
+    // resolve each item to a single effective snapshot for calc()
+    const map = {};
+    for (const [key, { name, recs }] of Object.entries(groups)) {
+      // most recent Reconcile by Logged On date
+      const reconciles = recs
+        .filter((r) => r.loggedDate && r.type.toLowerCase() !== 'adjustment')
+        .sort((a, b) => b.loggedDate - a.loggedDate);
+      if (!reconciles.length) continue;
+      const rec = reconciles[0];
+
+      // Adjustments on or after the reconcile date are additive to amount;
+      // earlier ones are superseded by the reconcile and ignored.
+      const adjSum = recs
+        .filter((r) => r.type.toLowerCase() === 'adjustment'
+                    && r.loggedDate && r.loggedDate >= rec.loggedDate)
+        .reduce((s, r) => s + r.amount, 0);
+
+      const d = rec.loggedDate;
+      const loggedOn = d.getFullYear() + '-'
+        + String(d.getMonth() + 1).padStart(2, '0') + '-'
+        + String(d.getDate()).padStart(2, '0');
+
+      map[key] = { name, amount: rec.amount + adjSum, bottleSize: rec.bottleSize, dose: rec.dose, loggedOn };
     }
     return map;
   }
