@@ -69,7 +69,8 @@ const ddl = [
      price_per_bottle  REAL DEFAULT 0,
      order_qty_bottles REAL DEFAULT 0,
      include_in_total  INTEGER DEFAULT 1,
-     notes             TEXT
+     notes             TEXT,
+     untracked         INTEGER DEFAULT 0
    )`,
 ];
 

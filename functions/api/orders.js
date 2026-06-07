@@ -53,7 +53,7 @@ export async function onRequestGet({ env }) {
       exec("SELECT order_id, month, merchant, position, status, notes FROM orders ORDER BY position"),
       exec(
         `SELECT order_item_id, order_id, month, block_position, item_position, supplement,
-                price_per_bottle, order_qty_bottles, include_in_total, notes
+                price_per_bottle, order_qty_bottles, include_in_total, notes, untracked
          FROM order_items ORDER BY block_position, item_position`
       ),
     ]);
@@ -70,6 +70,7 @@ export async function onRequestGet({ env }) {
       supplement: it.supplement, price_per_bottle: num(it.price_per_bottle) || 0,
       order_qty_bottles: num(it.order_qty_bottles) || 0,
       include_in_total: num(it.include_in_total) ? true : false, notes: it.notes,
+      untracked: num(it.untracked) ? true : false,
     }));
     return Response.json({ months, orders, items }, {
       headers: { "Access-Control-Allow-Origin": "*" },
@@ -107,10 +108,10 @@ export async function onRequestPut({ request, env }) {
   for (const it of items) {
     reqs.push(exec(
       `INSERT INTO order_items
-         (order_item_id, order_id, month, block_position, item_position, supplement, price_per_bottle, order_qty_bottles, include_in_total, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (order_item_id, order_id, month, block_position, item_position, supplement, price_per_bottle, order_qty_bottles, include_in_total, notes, untracked)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [T(it.order_item_id), T(it.order_id), T(it.month), I(it.block_position), I(it.item_position),
-       T(it.supplement), F(it.price_per_bottle), F(it.order_qty_bottles), I(it.include_in_total ? 1 : 0), T(it.notes)]
+       T(it.supplement), F(it.price_per_bottle), F(it.order_qty_bottles), I(it.include_in_total ? 1 : 0), T(it.notes), I(it.untracked ? 1 : 0)]
     ));
   }
   reqs.push(exec("COMMIT"));

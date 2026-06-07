@@ -294,7 +294,8 @@
       border: none;
       border-bottom: 2px solid transparent;
       padding: 0 16px;
-      font-size: 13px;
+      font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+      font-size: 16px;
       font-weight: 600;
       color: var(--ink-60);
       cursor: pointer;
@@ -360,20 +361,20 @@
 
     /* ── board scroller ── */
     #tab-board .board {
-      display: flex; gap: 18px; align-items: flex-start;
-      padding: 22px 24px 24px;
+      display: flex; gap: 16px; align-items: flex-start;
+      padding: 18px;
       min-height: 100%;
     }
 
     /* ── month column ── */
     #tab-board .month {
-      flex: 0 0 590px; width: 590px;
+      flex: 0 0 590px; width: 650px;
       display: flex; flex-direction: column;
       background: #fff; border: 1px solid #dde3e4; border-radius: 14px;
     }
     #tab-board .month-head { padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
     #tab-board .month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
-    #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; outline: none; }
+    #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
     #tab-board .month-title .msub { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); }
     #tab-board .month-title .mcount {
       font-family: var(--font-num); font-size: 10px;
@@ -598,7 +599,7 @@
       padding: 9px 12px; font-family: var(--font-ui); font-size: 13px; color: var(--b-ink);
       background: #f7f9f9; border-radius: 10px 10px 0 0;
     }
-    .inv-picker-list { list-style: none; margin: 0; padding: 4px 0; max-height: 220px; overflow-y: auto; }
+    .inv-picker-list { list-style: none; margin: 0; padding: 4px 0; max-height: min(calc(100vh - 120px), 70vh); overflow-y: auto; }
     .inv-picker-opt {
       padding: 7px 13px; font-size: 13px; cursor: pointer; color: var(--b-ink);
       transition: background .1s; outline: none;
@@ -612,6 +613,18 @@
     #tab-board .sb-chosen { box-shadow: var(--shadow-pop); }
     #tab-board .sb-drag { transform: rotate(1.5deg); }
     #tab-board .month-list.sb-over, #tab-board .ship-body.sb-over { outline: 2px dashed var(--accent); outline-offset: -3px; border-radius: 10px; }
+    /* allow drag clone to escape overflow:hidden on .shipment */
+    .sb-dragging #tab-board .shipment { overflow: visible; }
+
+    /* ── Untracked (free-text) cards: no proj column, name is editable ── */
+    #tab-board .card.card--untracked .status { display: none; }
+    #tab-board .board.layout-compact .card.card--untracked .proj { display: none; }
+    #tab-board .board.layout-compact .card.card--untracked .card-body {
+      grid-template-columns: minmax(120px, 1fr) 82px 84px 22px;
+      grid-template-areas: "top order foot del";
+    }
+    /* lock tracked card names (cursor only; actual editing is blocked by no contenteditable) */
+    #tab-board .card-name:not([contenteditable]) { cursor: default; user-select: none; }
 
     /* ── COMPACT layout — one dense grid row per card ── */
     #tab-board .board.layout-compact .month-list { gap: 5px; }
@@ -1158,6 +1171,7 @@
         price: it.price_per_bottle || 0,
         qty: it.order_qty_bottles || 0,
         includeInMonthTotal: !!it.include_in_total,
+        untracked: !!it.untracked,
       };
     });
     orders.forEach((o) => { shipmentData[o.order_id] = { name: o.merchant || 'Order' }; });
@@ -1198,12 +1212,13 @@
   // ── builders ──
   function cardHTML(id) {
     const c = STATE.cardData[id];
+    const untracked = !!c.untracked;
     return `
-    <div class="card" data-id="${id}" data-kind="card">
+    <div class="card${untracked ? ' card--untracked' : ''}" data-id="${id}" data-kind="card">
       <div class="card-body">
         <div class="card-top">
           <span class="grip block-grip card-grip" title="Drag">${ICON.grip}</span>
-          <div class="card-name" contenteditable="true" spellcheck="false" data-field="name">${esc(c.name)}</div>
+          <div class="card-name" ${untracked ? 'contenteditable="true" spellcheck="false"' : ''} data-field="name">${esc(c.name)}</div>
           <span class="badge loose-tag">Loose</span>
           <span class="badge status">OK</span>
         </div>
@@ -1275,7 +1290,7 @@
     <div class="month" data-id="${m.id}">
       <div class="month-head">
         <div class="month-title">
-          <span class="mname" contenteditable="true" spellcheck="false" data-field="name">${esc(m.name)}</span>
+          <span class="mname">${esc(m.name)}</span>
           <span class="msub">${esc(m.sub || '')}</span>
           <span class="mcount">0</span>
         </div>
@@ -1323,7 +1338,7 @@
     if (!c) return 0;
     const r = SB.calc(c);
     // run-out needs Inventory (dose/amount/loggedOn); absent until the sheet is wired
-    const hasInv = c.dose != null && c.amount != null && c.loggedOn != null;
+    const hasInv = !c.untracked && !!c.dose && !!c.loggedOn;
     const tier = hasInv ? SB.tier(r.curDaysLeft, thr()) : 'ok';
     const compact = board.classList.contains('layout-compact');
     const df = compact ? SB.fmtDateShort : SB.fmtDate;
@@ -1437,6 +1452,7 @@
       price_per_bottle: Number(c.price) || 0,
       order_qty_bottles: Number(c.qty) || 0,
       include_in_total: c.includeInMonthTotal ? 1 : 0,
+      untracked: c.untracked ? 1 : 0,
     });
   }
   function toApi() {
@@ -1488,24 +1504,25 @@
   }
 
   // ── drag and drop (SortableJS, nested) ──
-  const afterDrag = () => { recalcAll(); persist(); };
   const COMMON = {
     animation: 160, easing: 'cubic-bezier(.2,.7,.3,1)',
     filter: 'input,[contenteditable],button',
     preventOnFilter: false,
     ghostClass: 'sb-ghost', chosenClass: 'sb-chosen', dragClass: 'sb-drag',
-    // forceFallback: use SortableJS's own pointer-driven drag clone instead of
-    // native HTML5 DnD — renders the designed rotate/pop-shadow on the dragged
-    // card, escapes the overflow:hidden clipping on shipments/compact cards, and
-    // behaves consistently across browsers.
-    forceFallback: true, fallbackOnBody: true, swapThreshold: 0.65,
+    // forceFallback: pointer-driven drag clone for consistent cross-browser behavior.
+    // fallbackOnBody: false keeps the clone inside the board hierarchy so the
+    // compact CSS selectors apply, eliminating the "detailed card" drag artifact.
+    // The clone uses position:fixed so overflow:hidden on .shipment doesn't clip it;
+    // we additionally toggle .sb-dragging on body during drag to un-clip if needed.
+    forceFallback: true, fallbackOnBody: false, swapThreshold: 0.65,
+    onStart: () => document.body.classList.add('sb-dragging'),
+    onEnd: () => { document.body.classList.remove('sb-dragging'); recalcAll(); persist(); },
   };
   function makeMonthSortable(listEl) {
     new Sortable(listEl, Object.assign({}, COMMON, {
       group: { name: 'sb', pull: true, put: true },
       draggable: '.card, .shipment',
       handle: '.block-grip',
-      onEnd: afterDrag,
     }));
   }
   function makeShipSortable(bodyEl) {
@@ -1513,7 +1530,6 @@
       group: { name: 'sb', pull: true, put: (to, from, drag) => drag.classList.contains('card') },
       draggable: '.card',
       handle: '.card-grip',
-      onEnd: afterDrag,
     }));
   }
 
@@ -1533,8 +1549,6 @@
     } else if (t.matches('.ship-name')) {
       const ship = t.closest('.shipment');
       (STATE.shipmentData[ship.dataset.id] || (STATE.shipmentData[ship.dataset.id] = {})).name = t.textContent;
-      persistSoon();
-    } else if (t.matches('.mname')) {
       persistSoon();
     }
   });
@@ -1630,6 +1644,7 @@
   function newCard(name) {
     const id = uid('c_');
     const inv = INV_MAP[(name || '').trim().toLowerCase()];
+    const untracked = !inv; // free-text if not found in Inventory
     STATE.cardData[id] = {
       name: name || 'New supplement',
       amount: inv ? inv.amount : 0,
@@ -1637,6 +1652,7 @@
       bottleSize: inv ? inv.bottleSize : 0,
       loggedOn: inv ? inv.loggedOn : isoToday(),
       price: 0, qty: 0, includeInMonthTotal: true,
+      untracked,
     };
     return id;
   }
@@ -2173,6 +2189,11 @@
   if (connectBtn) connectBtn.addEventListener('click', () => run(false));
   if (changeBtn) changeBtn.addEventListener('click', () => run(true));
   refreshLabels();
+
+  // auto-refresh Inventory each time the board tab is ready (same as YNAB)
+  document.addEventListener('boardReady', () => {
+    if (getCachedFile()) run(false).catch(() => {});
+  });
 })();
 </script>
 </body>
