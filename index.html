@@ -957,7 +957,12 @@
     if (bc) bc.classList.toggle("show", tab === "board");
     if (tab === "board" && !boardInitialized) {
       boardInitialized = true;
-      window.SupplementBoard.init();
+      if (window.SupplementBoard) {
+        window.SupplementBoard.init();
+      } else {
+        // SortableJS script still loading — retry once it has had time to settle
+        setTimeout(() => window.SupplementBoard && window.SupplementBoard.init(), 500);
+      }
     }
     try { localStorage.setItem(TAB_KEY, tab); } catch (e) {}
   }
