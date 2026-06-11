@@ -1,0 +1,471 @@
+/* ───────────────────────────────────────────────────────────────────────
+   board.css — clean / clinical supplement ordering board
+   ─────────────────────────────────────────────────────────────────────── */
+:root {
+  --accent: #70c4bb;
+  --accent-deep: #3f8f87;
+  --accent-tint: #eaf6f4;
+  --ink: #1c2426;
+  --ink-2: #51606a;
+  --ink-3: #8a979e;
+  --line: #e4e9ea;
+  --line-soft: #eef2f2;
+  --bg: #eef1f2;
+  --paper: #ffffff;
+  --soon: #e08a3c;     /* < threshold days */
+  --soon-tint: #fdf3e8;
+  --out: #d6504a;      /* depleted */
+  --out-tint: #fbecea;
+  --urgency-threshold: 10;
+  --shadow-card: 0 1px 2px rgba(28, 36, 38, .06), 0 1px 1px rgba(28, 36, 38, .04);
+  --shadow-pop: 0 10px 28px rgba(28, 36, 38, .16);
+  --font-ui: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-num: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: auto; min-height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background: var(--bg);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+body::-webkit-scrollbar { width: 12px; height: 12px; }
+body::-webkit-scrollbar-thumb {
+  background: #cdd6d8; border-radius: 8px; border: 3px solid var(--bg);
+}
+
+/* ── top bar ───────────────────────────────────────────────────────── */
+.appbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 24px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.appbar .mark {
+  width: 26px; height: 26px; border-radius: 7px; flex: none;
+  background: linear-gradient(150deg, var(--accent), var(--accent-deep));
+  display: grid; place-items: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35);
+}
+.appbar .mark::after {
+  content: ''; width: 10px; height: 10px; border-radius: 50%;
+  border: 2.5px solid #fff;
+}
+.appbar h1 {
+  font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -.01em;
+}
+.appbar h1 span { color: var(--ink-3); font-weight: 500; }
+.appbar .spacer { flex: 1; }
+.appbar .asof {
+  font-family: var(--font-num); font-size: 11.5px; color: var(--ink-3);
+  display: flex; align-items: center; gap: 7px;
+}
+.appbar .asof b { color: var(--ink-2); font-weight: 500; }
+.appbar .pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(112, 196, 187, .6); animation: pulse 2.4s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(112, 196, 187, .5); }
+  70% { box-shadow: 0 0 0 7px rgba(112, 196, 187, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(112, 196, 187, 0); }
+}
+
+/* ── board scroller ────────────────────────────────────────────────── */
+.board {
+  display: flex; gap: 18px; align-items: flex-start;
+  padding: 22px 24px 64px;
+  min-height: calc(100vh - 56px);
+}
+
+/* ── month column ──────────────────────────────────────────────────── */
+.month {
+  flex: 0 0 590px; width: 590px;
+  display: flex; flex-direction: column;
+  background: #e7eced;
+  border: 1px solid #dde3e4;
+  border-radius: 14px;
+}
+.month-head {
+  padding: 11px 15px; display: flex; align-items: center; gap: 12px;
+}
+.month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
+.month-title .mname {
+  font-size: 16px; font-weight: 600; letter-spacing: -.01em; outline: none;
+}
+.month-title .msub { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); }
+.month-title .mcount {
+  font-family: var(--font-num); font-size: 10px;
+  color: var(--ink-3); background: #dbe2e3; padding: 1px 7px; border-radius: 20px;
+}
+
+/* three month metrics, inline on the header row */
+.month-metrics {
+  margin-left: auto; display: flex; align-items: center;
+}
+.metric {
+  display: flex; flex-direction: column; align-items: flex-end;
+  padding: 0 11px; border-left: 1px solid #d7dedf; line-height: 1.15;
+}
+.metric:first-child { border-left: 0; }
+.metric:last-child { padding-right: 0; }
+.metric .mk {
+  font-size: 8.5px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+}
+.metric .mv {
+  font-family: var(--font-num); font-size: 14.5px; font-weight: 500;
+  margin-top: 2px; letter-spacing: -.01em;
+}
+.metric.is-total .mv { color: var(--accent-deep); font-weight: 600; }
+.metric.is-max .mv { color: var(--ink-2); }
+
+/* editable Spent */
+.mv-money { display: inline-flex; align-items: baseline; }
+.mv-money .pfx { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); margin-right: 1px; }
+.spent-input {
+  width: 56px; border: 0; background: transparent; padding: 0;
+  font-family: var(--font-num); font-size: 14.5px; font-weight: 500;
+  text-align: right; color: var(--ink); outline: none; -moz-appearance: textfield;
+  border-bottom: 1px dashed transparent; min-width: 1.5ch;
+}
+.spent-input:hover { border-bottom-color: #c2ccce; }
+.spent-input:focus { border-bottom-color: var(--accent); }
+.spent-input::-webkit-inner-spin-button,
+.spent-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+.field label .lbl-sub { color: var(--ink-3); font-weight: 500; }
+
+/* scroll region holding blocks */
+.month-list {
+  min-height: 40px;
+  padding: 4px 11px 11px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.month-list > * { flex: 0 0 auto; }
+
+.month-foot {
+  display: flex; gap: 7px; padding: 10px 11px;
+  border-top: 1px solid #dde3e4;
+}
+
+/* ── shipment block ────────────────────────────────────────────────── */
+.shipment {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.ship-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px 8px 8px;
+  background: linear-gradient(var(--accent-tint), #f3faf9);
+  border-bottom: 1px solid #dcebe8;
+}
+.ship-head .truck {
+  width: 22px; height: 22px; border-radius: 6px; flex: none;
+  background: #fff; border: 1px solid #cfe6e2; color: var(--accent-deep);
+  display: grid; place-items: center;
+}
+.ship-head .truck svg { width: 13px; height: 13px; }
+.ship-id { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 7px; }
+.ship-name {
+  font-size: 13px; font-weight: 600; letter-spacing: -.01em; outline: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.ship-name:focus { text-overflow: clip; overflow: visible; }
+.ship-id .scount {
+  flex: none; font-family: var(--font-num); font-size: 10px; color: var(--ink-3);
+  background: #d6e6e2; padding: 1px 7px; border-radius: 20px;
+}
+.ship-total {
+  font-family: var(--font-num); font-size: 14px; font-weight: 600;
+  color: var(--accent-deep); text-align: right; padding-left: 4px;
+}
+
+.ship-body {
+  padding: 9px; display: flex; flex-direction: column; gap: 9px;
+  min-height: 30px;
+  background:
+    repeating-linear-gradient(transparent, transparent 0);
+}
+.ship-body > * { flex: 0 0 auto; }
+.ship-body:empty::after {
+  content: 'Drop a card here';
+  display: block; text-align: center; padding: 10px 0;
+  font-size: 11px; color: var(--ink-3); font-family: var(--font-num);
+  border: 1px dashed var(--line); border-radius: 8px;
+}
+.ship-foot { padding: 0 9px 9px; }
+
+/* ── card ──────────────────────────────────────────────────────────── */
+.card {
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  padding: 10px 11px 11px;
+}
+/* loose cards (direct children of the column list) read slightly distinct */
+.month-list > .card {
+  border-style: dashed;
+  border-color: #cdd6d8;
+}
+.card.tier-soon { border-left: 3px solid var(--soon); }
+.card.tier-out { border-left: 3px solid var(--out); }
+
+.card-top { display: flex; align-items: flex-start; gap: 7px; }
+.grip {
+  flex: none; width: 16px; align-self: stretch; cursor: grab;
+  color: #c4cdd0; margin: -2px 0 -2px -3px;
+  display: flex; align-items: flex-start; padding-top: 2px;
+  opacity: 0; transition: opacity .12s;
+}
+.grip svg { width: 11px; height: 16px; }
+.card:hover .grip, .shipment:hover > .ship-head .grip { opacity: 1; }
+.grip:active { cursor: grabbing; }
+
+.card-name {
+  flex: 1; min-width: 0;
+  font-size: 13.5px; font-weight: 600; letter-spacing: -.01em;
+  line-height: 1.25; outline: none;
+}
+.card-name:empty::before { content: 'Name'; color: var(--ink-3); }
+
+.badge {
+  flex: none; font-family: var(--font-num); font-size: 9.5px; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase;
+  padding: 3px 6px; border-radius: 20px; line-height: 1;
+  color: var(--ink-3); background: var(--line-soft);
+}
+.tier-soon .badge { color: var(--soon); background: var(--soon-tint); }
+.tier-out .badge { color: var(--out); background: var(--out-tint); }
+
+/* projection: days-left + run-out, with old → new */
+.proj {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin-top: 10px;
+}
+.proj .cell { min-width: 0; }
+.proj .pk {
+  font-size: 9px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ink-3); text-align: center;
+}
+.proj .pv { display: flex; align-items: baseline; gap: 5px; margin-top: 2px; justify-content: center; }
+.proj .now {
+  font-family: var(--font-num); font-weight: 500; color: var(--ink);
+  font-size: 19px; line-height: 1; letter-spacing: -.02em;
+}
+.proj .now .u { font-size: 11px; color: var(--ink-3); margin-left: 1px; }
+.proj .runout .now { font-size: 15px; }
+.tier-soon .proj .daysleft .now { color: var(--soon); }
+.tier-out .proj .daysleft .now { color: var(--out); }
+
+/* when an order qty is present: demote the current value, show the new one */
+.proj .arrow { color: var(--ink-3); font-size: 12px; opacity: 0; width: 0; transition: opacity .15s; }
+.proj .next { font-family: var(--font-num); font-weight: 500; color: var(--accent-deep); opacity: 0; width: 0; overflow: hidden; }
+.proj .daysleft .next { font-size: 19px; line-height: 1; letter-spacing: -.02em; }
+.proj .daysleft .next .u { font-size: 11px; color: var(--accent); }
+.proj .runout .next { font-size: 15px; }
+.card.has-order .proj .now {
+  color: var(--ink-3); font-size: 13px; text-decoration: line-through;
+  text-decoration-color: #c9d2d4;
+}
+.card.has-order .proj .runout .now { font-size: 11px; }
+.card.has-order .proj .arrow { opacity: 1; width: auto; }
+.card.has-order .proj .next { opacity: 1; width: auto; overflow: visible; }
+
+/* order row: price / unit  ×  qty */
+.order {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--line);
+}
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field label {
+  font-size: 9px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.input-wrap {
+  display: flex; align-items: center; gap: 2px;
+  background: #f7f9f9; border: 1px solid var(--line); border-radius: 7px;
+  padding: 0 8px; height: 30px; transition: border-color .12s, background .12s;
+}
+.input-wrap:focus-within { border-color: var(--accent); background: #fff; }
+.input-wrap .pfx, .input-wrap .sfx {
+  font-family: var(--font-num); font-size: 11px; color: var(--ink-3); flex: none;
+}
+.input-wrap input {
+  width: 100%; min-width: 0; border: 0; background: transparent; outline: none;
+  font-family: var(--font-num); font-size: 13px; color: var(--ink);
+  -moz-appearance: textfield; text-align: right;
+}
+.input-wrap input::-webkit-inner-spin-button,
+.input-wrap input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* order total + meta footer */
+.card-foot {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+}
+.meta { font-family: var(--font-num); font-size: 10.5px; color: var(--ink-3); }
+.meta b { color: var(--ink-2); font-weight: 500; }
+.card-foot .ototal {
+  margin-left: auto; font-family: var(--font-num); font-size: 14px; font-weight: 500;
+}
+.card-foot .ototal small {
+  font-size: 9px; color: var(--ink-3); letter-spacing: .05em;
+  font-weight: 600; text-transform: uppercase; margin-right: 5px;
+}
+
+/* per-row toggle: count this item in the month's Planned total (switch only) */
+.incl-toggle {
+  flex: none; border: 0; background: transparent; padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; margin-left: 2px;
+}
+.incl-toggle .sw {
+  width: 30px; height: 17px; border-radius: 20px; background: #d2d9da;
+  position: relative; transition: background .15s;
+}
+.incl-toggle .sw i {
+  position: absolute; top: 2px; left: 2px; width: 13px; height: 13px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2);
+  transition: transform .15s;
+}
+.incl-toggle:hover .sw { background: #c3ccce; }
+.card.counted .incl-toggle .sw { background: var(--accent); }
+.card.counted .incl-toggle:hover .sw { background: var(--accent-deep); }
+.card.counted .incl-toggle .sw i { transform: translateX(13px); }
+
+/* loose cards keep a subtle "outside a shipment" tag in roomy layouts */
+.month-list > .card .badge.loose-tag { display: inline-block; }
+.badge.loose-tag { display: none; background: #eef2f2; color: var(--ink-3); }
+
+/* delete buttons */
+.del {
+  position: absolute; top: 7px; right: 7px; width: 20px; height: 20px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--ink-3);
+  cursor: pointer; opacity: 0; transition: opacity .12s, background .12s, color .12s;
+  display: grid; place-items: center; font-size: 14px; line-height: 1;
+}
+.card:hover .del, .ship-head:hover .del { opacity: 1; }
+.del:hover { background: var(--out-tint); color: var(--out); }
+.ship-head .del { position: static; opacity: 0; }
+.shipment:hover .ship-head .del { opacity: 1; }
+/* compact: the ✕ becomes a real far-right column in each card row */
+.board.layout-compact .card-body > .del {
+  position: static; grid-area: del; opacity: .4 !important;
+  width: 18px; height: 18px;
+}
+.board.layout-compact .card:hover .card-body > .del { opacity: 1 !important; }
+
+/* add buttons */
+.add-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; border: 1px dashed #c4cdd0; border-radius: 9px;
+  background: transparent; color: var(--ink-2); font-family: var(--font-ui);
+  font-size: 12px; font-weight: 500; cursor: pointer; transition: all .12s;
+}
+.add-btn:hover { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
+.add-btn svg { width: 13px; height: 13px; }
+.ship-foot .add-btn { height: 30px; font-size: 11.5px; }
+
+/* sortable helpers */
+.sb-ghost { opacity: .4; }
+.sb-chosen { box-shadow: var(--shadow-pop); }
+.sb-drag { transform: rotate(1.5deg); }
+.month-list.sb-over, .ship-body.sb-over { outline: 2px dashed var(--accent); outline-offset: -3px; border-radius: 10px; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   CARD LAYOUT VARIANTS (Tweaks)
+   ───────────────────────────────────────────────────────────────────── */
+
+/* COMPACT — one dense grid row per card: name · days/dates · $price × qty · total.
+   Grid (not flex-wrap) keeps every part on a single line; the name truncates
+   with an ellipsis rather than spilling the total onto a second line. */
+.board.layout-compact .month-list { gap: 5px; }
+.board.layout-compact .ship-body { gap: 5px; padding: 6px; }
+.board.layout-compact .card { padding: 6px 11px; overflow: hidden; }
+.board.layout-compact .card-body {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 162px 82px 84px 22px;
+  grid-template-areas: "top proj order foot del";
+  align-items: center; column-gap: 9px;
+}
+/* hide redundant chrome — the colored left edge already signals urgency */
+.board.layout-compact .badge,
+.board.layout-compact .proj .pk,
+.board.layout-compact .meta,
+.board.layout-compact .input-wrap .sfx { display: none; }
+.board.layout-compact .month-list > .card .badge.loose-tag { display: none; }
+
+/* 1 — name */
+.board.layout-compact .card-top { grid-area: top; min-width: 0; gap: 5px; align-items: center; }
+.board.layout-compact .grip { width: 12px; }
+.board.layout-compact .card-name {
+  font-size: 13px; line-height: 1.2; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.board.layout-compact .grip { align-self: center; padding-top: 0; height: auto; }
+
+/* 2 — days left + run out */
+.board.layout-compact .proj {
+  grid-area: proj; margin: 0; display: flex; gap: 11px;
+  align-items: baseline; white-space: nowrap; justify-content: center;
+  padding-right: 15px;
+}
+.board.layout-compact .proj .cell { display: flex; align-items: baseline; gap: 4px; }
+.board.layout-compact .proj .pv { margin: 0; gap: 4px; }
+.board.layout-compact .proj .now { font-size: 13px; }
+.board.layout-compact .proj .runout .now { font-size: 12px; }
+.board.layout-compact .proj .next { font-size: 13px; }
+.board.layout-compact .proj .runout .next { font-size: 12px; }
+.board.layout-compact .card.has-order .proj .now { font-size: 10px; }
+.board.layout-compact .card.has-order .proj .runout .now { font-size: 9px; }
+
+/* 3 — order entry: $price × qty (auto-sized inputs) */
+.board.layout-compact .order {
+  grid-area: order; margin: 0; padding: 0; border: 0;
+  display: flex; gap: 7px; align-items: center; justify-content: flex-end;
+}
+.board.layout-compact .order .field { flex-direction: row; align-items: center; gap: 4px; }
+.board.layout-compact .order .field label { margin: 0; }
+.board.layout-compact .order .field:nth-child(1) label { display: none; }
+.board.layout-compact .order .field:nth-child(2) label { font-size: 0; }
+.board.layout-compact .order .field:nth-child(2) label::before {
+  content: '×'; font-size: 13px; font-weight: 500; color: var(--ink-3);
+}
+.board.layout-compact .order .field label .lbl-sub { display: none; }
+.board.layout-compact .input-wrap { height: 24px; padding: 0 6px; }
+.board.layout-compact .input-wrap input { font-size: 12px; width: 2ch; }
+
+/* 4 — line-item total */
+.board.layout-compact .card-foot { grid-area: foot; justify-self: stretch; justify-content: flex-end; align-items: center; gap: 7px; margin: 0; }
+.board.layout-compact .incl-toggle .sw { width: 26px; height: 15px; }
+.board.layout-compact .incl-toggle .sw i { width: 11px; height: 11px; }
+.board.layout-compact .card.counted .incl-toggle .sw i { transform: translateX(11px); }
+.board.layout-compact .card-foot .ototal small { display: none; }
+.board.layout-compact .card-foot .ototal .amt { font-size: 13px; }
+
+/* (compact include toggle removed — switch now lives inline in .card-foot) */
+
+/* SPLIT — identity + big day count on the left, order controls on the right */
+.board.layout-split .card-body { display: grid; grid-template-columns: 1.05fr 1fr; gap: 11px; align-items: start; }
+.board.layout-split .card-top,
+.board.layout-split .include { grid-column: 1 / -1; }
+.board.layout-split .proj { display: flex; flex-direction: column; gap: 9px; margin-top: 10px; }
+.board.layout-split .order {
+  margin-top: 10px; padding-top: 0; border-top: 0; grid-template-columns: 1fr;
+  align-content: start; border-left: 1px dashed var(--line); padding-left: 11px;
+}
+.board.layout-split .card-foot {
+  grid-column: 1 / -1; margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--line);
+}
+.board.layout-split .proj .daysleft .now { font-size: 24px; }
+.board.layout-split .card.has-order .proj .daysleft .now { font-size: 14px; }
+.board.layout-split .proj .daysleft .next { font-size: 24px; }

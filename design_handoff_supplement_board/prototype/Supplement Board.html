@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Supplement Ordering Board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="board.css" />
+</head>
+<body>
+  <header class="appbar">
+    <div class="mark"></div>
+    <h1>Supplement Ordering <span>· planner</span></h1>
+    <div class="spacer"></div>
+    <div class="asof">
+      <span class="pulse"></span>
+      <span>live as of <b id="asof-date">today</b></span>
+    </div>
+  </header>
+
+  <main id="board" class="board" data-screen-label="Board"></main>
+
+  <template id="__bundler_thumbnail">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100" rx="16" fill="#70c4bb"/>
+      <rect x="30" y="28" width="40" height="44" rx="7" fill="#fff"/>
+      <rect x="36" y="36" width="28" height="5" rx="2.5" fill="#70c4bb"/>
+      <rect x="36" y="46" width="20" height="4" rx="2" fill="#cfe2df"/>
+      <rect x="36" y="54" width="24" height="4" rx="2" fill="#cfe2df"/>
+      <rect x="36" y="62" width="16" height="4" rx="2" fill="#cfe2df"/>
+    </svg>
+  </template>
+
+  <div id="tweaks-root"></div>
+
+  <!-- drag & drop -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+  <!-- data + engine -->
+  <script src="data.js"></script>
+  <script src="board.js"></script>
+  <script>
+    (function () {
+      var d = new Date();
+      var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var node = document.getElementById('asof-date');
+      if (node) node.textContent = MON[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+    })();
+  </script>
+
+  <!-- Tweaks panel (React) -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel">
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "cardLayout": "compact",
+      "accent": [
+        "#70c4bb",
+        "#3f8f87",
+        "#eaf6f4"
+      ],
+      "urgencyThreshold": 10
+    }/*EDITMODE-END*/;
+
+    function App() {
+      const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+      React.useEffect(() => {
+        if (window.SBoard && window.SBoard.applyTweaks) window.SBoard.applyTweaks(t);
+      }, [t]);
+      return (
+        <TweaksPanel title="Tweaks">
+          <TweakSection label="Card layout" />
+          <TweakRadio label="Style" value={t.cardLayout}
+            options={[
+              { value: 'detailed', label: 'Detailed' },
+              { value: 'compact', label: 'Compact' },
+              { value: 'split', label: 'Split' },
+            ]}
+            onChange={(v) => setTweak('cardLayout', v)} />
+          <TweakSection label="Accent" />
+          <TweakColor label="Theme" value={t.accent}
+            options={[
+              ['#70c4bb', '#3f8f87', '#eaf6f4'],
+              ['#3b82c4', '#2b6196', '#e9f1f8'],
+              ['#7b7fd6', '#4f53ab', '#eef0fb'],
+              ['#5b7081', '#3c4d5a', '#eef2f4'],
+            ]}
+            onChange={(v) => setTweak('accent', v)} />
+          <TweakSection label="Urgency" />
+          <TweakSlider label="Flag stock under" value={t.urgencyThreshold}
+            min={3} max={30} step={1} unit=" days"
+            onChange={(v) => setTweak('urgencyThreshold', v)} />
+        </TweaksPanel>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('tweaks-root')).render(<App />);
+  </script>
+</body>
+</html>

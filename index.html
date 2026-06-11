@@ -313,10 +313,62 @@
     .header-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
     .board-controls { display: none; align-items: center; gap: 10px; }
     .board-controls.show { display: flex; }
-    .inv-status, .ynab-status { font-size: 11.5px; color: var(--ink-60); white-space: nowrap; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
-    .inv-status.ok, .ynab-status.ok { color: #3f8f87; }
-    .inv-status.err, .ynab-status.err { color: #c0392b; }
-    .board-controls-divider { width: 1px; height: 18px; background: var(--ink-12); flex-shrink: 0; }
+    /* settings gear popout */
+    .settings-wrap { position: relative; }
+    .settings-btn {
+      appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
+      cursor: pointer; padding: 5px; border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--ink-60); transition: color 0.15s, border-color 0.15s;
+    }
+    .settings-btn:hover { color: var(--teal); border-color: var(--teal); }
+    .settings-btn svg { width: 14px; height: 14px; display: block; fill: currentColor; }
+    .settings-panel {
+      display: none; flex-direction: column; gap: 6px;
+      position: absolute; top: calc(100% + 8px); right: 0; z-index: 200;
+      background: white; border: 1.5px solid var(--ink-12);
+      border-radius: 10px; box-shadow: 0 4px 16px rgba(23,26,28,0.10);
+      padding: 8px; min-width: 200px;
+    }
+    .settings-panel.open { display: flex; }
+    .settings-panel-title {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--ink-60);
+      padding: 2px 4px 6px; border-bottom: 1px solid var(--ink-12); margin-bottom: 2px;
+    }
+    .settings-action-btn {
+      appearance: none; border: 1.5px solid var(--ink-12); background: white;
+      border-radius: 7px; padding: 7px 10px; font-size: 12.5px; font-family: inherit;
+      color: var(--ink); cursor: pointer; text-align: left;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .settings-action-btn:hover { border-color: var(--teal); background: rgba(121,189,177,0.06); color: #3f8f87; }
+
+    /* refresh inventory button */
+    .refresh-inv-btn {
+      appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
+      cursor: pointer; padding: 5px 10px; border-radius: 7px; font-family: inherit;
+      font-size: 12px; color: var(--ink-60); white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .refresh-inv-btn:hover { color: var(--teal); border-color: var(--teal); }
+
+    /* shipment right-click context menu */
+    .ship-ctx-menu {
+      position: fixed; z-index: 9999;
+      background: white; border: 1.5px solid var(--ink-12);
+      border-radius: 9px; box-shadow: 0 6px 20px rgba(23,26,28,0.14);
+      padding: 4px; min-width: 190px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+    }
+    .ship-ctx-item {
+      padding: 7px 11px; border-radius: 6px; cursor: pointer;
+      color: var(--ink); transition: background 0.1s, color 0.1s;
+    }
+    .ship-ctx-item:hover { background: var(--cream); color: #3f8f87; }
+    .ship-ctx-item.ctx-disabled { color: var(--ink-60); cursor: default; pointer-events: none; }
+    .ship-ctx-divider { height: 1px; background: var(--ink-12); margin: 3px 4px; }
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
@@ -368,11 +420,19 @@
 
     /* ── month column ── */
     #tab-board .month {
-      flex: 0 0 590px; width: 650px;
+      flex: 0 0 590px; width: 1200px;
       display: flex; flex-direction: column;
       background: #fff; border: 1px solid #dde3e4; border-radius: 14px;
     }
-    #tab-board .month-head { padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+    #tab-board .month-head {
+      padding: 10px 14px; display: flex; align-items: center; gap: 10px;
+      position: sticky; top: 0; z-index: 20;
+      background: #fff; border-radius: 14px 14px 0 0;
+      box-shadow: 0 1px 0 transparent;
+      transition: box-shadow .15s;
+    }
+    #tab-board .month-head.is-stuck { box-shadow: 0 1px 0 #dde3e4; }
+    .month-sentinel { height: 0; }
     #tab-board .month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
     #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
     #tab-board .month-title .msub { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); }
@@ -380,7 +440,7 @@
       font-family: var(--font-num); font-size: 10px;
       color: var(--ink-3); background: #dbe2e3; padding: 1px 7px; border-radius: 20px;
     }
-    #tab-board .month-metrics { margin-left: auto; display: flex; align-items: center; }
+    #tab-board .month-metrics { margin-left: auto; margin-right: -9px; display: flex; align-items: center; }
     #tab-board .metric {
       display: flex; flex-direction: column; align-items: flex-end;
       padding: 0 9px; border-left: 1px solid #d7dedf; line-height: 1.15;
@@ -408,8 +468,7 @@
 
     /* add buttons that live inline in the month / shipment header rows */
     #tab-board .month-head .add-btn, #tab-board .ship-head .add-btn {
-      position: relative; /* anchor for the picker dropdown */
-      flex: 0 0 auto; height: 26px; padding: 0 14px; gap: 5px;
+      flex: 0 0 auto; height: 26px; padding: 0 7px; gap: 5px;
       border: 1px solid #c4cdd0; border-radius: 8px; background: rgba(255, 255, 255, .7);
       font-size: 11.5px; color: var(--ink-2);
     }
@@ -429,7 +488,7 @@
       box-shadow: var(--shadow-card); overflow: hidden;
     }
     #tab-board .ship-head {
-      display: flex; align-items: center; gap: 8px; padding: 8px 9px;
+      display: flex; align-items: center; gap: 8px; padding: 5px 9px 0px 14px;
       background: transparent;
     }
     #tab-board .ship-head .truck {
@@ -465,18 +524,16 @@
       position: relative; background: var(--paper); border: 1px solid var(--line);
       border-radius: 10px; box-shadow: var(--shadow-card); padding: 10px 11px 11px;
     }
-    #tab-board .month-list > .card { border-style: dashed; border-color: #cdd6d8; }
-    #tab-board .card.tier-soon { border-left: 3px solid var(--soon); }
-    #tab-board .card.tier-out { border-left: 3px solid var(--out); }
+    #tab-board .month-list > .card { border-color: #cdd6d8; }
+    #tab-board .card               { border-left: 3px solid #d2d9da; }
+    #tab-board .card.tier-reorder  { border-left-color: var(--accent); }
+    #tab-board .card.tier-soon     { border-left-color: var(--soon); }
+    #tab-board .card.tier-out      { border-left-color: var(--out); }
+    #tab-board .card:not(.counted) { border-style: dashed; }
     #tab-board .card-top { display: flex; align-items: flex-start; gap: 7px; }
-    #tab-board .grip {
-      flex: none; width: 16px; align-self: stretch; cursor: grab;
-      color: #c4cdd0; margin: -2px 0 -2px -3px;
-      display: flex; align-items: flex-start; padding-top: 2px;
-      opacity: 0; transition: opacity .12s;
-    }
-    #tab-board .grip svg { width: 11px; height: 16px; }
-    #tab-board .card:hover .grip, #tab-board .shipment:hover > .ship-head .grip { opacity: 1; }
+    /* drag handles: invisible left-border strip on cards, truck icon on shipments */
+    #tab-board .card-grip { cursor: grab; flex: none; }
+    #tab-board .truck.block-grip { cursor: grab; }
     #tab-board .grip:active { cursor: grabbing; }
     #tab-board .card-name {
       flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600;
@@ -496,26 +553,27 @@
       font-size: 9px; font-weight: 600; letter-spacing: .07em;
       text-transform: uppercase; color: var(--ink-3); text-align: center;
     }
-    #tab-board .proj .pv { display: flex; align-items: baseline; gap: 5px; margin-top: 2px; justify-content: center; }
-    #tab-board .proj .now {
+    /* proj: "16d · Jun 24 → 49d · Jul 27" combined layout */
+    #tab-board .proj .pv { display: flex; align-items: baseline; gap: 6px; margin-top: 2px; justify-content: center; }
+    #tab-board .proj .cur, #tab-board .proj .nxt { display: flex; align-items: baseline; gap: 4px; }
+    #tab-board .proj .dl {
       font-family: var(--font-num); font-weight: 500; color: var(--b-ink);
       font-size: 19px; line-height: 1; letter-spacing: -.02em;
     }
-    #tab-board .proj .now .u { font-size: 11px; color: var(--ink-3); margin-left: 1px; }
-    #tab-board .proj .runout .now { font-size: 15px; }
-    #tab-board .tier-soon .proj .daysleft .now { color: var(--soon); }
-    #tab-board .tier-out .proj .daysleft .now { color: var(--out); }
+    #tab-board .proj .dl .u { font-size: 11px; color: var(--ink-3); margin-left: 1px; }
+    #tab-board .proj .ro { font-family: var(--font-num); font-size: 15px; color: var(--b-ink); }
+    #tab-board .proj .sep { font-size: 11px; color: var(--ink-3); margin-left: -4px; }
+    #tab-board .tier-soon .proj .cur .dl { color: var(--soon); }
+    #tab-board .tier-out .proj .cur .dl { color: var(--out); }
     #tab-board .proj .arrow { color: var(--ink-3); font-size: 12px; opacity: 0; width: 0; transition: opacity .15s; }
-    #tab-board .proj .next { font-family: var(--font-num); font-weight: 500; color: var(--accent-deep); opacity: 0; width: 0; overflow: hidden; }
-    #tab-board .proj .daysleft .next { font-size: 19px; line-height: 1; letter-spacing: -.02em; }
-    #tab-board .proj .daysleft .next .u { font-size: 11px; color: var(--accent); }
-    #tab-board .proj .runout .next { font-size: 15px; }
-    #tab-board .card.has-order .proj .now {
-      color: var(--ink-3); font-size: 13px;
-    }
-    #tab-board .card.has-order .proj .runout .now { font-size: 11px; }
+    #tab-board .proj .nxt { opacity: 0; width: 0; overflow: hidden; color: var(--accent-deep); }
+    #tab-board .proj .nxt .dl { font-size: 19px; line-height: 1; letter-spacing: -.02em; color: var(--accent-deep); }
+    #tab-board .proj .nxt .dl .u { font-size: 11px; color: var(--accent); }
+    #tab-board .proj .nxt .ro { font-size: 15px; color: var(--accent-deep); }
+    #tab-board .card.has-order .proj .cur .dl { color: var(--ink-3); font-size: 13px; }
+    #tab-board .card.has-order .proj .cur .ro { font-size: 11px; color: var(--ink-3); }
     #tab-board .card.has-order .proj .arrow { opacity: 1; width: auto; }
-    #tab-board .card.has-order .proj .next { opacity: 1; width: auto; overflow: visible; }
+    #tab-board .card.has-order .proj .nxt { opacity: 1; width: auto; overflow: visible; }
     #tab-board .order {
       display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
       margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--line);
@@ -578,6 +636,12 @@
     #tab-board .del:hover { background: var(--out-tint); color: var(--out); }
     #tab-board .ship-head .del { position: static; opacity: 0; }
     #tab-board .shipment:hover .ship-head .del { opacity: 1; }
+    /* card-end groups incl-toggle + del; in non-compact it floats top-right like del did */
+    #tab-board .card-end {
+      position: absolute; top: 6px; right: 8px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    #tab-board .card-end .del { position: static; }
     #tab-board .add-btn {
       flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
       height: 34px; border: 1px dashed #c4cdd0; border-radius: 9px;
@@ -589,68 +653,110 @@
 
     /* ── Inventory item picker dropdown ── */
     .inv-picker {
-      position: absolute; top: calc(100% + 4px); left: 0; z-index: 200;
-      background: #fff; border: 1px solid var(--line); border-radius: 10px;
-      box-shadow: var(--shadow-pop); width: 260px; overflow: hidden;
-      text-align: left;
+      /* position:fixed + coordinates set by JS (body portal avoids overflow:hidden clipping) */
+      z-index: 9999;
+      background: #fff; border: 1px solid #c4cdd0; border-radius: 10px;
+      box-shadow: var(--shadow-pop); overflow: hidden; text-align: left;
+      /* local copies of board tokens (picker lives outside #tab-board) */
+      --ip-soon: #e08a3c; --ip-soon-tint: #fdf3e8;
+      --ip-out: #d6504a;  --ip-out-tint: #fbecea;
+      --ip-reorder: #3f8f87; --ip-reorder-tint: #eaf6f4;
+      --ip-mono: 'IBM Plex Mono', ui-monospace, monospace;
     }
     .inv-picker-search {
       width: 100%; border: 0; border-bottom: 1px solid var(--line); outline: none;
       padding: 9px 12px; font-family: var(--font-ui); font-size: 13px; color: var(--b-ink);
       background: #f7f9f9; border-radius: 10px 10px 0 0;
     }
-    .inv-picker-list { list-style: none; margin: 0; padding: 4px 0; max-height: min(calc(100vh - 120px), 70vh); overflow-y: auto; }
+    .inv-picker-list { list-style: none; margin: 0; padding: 4px 0; }
     .inv-picker-opt {
-      padding: 7px 13px; font-size: 13px; cursor: pointer; color: var(--b-ink);
-      transition: background .1s; outline: none;
+      padding: 7px 13px; font-size: 13px; cursor: pointer; color: #1c2426;
+      transition: background .1s, color .12s; outline: none;
+      border-radius: 6px; margin: 0 4px;
+      display: grid; grid-template-columns: 145px 95px 1fr; align-items: center; gap: 8px;
     }
-    .inv-picker-opt:hover, .inv-picker-opt:focus { background: var(--accent-tint); }
-    .inv-picker-free { color: var(--accent-deep); font-style: italic; }
-    .inv-picker-empty { padding: 7px 13px; font-size: 12px; color: var(--ink-3); font-style: italic; }
+    .inv-picker-opt:hover, .inv-picker-opt:focus { background: #f0f2f3; color: #3f8f87; }
+    .inv-picker-opt .ipm-left { min-width: 0; display: flex; align-items: baseline; gap: 5px; overflow: hidden; }
+    .inv-picker-opt .ipm-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inv-picker-opt .ipm-inlist { flex: none; font-size: 11px; color: #8a979e; white-space: nowrap; font-style: italic; }
+    .inv-picker-opt .ipm-meta { font-family: var(--ip-mono); font-size: 11px; color: #8a979e; white-space: nowrap; text-align: right; }
+    .inv-picker-opt.inv-picker-free { display: block; }
+    .inv-picker-opt .ipm-bars { display: flex; gap: 1px; align-items: center; }
+    .ipm-bar { display: block; flex-shrink: 0; width: 10px; height: 5px; border-radius: 1px; background: #3f8f87; opacity: 0.5; }
+    .inv-picker-opt.is-soon    { background: var(--ip-soon-tint); }
+    .inv-picker-opt.is-soon    .ipm-meta { color: var(--ip-soon); }
+    .inv-picker-opt.is-out     { background: var(--ip-out-tint); }
+    .inv-picker-opt.is-out     .ipm-meta { color: var(--ip-out); }
+    .inv-picker-opt.is-reorder { background: var(--ip-reorder-tint); }
+    .inv-picker-opt.is-reorder .ipm-meta { color: var(--ip-reorder); }
+    .inv-picker-opt.is-soon:hover,    .inv-picker-opt.is-soon:focus    { background: #fdecd8; }
+    .inv-picker-opt.is-out:hover,     .inv-picker-opt.is-out:focus     { background: #f8dcda; }
+    .inv-picker-opt.is-reorder:hover, .inv-picker-opt.is-reorder:focus { background: #d4f0ed; }
+    .inv-picker-opt.is-inlist { opacity: 0.45; }
+    .inv-picker-opt.is-inlist:hover, .inv-picker-opt.is-inlist:focus { opacity: 1; }
+    .inv-picker-free { color: #3f8f87; font-style: italic; }
+    .inv-picker-empty { padding: 7px 13px; font-size: 12px; color: #8a979e; font-style: italic; }
 
     /* sortable helpers */
     #tab-board .sb-ghost { opacity: .4; }
     #tab-board .sb-chosen { box-shadow: var(--shadow-pop); }
-    #tab-board .sb-drag { transform: rotate(1.5deg); }
+    #tab-board .sb-drag { transform: none; }
     #tab-board .month-list.sb-over, #tab-board .ship-body.sb-over { outline: 2px dashed var(--accent); outline-offset: -3px; border-radius: 10px; }
     /* allow drag clone to escape overflow:hidden on .shipment */
     .sb-dragging #tab-board .shipment { overflow: visible; }
+    /* closed-hand cursor while dragging */
+    .sb-dragging, .sb-dragging * { cursor: grabbing !important; }
 
     /* ── Column alignment in compact mode ─────────────────────────────────
-       Target column positions from .shipment inner right:
-         card foot right edge         = 18(card padding)+22(del)+9(gap) = 49px
-         card $ amount right          = 49+26(toggle)+7(gap)            = 82px
-         card proj (full col) right   = 49+9+84+9+82+9                  = 233px
-         card proj runout right edge  = 233+15(proj padding-right)      = 248px
+       Metric order: SPENT | SHIPMENTS | PLANNED | MAX  (MAX rightmost, original)
 
-       Loose cards (direct .month-list children) lack the ship wrapper:
-         ship border(1)+ship-body padding(6) = 7px per side.
-         margin:0 7px compensates so loose cards align with shipment cards.
+       Strategy: give MAX a min-width:88px so PLANNED's right edge is predictable
+       for typical amounts (< $1000 → MAX ≤ 7 chars = ~79px fits in 88px):
+         MAX right edge      ≈ 14px (month-head right padding, flush with content right)
+         PLANNED right edge  ≈ 14 + 88 = 102px from .month inner right ← alignment column
 
-       Month PLANNED metric aligns with the dollar amount column (Planned is
-       the meaningful "what you'll spend" total). Max is re-ordered before
-       Planned via CSS order so Planned is rightmost at the alignment column.
-       margin-right:80px on month-metrics → PLANNED right = 80+14 = 94px
-       from .month inner right, matching the 82+12 = 94px from .shipment.   */
+       ship-total right: 90px  (= 102 − 12 where 12 = month-list 11 + ship border 1)
+
+       Dates: proj right is at 18(card)+22(del)+9+84+9+82+9=233px from .shipment right.
+       Runout cell (right half of proj, 68px) centered at 282px from .shipment left.
+       ship-min-date is 68px wide centered over the runout cell: right:248px.
+         (right:248 → element at 564−248−68=248 to 316px left → center 282px ✓)
+
+       Loose cards lack ship-border(1)+ship-body-padding(6)=7px per side;
+       margin:0 7px gives them the same card content width and alignment.             */
     #tab-board .board.layout-compact .ship-head { position: relative; }
     #tab-board .board.layout-compact .ship-head .ship-total {
-      position: absolute; right: 82px; width: 84px;
+      position: absolute; right: 334px; width: 84px;
       text-align: right; margin: 0;
-      top: 50%; transform: translateY(-50%);
+      top: 56%; transform: translateY(-50%);
     }
-    /* ship-min-date spans the full proj column (162px), text right-aligned
-       with 15px right padding to match the proj column's own padding */
+    /* ship-min-date: 68px centered over the runout cell (right half of proj) */
     #tab-board .board.layout-compact .ship-min-date {
-      position: absolute; right: 233px; width: 162px;
-      text-align: right; padding-right: 15px; margin: 0;
-      top: 50%; transform: translateY(-50%);
+      position: absolute; right: 528px; width: 68px;
+      text-align: right; margin: 0;
+      top: 56%; transform: translateY(-50%);
+    }
+    /* ship-notes: freeform text between ship-total and del × */
+    #tab-board .ship-notes {
+      font-size: 12px; color: #222; flex: 1 1 0; min-width: 0;
+      outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      cursor: text;
+    }
+    #tab-board .ship-notes:empty::before { content: attr(placeholder); opacity: .4; pointer-events: none; }
+    #tab-board .ship-notes:focus { color: var(--fg); }
+    #tab-board .board.layout-compact .ship-notes {
+      position: absolute; right: 37px; width: 248px;
+      text-align: left; margin: 0;
+      top: 56%; transform: translateY(-50%);
     }
     /* del stays at far-right of the flex row now that ship-total is absolute */
     #tab-board .board.layout-compact .ship-head > .del { margin-left: auto; }
-    /* month metrics: Planned last (rightmost = aligned with $ column), Max before it */
-    #tab-board .board.layout-compact .month-metrics { margin-right: 80px; }
-    #tab-board .board.layout-compact .metric.is-max { order: 2; padding-right: 9px; }
-    #tab-board .board.layout-compact .metric.is-total { order: 3; padding-right: 0; }
+    /* month metrics: fixed-width columns so the alignment column is stable.
+       PLANNED right edge = 14px (month-head pad) + 96px (MAX box) = 110px from month inner right.
+       ship-total right = 110 − 12 (month-list 11 + shipment border 1) = 98px.
+       SPENT and SHIPMENTS get min-width only (auto-size for short values, grow for large). */
+    #tab-board .board.layout-compact .metric { width: 96px; }
+    #tab-board .board.layout-compact .metric:last-child { padding-right: 9px; }
     /* loose cards: add 7px margin each side so they align with shipment cards */
     #tab-board .board.layout-compact .month-list > .card { margin: 0 7px; }
 
@@ -658,7 +764,7 @@
     #tab-board .card.card--untracked .status { display: none; }
     #tab-board .board.layout-compact .card.card--untracked .proj { display: none; }
     #tab-board .board.layout-compact .card.card--untracked .card-body {
-      grid-template-columns: minmax(120px, 1fr) 82px 84px 22px;
+      grid-template-columns: 321px 82px 84px 317px;
       grid-template-areas: "top order foot del";
     }
     /* lock tracked card names (cursor only; actual editing is blocked by no contenteditable) */
@@ -667,10 +773,13 @@
     /* ── COMPACT layout — one dense grid row per card ── */
     #tab-board .board.layout-compact .month-list { gap: 5px; }
     #tab-board .board.layout-compact .ship-body { gap: 5px; padding: 6px; }
-    #tab-board .board.layout-compact .card { padding: 6px 11px; overflow: hidden; }
+    #tab-board .board.layout-compact .card { position: relative; padding: 6px 6px 6px 11px; overflow: hidden; }
+    #tab-board .board.layout-compact .card-grip {
+      position: absolute; left: 0; top: 0; bottom: 0; width: 11px;
+    }
     #tab-board .board.layout-compact .card-body {
       display: grid;
-      grid-template-columns: minmax(120px, 1fr) 162px 82px 84px 22px;
+      grid-template-columns: 143px 155px 94px 81px 1fr;
       grid-template-areas: "top proj order foot del";
       align-items: center; column-gap: 9px;
     }
@@ -680,26 +789,22 @@
     #tab-board .board.layout-compact .input-wrap .sfx { display: none; }
     #tab-board .board.layout-compact .month-list > .card .badge.loose-tag { display: none; }
     #tab-board .board.layout-compact .card-top { grid-area: top; min-width: 0; gap: 5px; align-items: center; }
-    #tab-board .board.layout-compact .grip { width: 12px; align-self: center; padding-top: 0; height: auto; }
     #tab-board .board.layout-compact .card-name {
       font-size: 13px; line-height: 1.2; min-width: 0;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     #tab-board .board.layout-compact .proj {
-      grid-area: proj; margin: 0; display: flex; gap: 11px;
-      align-items: baseline; white-space: nowrap; justify-content: center; padding-right: 15px;
+      grid-area: proj; margin: 0;
+      align-items: baseline; white-space: nowrap; justify-content: flex-end;
     }
-    #tab-board .board.layout-compact .proj .cell { display: flex; align-items: baseline; gap: 4px; }
-    #tab-board .board.layout-compact .proj .pv { margin: 0; gap: 4px; }
-    #tab-board .board.layout-compact .proj .now { font-size: 13px; }
-    #tab-board .board.layout-compact .proj .runout .now { font-size: 12px; }
-    #tab-board .board.layout-compact .proj .next { font-size: 13px; }
-    #tab-board .board.layout-compact .proj .runout .next { font-size: 12px; }
-    #tab-board .board.layout-compact .card.has-order .proj .now { font-size: 10px; }
-    #tab-board .board.layout-compact .card.has-order .proj .runout .now { font-size: 9px; }
+    #tab-board .board.layout-compact .proj .pv { margin: 0; gap: 4px; justify-content: flex-end; }
+    #tab-board .board.layout-compact .proj .dl { font-size: 13px; }
+    #tab-board .board.layout-compact .proj .ro { font-size: 12px; }
+    #tab-board .board.layout-compact .card.has-order .proj .cur .dl { font-size: 10px; }
+    #tab-board .board.layout-compact .card.has-order .proj .cur .ro { font-size: 10px; }
     #tab-board .board.layout-compact .order {
       grid-area: order; margin: 0; padding: 0; border: 0;
-      display: flex; gap: 7px; align-items: center; justify-content: flex-end;
+      display: flex; gap: 4px; align-items: center; justify-content: flex-end;
     }
     #tab-board .board.layout-compact .order .field { flex-direction: row; align-items: center; gap: 4px; }
     #tab-board .board.layout-compact .order .field label { margin: 0; }
@@ -710,7 +815,9 @@
     }
     #tab-board .board.layout-compact .order .field label .lbl-sub { display: none; }
     #tab-board .board.layout-compact .input-wrap { height: 24px; padding: 0 6px; }
-    #tab-board .board.layout-compact .input-wrap input { font-size: 12px; width: 2ch; }
+    #tab-board .board.layout-compact .input-wrap input { font-size: 12px; }
+    #tab-board .board.layout-compact .input-wrap input[data-field="price"] { width: 3.2ch; }
+    #tab-board .board.layout-compact .input-wrap input[data-field="qty"]   { width: 2ch; text-align: center; }
     #tab-board .board.layout-compact .card-foot {
       grid-area: foot; justify-self: stretch; justify-content: flex-end;
       align-items: center; gap: 7px; margin: 0;
@@ -720,10 +827,22 @@
     #tab-board .board.layout-compact .card.counted .incl-toggle .sw i { transform: translateX(11px); }
     #tab-board .board.layout-compact .card-foot .ototal small { display: none; }
     #tab-board .board.layout-compact .card-foot .ototal .amt { font-size: 13px; }
-    #tab-board .board.layout-compact .card-body > .del {
-      position: static; grid-area: del; opacity: .4; width: 18px; height: 18px;
+    #tab-board .board.layout-compact .card-end {
+      position: static; grid-area: del;
+      display: flex; align-items: center; justify-content: flex-start; gap: 4px;
     }
-    #tab-board .board.layout-compact .card:hover .card-body > .del { opacity: 1; }
+    /* card notes field — sits between toggle and × */
+    #tab-board .card-notes {
+      flex: 1 1 0; min-width: 0; font-size: 12px; color: #222; padding-left: 10px;
+      outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      cursor: text;
+    }
+    #tab-board .card-notes:empty::before { content: attr(placeholder); opacity: .35; pointer-events: none; }
+    #tab-board .card-notes:focus { color: var(--fg); }
+    #tab-board .board.layout-compact .card-end .del {
+      position: static; width: 18px; height: 18px; opacity: .4; flex: none;
+    }
+    #tab-board .board.layout-compact .card:hover .card-end .del { opacity: 1; }
   </style>
 </head>
 <body>
@@ -739,13 +858,17 @@
   </nav>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
-      <span class="ynab-status" id="ynab-status"></span>
-      <button class="reset-btn" id="sync-ynab" hidden>Sync YNAB</button>
-      <button class="reset-btn" id="connect-ynab">+ YNAB</button>
-      <span class="board-controls-divider"></span>
-      <span class="inv-status" id="inv-status">Inventory not connected</span>
-      <button class="reset-btn" id="connect-inventory">Connect Inventory</button>
-      <button class="reset-btn" id="change-inventory" hidden>Change</button>
+      <button class="refresh-inv-btn" id="refresh-inv-btn">↻ Refresh Inventory</button>
+      <div class="settings-wrap">
+        <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="m516.16 267.49c-1.8828 0.12891-3.7266 0.60938-5.4297 1.418l-83.129 37.785c-3.1484 1.3828-5.7266 3.8008-7.3164 6.8477-1.5859 3.0469-2.0898 6.5469-1.4219 9.918l16.766 79.824c-11.789 9.8555-22.73 20.793-32.59 32.59l-79.586-16.77c-3.3711-0.66406-6.8711-0.16406-9.918 1.4258-3.0469 1.5859-5.4648 4.168-6.8477 7.3125l-37.785 83.129c-1.418 3.1719-1.6992 6.7383-0.79688 10.09 0.90625 3.3555 2.9375 6.2969 5.7539 8.332l70.375 49.594c-0.57422 6.9805-1.1797 13.859-1.1797 21.016 0 7.1953 0.60156 14.18 1.1797 21.258l-70.375 49.594c-2.8164 2.0312-4.8477 4.9727-5.7539 8.3281-0.90234 3.3555-0.62109 6.918 0.79688 10.09l37.785 83.129c1.3828 3.1445 3.8008 5.7266 6.8477 7.3164 3.0469 1.5859 6.5469 2.0898 9.918 1.4219l79.586-16.766c9.8594 11.797 20.797 22.73 32.59 32.59l-16.766 79.82c-0.66797 3.3711-0.16406 6.8711 1.4219 9.918 1.5898 3.0508 4.168 5.4648 7.3164 6.8516l83.129 37.785c3.1719 1.4141 6.7344 1.6953 10.09 0.79297s6.2969-2.9336 8.3281-5.7539l49.832-70.609c6.9961 0.56641 13.902 1.1797 21.016 1.1797 7.1172 0 14.02-0.61328 21.02-1.1797l49.832 70.609c2.0312 2.8203 4.9727 4.8516 8.3281 5.7539 3.3555 0.90234 6.918 0.62109 10.09-0.79297l83.129-37.785c3.1445-1.3867 5.7266-3.8008 7.3164-6.8516 1.5859-3.0469 2.0898-6.5469 1.4219-9.918l-17.711-83.363c-0.55469-4.1641-2.8164-7.9062-6.2422-10.336-3.4258-2.4297-7.707-3.3242-11.82-2.4688s-7.6836 3.3828-9.8555 6.9766c-2.1719 3.5938-2.7539 7.9297-1.6016 11.969l15.113 71.793-60.695 27.395-47.465-67.309c-1.5469-2.207-3.6523-3.9609-6.1016-5.082-2.4492-1.1211-5.1523-1.5664-7.832-1.293-8.7617 1.0312-17.844 1.6523-26.926 1.6523s-18.16-0.61719-26.922-1.6523c-2.6797-0.27344-5.3828 0.17188-7.832 1.293-2.4492 1.1211-4.5586 2.875-6.1016 5.082l-47.469 67.309-60.691-27.395 16.297-76.754c0.57812-2.7969 0.35547-5.7031-0.64844-8.375-1.0039-2.6758-2.7461-5.0117-5.0195-6.7383-15.445-11.922-29.184-25.652-41.094-41.094-1.7266-2.2734-4.0625-4.0156-6.7383-5.0195s-5.5781-1.2266-8.375-0.64844l-76.516 16.297-27.395-60.695 67.066-47.465c2.2109-1.5469 3.9648-3.6523 5.0859-6.1016 1.1211-2.4492 1.5664-5.1523 1.293-7.832-1.0312-8.7578-1.6523-17.848-1.6523-26.926 0-9.043 0.625-17.922 1.6523-26.684 0.27344-2.6797-0.17188-5.3867-1.293-7.8359-1.1211-2.4492-2.875-4.5547-5.0859-6.0977l-67.066-47.469 27.395-60.695 76.516 16.297c2.7969 0.57812 5.6992 0.35547 8.375-0.64844 2.6758-1.0039 5.0117-2.7422 6.7383-5.0195 11.898-15.422 25.664-29.18 41.094-41.094 2.2734-1.7227 4.0156-4.0586 5.0195-6.7344 1.0039-2.6758 1.2266-5.582 0.64844-8.3789l-16.297-76.75 60.691-27.395 47.469 67.305c1.543 2.207 3.6523 3.9648 6.1016 5.0859 2.4492 1.1211 5.1523 1.5664 7.832 1.2891 9.0078-1.0586 18.09-1.8867 26.922-1.8867 8.8359 0 17.914 0.82813 26.926 1.8867 2.6797 0.27734 5.3828-0.16797 7.832-1.2891 2.4492-1.1211 4.5547-2.8789 6.1016-5.0859l47.465-67.305 60.695 27.395-16.297 76.75c-0.57812 2.7969-0.35547 5.7031 0.64844 8.3789s2.7461 5.0117 5.0195 6.7344c15.43 11.914 29.195 25.672 41.094 41.094 1.7266 2.2773 4.0625 4.0156 6.7383 5.0195 2.6719 1.0039 5.5781 1.2266 8.375 0.64844l76.516-16.297 27.395 60.695-67.07 47.469c-2.207 1.543-3.9609 3.6484-5.082 6.0977-1.1211 2.4492-1.5664 5.1562-1.293 7.8359 1.0273 8.7617 1.6523 17.641 1.6523 26.684 0 9.0781-0.62109 18.168-1.6523 26.926-0.27344 2.6797 0.17188 5.3828 1.293 7.832 1.1211 2.4492 2.875 4.5547 5.082 6.1016l67.07 47.465-27.395 60.695-71.555-15.113c-4.0391-1.1523-8.375-0.57031-11.969 1.6016-3.5938 2.1719-6.1211 5.7422-6.9766 9.8555s0.039063 8.3945 2.4688 11.82c2.4297 3.4258 6.1719 5.6875 10.336 6.2422l83.129 17.711c3.3711 0.66797 6.8711 0.16406 9.918-1.4219 3.0469-1.5898 5.4648-4.1719 6.8477-7.3164l37.785-83.129c1.418-3.1719 1.6992-6.7344 0.79297-10.09-0.90234-3.3555-2.9336-6.2969-5.75-8.3281l-70.375-49.594c0.57812-7.0781 1.1797-14.062 1.1797-21.258 0-7.1562-0.60547-14.035-1.1797-21.016l70.375-49.594c2.8164-2.0352 4.8477-4.9766 5.75-8.332 0.90625-3.3516 0.625-6.918-0.79297-10.09l-37.785-83.129c-1.3828-3.1445-3.8008-5.7266-6.8477-7.3125-3.0469-1.5898-6.5469-2.0898-9.918-1.4258l-79.586 16.77c-9.8594-11.797-20.801-22.734-32.59-32.59l16.766-79.824c0.66797-3.3711 0.16406-6.8711-1.4219-9.918-1.5898-3.0469-4.1719-5.4648-7.3164-6.8477l-83.129-37.785c-3.1719-1.418-6.7344-1.6992-10.09-0.79688-3.3555 0.90625-6.2969 2.9375-8.3281 5.7539l-49.594 70.613c-7.0078-0.64844-13.887-1.418-21.258-1.418s-14.246 0.76953-21.254 1.418l-49.594-70.613c-2.9648-4.1953-7.8555-6.5938-12.988-6.375zm83.836 189.16c-79.121 0-143.59 64.227-143.59 143.35 0 79.125 64.465 143.59 143.59 143.59s143.59-64.461 143.59-143.59c0-79.121-64.465-143.35-143.59-143.35zm0 29.992c62.785 0 113.36 50.574 113.36 113.36 0 62.785-50.574 113.59-113.36 113.59-62.781 0-113.36-50.809-113.36-113.59 0-62.781 50.574-113.36 113.36-113.36z"/></svg>
+        </button>
+        <div class="settings-panel" id="settings-panel">
+          <div class="settings-panel-title">Settings</div>
+          <button class="settings-action-btn" id="select-inventory">Select Inventory Sheet</button>
+          <button class="settings-action-btn" id="update-ynab">Update YNAB API Key</button>
+        </div>
+      </div>
     </span>
   </div>
 </header>
@@ -1024,6 +1147,17 @@
     try { saved = localStorage.getItem(TAB_KEY) || "intakes"; } catch (e) {}
     if (saved === "board") activateTab("board");
   });
+
+  // settings gear popout toggle
+  (function () {
+    const btn = document.getElementById('settings-btn');
+    const panel = document.getElementById('settings-panel');
+    if (!btn || !panel) return;
+    btn.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('open'); });
+    document.addEventListener('click', (e) => {
+      if (!panel.contains(e.target) && e.target !== btn) panel.classList.remove('open');
+    });
+  })();
 </script>
 
 <script src="vendor/Sortable.min.js"></script>
@@ -1155,6 +1289,18 @@
   const SB = window.SB;
   const KEY = 'sb_state_v7';
   const board = document.getElementById('board');
+  const tabBoard = board.closest('#tab-board');
+
+  // IntersectionObserver that toggles .is-stuck on .month-head when its sentinel scrolls off the top
+  const stickyObs = new IntersectionObserver(
+    (entries) => entries.forEach((e) => {
+      e.target.nextElementSibling.classList.toggle('is-stuck', !e.isIntersecting);
+    }),
+    { root: tabBoard, threshold: 0 }
+  );
+  function observeSentinels() {
+    board.querySelectorAll('.month-sentinel').forEach((s) => stickyObs.observe(s));
+  }
 
   window.SBoard = window.SBoard || { threshold: 10 };
   const thr = () => window.SBoard.threshold || 10;
@@ -1169,6 +1315,7 @@
   let structure;
   let INV_MAP = {};     // lowercased-name -> Inventory row (set by applyInventory)
   let SPENT_BY_MONTH = {}; // month name -> $ amount (set by YNAB sync)
+  let PROJ_MAP = {};    // lowercased-name -> { daysLeft, runOut } after all board orders
 
   // ── data layer: load the board from /api/orders (Turso) ──
   async function load() {
@@ -1210,9 +1357,10 @@
         qty: it.order_qty_bottles || 0,
         includeInMonthTotal: !!it.include_in_total,
         untracked: !!it.untracked,
+        notes: it.notes || '',
       };
     });
-    orders.forEach((o) => { shipmentData[o.order_id] = { name: o.merchant || 'Order' }; });
+    orders.forEach((o) => { shipmentData[o.order_id] = { name: o.merchant || 'Order', notes: o.notes || '' }; });
 
     structure = months.map((m) => {
       const blocks = [];
@@ -1230,6 +1378,30 @@
       return { id: m.month, name: m.month, sub: String(m.year || ''), blocks };
     });
     STATE = { cardData, shipmentData };
+    padMonths(6);
+  }
+
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function padMonths(count) {
+    const now = SB.today();
+    // key by "MonthName_Year" so year-boundary months (Jan 2027 ≠ Jan 2026) never collide
+    const existing = new Set(structure.map(m => m.name + '_' + (parseInt(m.sub) || 0)));
+    for (let i = 0; i < count; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const name = MONTH_NAMES[d.getMonth()];
+      const year = d.getFullYear();
+      const key = name + '_' + year;
+      if (!existing.has(key)) {
+        structure.push({ id: key, name, sub: String(year), blocks: [] });
+        existing.add(key);
+      }
+    }
+    structure.sort((a, b) => {
+      const ya = parseInt(a.sub) || 0, yb = parseInt(b.sub) || 0;
+      if (ya !== yb) return ya - yb;
+      return MONTH_NAMES.indexOf(a.name) - MONTH_NAMES.indexOf(b.name);
+    });
   }
 
   function esc(s) {
@@ -1255,27 +1427,25 @@
     <div class="card${untracked ? ' card--untracked' : ''}" data-id="${id}" data-kind="card">
       <div class="card-body">
         <div class="card-top">
-          <span class="grip block-grip card-grip" title="Drag">${ICON.grip}</span>
+          <span class="card-grip block-grip" aria-hidden="true"></span>
           <div class="card-name" ${untracked ? 'contenteditable="true" spellcheck="false"' : ''} data-field="name">${esc(c.name)}</div>
           <span class="badge loose-tag">Loose</span>
           <span class="badge status">OK</span>
         </div>
         <div class="proj">
-          <div class="cell daysleft">
-            <div class="pk">Days left</div>
-            <div class="pv">
-              <span class="now"><span class="n">0</span><span class="u">d</span></span>
-              <span class="arrow">→</span>
-              <span class="next"><span class="n">0</span><span class="u">d</span></span>
-            </div>
-          </div>
-          <div class="cell runout">
-            <div class="pk">Runs out</div>
-            <div class="pv">
-              <span class="now">—</span>
-              <span class="arrow">→</span>
-              <span class="next">—</span>
-            </div>
+          <div class="pk">Supply</div>
+          <div class="pv">
+            <span class="cur">
+              <span class="dl"><span class="n">0</span><span class="u">d</span></span>
+              <span class="sep">,</span>
+              <span class="ro">—</span>
+            </span>
+            <span class="arrow">→</span>
+            <span class="nxt">
+              <span class="dl"><span class="n">0</span><span class="u">d</span></span>
+              <span class="sep">,</span>
+              <span class="ro">—</span>
+            </span>
           </div>
         </div>
         <div class="order">
@@ -1291,9 +1461,12 @@
         <div class="card-foot">
           <span class="meta">on hand <b class="onhand">0</b> · <b class="dose">0</b>/day · <b class="bsize">0</b>/btl</span>
           <span class="ototal"><small>Order</small><span class="amt">$0.00</span></span>
-          <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month’s Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
         </div>
-        <button class="del" data-act="del-card" title="Remove item" aria-label="Remove item">×</button>
+        <div class="card-end">
+          <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month’s Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
+          <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || '')}</span>
+          <button class="del" data-act="del-card" title="Remove item" aria-label="Remove item">×</button>
+        </div>
       </div>
     </div>`;
   }
@@ -1304,8 +1477,7 @@
     return `
     <div class="shipment" data-id="${block.id}" data-kind="shipment">
       <div class="ship-head">
-        <span class="grip block-grip" title="Drag shipment">${ICON.grip}</span>
-        <span class="truck">${ICON.truck}</span>
+        <span class="truck block-grip" title="Drag shipment">${ICON.truck}</span>
         <div class="ship-id">
           <span class="ship-name" contenteditable="true" spellcheck="false" data-field="name">${esc(s.name)}</span>
           <span class="scount">0</span>
@@ -1313,6 +1485,7 @@
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <span class="ship-min-date"></span>
         <div class="ship-total"><span class="amt">$0.00</span></div>
+        <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
         <button class="del" data-act="del-ship" title="Remove shipment">×</button>
       </div>
       <div class="ship-body" data-list="shipment">${cards}</div>
@@ -1326,6 +1499,7 @@
   function monthHTML(m) {
     return `
     <div class="month" data-id="${m.id}">
+      <div class="month-sentinel"></div>
       <div class="month-head">
         <div class="month-title">
           <span class="mname">${esc(m.name)}</span>
@@ -1362,25 +1536,28 @@
     board.querySelectorAll('.month-list').forEach(makeMonthSortable);
     board.querySelectorAll('.ship-body').forEach(makeShipSortable);
     recalcAll();
+    observeSentinels();
   }
 
   // ── per-card update ──
   function setDays(span, val) {
-    const n = span.querySelector('.n');
+    const n = span.querySelector('.n'), u = span.querySelector('.u');
     n.textContent = Math.max(0, Math.round(val));
+    if (u) u.textContent = 'd';
   }
 
   function updateCard(cardEl) {
     const id = cardEl.dataset.id;
     const c = STATE.cardData[id];
     if (!c) return 0;
-    const r = SB.calc(c);
+    const r = calcForCard(c);
     // run-out needs Inventory (dose/amount/loggedOn); absent until the sheet is wired
     const hasInv = !c.untracked && !!c.dose && !!c.loggedOn;
     const tier = hasInv ? SB.tier(r.curDaysLeft, thr()) : 'ok';
     const compact = board.classList.contains('layout-compact');
     const df = compact ? SB.fmtDateShort : SB.fmtDate;
 
+    cardEl.classList.toggle('tier-reorder', hasInv && tier === 'ok' && r.curDaysLeft > 0 && r.curDaysLeft <= 45);
     cardEl.classList.toggle('tier-soon', tier === 'soon');
     cardEl.classList.toggle('tier-out', tier === 'out');
     cardEl.classList.toggle('has-order', hasInv && r.hasOrder);
@@ -1389,36 +1566,32 @@
     cardEl.querySelector('.status').textContent =
       !hasInv ? '—' : tier === 'out' ? 'OUT' : tier === 'soon' ? 'SOON' : 'OK';
 
-    const dl = cardEl.querySelector('.daysleft');
-    const ro = cardEl.querySelector('.runout');
+    const proj = cardEl.querySelector('.proj');
+    const curDl = proj.querySelector('.cur .dl');
+    const nxtDl = proj.querySelector('.nxt .dl');
+    const curRo = proj.querySelector('.cur .ro');
+    const nxtRo = proj.querySelector('.nxt .ro');
     const dash = (span) => {
       const n = span.querySelector('.n'), u = span.querySelector('.u');
       if (n) { n.textContent = '—'; if (u) u.textContent = ''; } else { span.textContent = '—'; }
     };
     if (hasInv) {
-      setDays(dl.querySelector('.now'), r.curDaysLeft);
-      setDays(dl.querySelector('.next'), r.newDaysLeft);
-      ro.querySelector('.now').textContent = df(r.curRunOut);
-      ro.querySelector('.next').textContent = df(r.newRunOut);
+      setDays(curDl, r.curDaysLeft);
+      setDays(nxtDl, r.newDaysLeft);
+      curRo.textContent = df(r.curRunOut);
+      nxtRo.textContent = df(r.newRunOut);
       cardEl.querySelector('.onhand').textContent = SB.fmtUnits(r.onHand);
       cardEl.querySelector('.dose').textContent = String(+r.dose.toFixed(1));
       cardEl.querySelector('.bsize').textContent = String(r.bottle);
     } else {
-      [dl.querySelector('.now'), dl.querySelector('.next'), ro.querySelector('.now'), ro.querySelector('.next')].forEach(dash);
+      [curDl, nxtDl].forEach(dash);
+      curRo.textContent = '—';
+      nxtRo.textContent = '—';
       cardEl.querySelector('.onhand').textContent = '—';
       cardEl.querySelector('.dose').textContent = '—';
       cardEl.querySelector('.bsize').textContent = '—';
     }
     cardEl.querySelector('.ototal .amt').textContent = SB.fmtMoney(r.cost);
-
-    cardEl.querySelectorAll('input[data-field]').forEach((inp) => {
-      if (compact) {
-        const len = Math.max(1, String(inp.value).length);
-        inp.style.width = (len + 1.2) + 'ch';
-      } else if (inp.style.width) {
-        inp.style.width = '';
-      }
-    });
 
     return r.cost;
   }
@@ -1429,7 +1602,40 @@
     return SPENT_BY_MONTH[name] || 0;
   }
 
+  // ── carry-forward: each subsequent listing of the same supplement starts
+  //    from the projected on-hand after the previous order, across months. ──
+  function calcForCard(c) {
+    if (c._effectiveDays !== undefined && !c.untracked && c.dose && c.loggedOn) {
+      return SB.calc(Object.assign({}, c, {
+        amount: c._effectiveDays * Number(c.dose),
+        loggedOn: isoToday(),
+      }));
+    }
+    return SB.calc(c);
+  }
+
+  function applyEffectiveMap() {
+    const seen = new Map(); // supplement name (lowercase) → { daysLeft, runOut } after last order
+    board.querySelectorAll('.card[data-id]').forEach((cardEl) => {
+      const c = STATE.cardData[cardEl.dataset.id];
+      if (!c) return;
+      const hasInv = !c.untracked && !!c.dose && !!c.loggedOn;
+      if (!hasInv) { delete c._effectiveDays; return; }
+      const key = c.name.trim().toLowerCase();
+      if (seen.has(key)) c._effectiveDays = seen.get(key).daysLeft;
+      else delete c._effectiveDays;
+      if (c.includeInMonthTotal) {
+        const r = calcForCard(c);
+        seen.set(key, { daysLeft: r.newDaysLeft, runOut: r.newRunOut });
+      }
+    });
+    // expose final projected state for the item picker
+    PROJ_MAP = {};
+    seen.forEach((proj, key) => { PROJ_MAP[key] = proj; });
+  }
+
   function recalcAll() {
+    applyEffectiveMap();
     board.querySelectorAll('.month').forEach((monthEl) => {
       const list = monthEl.querySelector('.month-list');
       let shipSum = 0, plannedItems = 0, maxItems = 0, itemCount = 0;
@@ -1442,11 +1648,10 @@
             const c = STATE.cardData[cardEl.dataset.id];
             const inc = c && c.includeInMonthTotal;
             maxItems += cost;
-            if (inc) { sTot += cost; plannedItems += cost; }
-            sCount++;
+            if (inc) { sTot += cost; plannedItems += cost; sCount++; }
             // track min new run-out across all ordered cards (needs Inventory data)
             if (c && c.dose && c.loggedOn) {
-              const r = SB.calc(c);
+              const r = calcForCard(c);
               if (r.hasOrder && isFinite(r.newRunOut)) {
                 if (!minRunOut || r.newRunOut < minRunOut) minRunOut = r.newRunOut;
               }
@@ -1491,6 +1696,7 @@
       order_qty_bottles: Number(c.qty) || 0,
       include_in_total: c.includeInMonthTotal ? 1 : 0,
       untracked: c.untracked ? 1 : 0,
+      notes: c.notes || '',
     });
   }
   function toApi() {
@@ -1509,7 +1715,7 @@
         if (n.classList.contains('shipment')) {
           const oid = n.dataset.id;
           const s = STATE.shipmentData[oid] || {};
-          orders.push({ order_id: oid, month, merchant: s.name || '', position: blockPos, status: 'Staged' });
+          orders.push({ order_id: oid, month, merchant: s.name || '', position: blockPos, status: 'Staged', notes: s.notes || '' });
           [...n.querySelectorAll(':scope .ship-body > .card')].forEach((cardEl, ci) => {
             pushItem(items, cardEl.dataset.id, oid, month, blockPos, ci + 1);
           });
@@ -1578,8 +1784,7 @@
       const cardEl = t.closest('.card');
       const c = STATE.cardData[cardEl.dataset.id];
       c[t.dataset.field] = t.value === '' ? 0 : Number(t.value);
-      updateCard(cardEl);
-      recalcTotalsFor(cardEl);
+      recalcAll();
       persistSoon();
     } else if (t.matches('.card-name')) {
       STATE.cardData[t.closest('.card').dataset.id].name = t.textContent;
@@ -1587,6 +1792,13 @@
     } else if (t.matches('.ship-name')) {
       const ship = t.closest('.shipment');
       (STATE.shipmentData[ship.dataset.id] || (STATE.shipmentData[ship.dataset.id] = {})).name = t.textContent;
+      persistSoon();
+    } else if (t.matches('.ship-notes')) {
+      const ship = t.closest('.shipment');
+      (STATE.shipmentData[ship.dataset.id] || (STATE.shipmentData[ship.dataset.id] = {})).notes = t.textContent;
+      persistSoon();
+    } else if (t.matches('.card-notes')) {
+      STATE.cardData[t.closest('.card').dataset.id].notes = t.textContent;
       persistSoon();
     }
   });
@@ -1601,7 +1813,7 @@
         let sTot = 0, minRunOut = null;
         n.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           const c = STATE.cardData[cardEl.dataset.id];
-          const r = c ? SB.calc(c) : null;
+          const r = c ? calcForCard(c) : null;
           const cost = r ? r.cost : 0;
           maxItems += cost;
           if (c && c.includeInMonthTotal) { sTot += cost; plannedItems += cost; }
@@ -1615,7 +1827,7 @@
         shipSum += sTot;
       } else if (n.classList.contains('card')) {
         const c = STATE.cardData[n.dataset.id];
-        const cost = c ? SB.calc(c).cost : 0;
+        const cost = c ? calcForCard(c).cost : 0;
         maxItems += cost;
         if (c && c.includeInMonthTotal) plannedItems += cost;
       }
@@ -1640,7 +1852,7 @@
       const c = STATE.cardData[cardEl.dataset.id];
       c.includeInMonthTotal = !c.includeInMonthTotal;
       cardEl.classList.toggle('counted', c.includeInMonthTotal);
-      recalcTotalsFor(cardEl);
+      recalcAll();
       persist();
       return;
     }
@@ -1656,11 +1868,15 @@
       return;
     }
     if (a === 'add-card-ship') {
-      const body = act.closest('.shipment').querySelector('.ship-body');
-      showItemPicker(act, (id) => { body.appendChild(el(cardHTML(id))); finishAdd(body.lastElementChild); });
+      if (activePicker) { closeItemPicker(); return; }
+      const shipEl = act.closest('.shipment');
+      const body = shipEl.querySelector('.ship-body');
+      const shipName = (STATE.shipmentData[shipEl.dataset.id]?.name || '').trim();
+      showItemPicker(act, (id) => { body.appendChild(el(cardHTML(id))); finishAdd(body.lastElementChild); }, shipName || null);
       return;
     }
     if (a === 'add-card-month') {
+      if (activePicker) { closeItemPicker(); return; }
       const list = act.closest('.month').querySelector('.month-list');
       showItemPicker(act, (id) => { list.appendChild(el(cardHTML(id))); finishAdd(list.lastElementChild); });
       return;
@@ -1668,7 +1884,7 @@
     if (a === 'add-ship') {
       const list = act.closest('.month').querySelector('.month-list');
       const sid = uid('s_');
-      STATE.shipmentData[sid] = { name: 'New merchant' };
+      STATE.shipmentData[sid] = { name: 'New merchant', notes: '' };
       const node = el(shipmentHTML({ type: 'shipment', id: sid, cards: [] }));
       list.appendChild(node);
       makeShipSortable(node.querySelector('.ship-body'));
@@ -1689,7 +1905,7 @@
       dose: inv ? inv.dose : 0,
       bottleSize: inv ? inv.bottleSize : 0,
       loggedOn: inv ? inv.loggedOn : isoToday(),
-      price: 0, qty: 0, includeInMonthTotal: true,
+      price: '', qty: 1, includeInMonthTotal: true,
       untracked,
     };
     return id;
@@ -1703,9 +1919,65 @@
 
   // ── Inventory picklist shown when "+ Item" is clicked ──────────────────
   let activePicker = null;
-  function showItemPicker(anchor, onSelect) {
+  function showItemPicker(anchor, onSelect, fromFilter = null) {
     closeItemPicker();
-    const names = Object.values(INV_MAP).map((v) => v.name).sort((a, b) => a.localeCompare(b));
+
+    // Names on the board right now — query the live DOM so deleted cards aren't included
+    const onBoard = new Set(
+      [...board.querySelectorAll('.card[data-id]')].map((el) => {
+        const c = STATE.cardData[el.dataset.id];
+        return c ? c.name.trim().toLowerCase() : '';
+      }).filter(Boolean)
+    );
+
+    // Enrich each inventory entry using projected state after all board orders
+    function countCoveredMonths(runOut) {
+      if (!runOut) return 0;
+      const today = SB.today();
+      let count = 0;
+      let m = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      for (let i = 0; i < 12; i++) {
+        // covered if runOut reaches at least 7 days into this calendar month
+        const threshold = new Date(m.getFullYear(), m.getMonth(), 8);
+        if (runOut >= threshold) { count++; m = new Date(m.getFullYear(), m.getMonth() + 1, 1); }
+        else break;
+      }
+      return count;
+    }
+
+    const allItems = Object.values(INV_MAP).map((inv) => {
+      const hasDose = inv.dose && inv.loggedOn;
+      let tier = 'ok', meta = null, bars = 0;
+      if (hasDose) {
+        const key = inv.name.trim().toLowerCase();
+        const proj = PROJ_MAP[key];
+        let daysLeft, runOut;
+        if (proj) {
+          // already has orders on the board — show state after all of them
+          daysLeft = proj.daysLeft;
+          runOut = proj.runOut;
+        } else {
+          // not on the board yet — show current inventory state
+          const r = SB.calc(inv);
+          daysLeft = r.curDaysLeft;
+          runOut = r.curRunOut;
+        }
+        const base = SB.tier(daysLeft, thr());
+        tier = base !== 'ok' ? base : (daysLeft <= 45 ? 'reorder' : 'ok');
+        meta = `${Math.round(daysLeft)}d · ${SB.fmtDateShort(runOut)}`;
+        bars = countCoveredMonths(runOut);
+      }
+      const inList = onBoard.has(inv.name.trim().toLowerCase());
+      return { name: inv.name, froms: inv.froms || [], tier, meta, bars, inList };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    // When called from a shipment, limit to items whose From matches the merchant name
+    const items = fromFilter
+      ? allItems.filter((it) => it.froms.some((f) => f.toLowerCase() === fromFilter.toLowerCase()))
+      : allItems;
+
+    const names = items.map((it) => it.name);
+
     const picker = document.createElement('div');
     picker.className = 'inv-picker';
     picker.innerHTML = `
@@ -1716,10 +1988,11 @@
     const list = picker.querySelector('.inv-picker-list');
 
     function renderList(q) {
-      const matches = q ? names.filter((n) => n.toLowerCase().includes(q.toLowerCase())) : names;
+      const lq = q.toLowerCase();
+      const matches = q ? items.filter((it) => it.name.toLowerCase().includes(lq)) : items;
       list.innerHTML = '';
       // "Use as typed" option when the query doesn't exactly match an Inventory item
-      if (q && !names.some((n) => n.toLowerCase() === q.toLowerCase())) {
+      if (q && !names.some((n) => n.toLowerCase() === lq)) {
         const li = document.createElement('li');
         li.className = 'inv-picker-opt inv-picker-free';
         li.tabIndex = 0;
@@ -1727,12 +2000,40 @@
         li.dataset.name = q;
         list.appendChild(li);
       }
-      matches.slice(0, 50).forEach((n) => {
+      matches.slice(0, 50).forEach(({ name, tier, meta, bars, inList }) => {
         const li = document.createElement('li');
-        li.className = 'inv-picker-opt';
+        li.className = 'inv-picker-opt' + (tier !== 'ok' && !inList ? ` is-${tier}` : '') + (inList ? ' is-inlist' : '');
         li.tabIndex = 0;
-        li.textContent = n;
-        li.dataset.name = n;
+        li.dataset.name = name;
+        const left = document.createElement('span');
+        left.className = 'ipm-left';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'ipm-name';
+        nameSpan.textContent = name;
+        left.appendChild(nameSpan);
+        if (inList) {
+          const tag = document.createElement('em');
+          tag.className = 'ipm-inlist';
+          tag.textContent = 'In List';
+          left.appendChild(tag);
+        }
+        li.appendChild(left);
+        if (meta) {
+          const metaSpan = document.createElement('span');
+          metaSpan.className = 'ipm-meta';
+          metaSpan.textContent = meta;
+          li.appendChild(metaSpan);
+        }
+        if (bars > 0) {
+          const barsSpan = document.createElement('span');
+          barsSpan.className = 'ipm-bars';
+          for (let i = 0; i < Math.min(bars, 6); i++) {
+            const b = document.createElement('span');
+            b.className = 'ipm-bar';
+            barsSpan.appendChild(b);
+          }
+          li.appendChild(barsSpan);
+        }
         list.appendChild(li);
       });
       if (!matches.length && !q) {
@@ -1770,9 +2071,14 @@
       if (opt) commit(opt.dataset.name);
     });
 
-    // position below the anchor button
-    anchor.style.position = 'relative';
-    anchor.appendChild(picker);
+    // Portal to body with position:absolute in document coords so overflow:hidden
+    // on .shipment doesn't clip it, and the page can scroll to reveal the full list.
+    const rect = anchor.getBoundingClientRect();
+    picker.style.position = 'absolute';
+    picker.style.left = (rect.left + window.scrollX) + 'px';
+    picker.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    picker.style.width = Math.max(350, rect.width) + 'px';
+    document.body.appendChild(picker);
     activePicker = picker;
     renderList('');
     input.focus();
@@ -1814,6 +2120,152 @@
       e.preventDefault(); e.target.blur();
     }
   });
+
+  // ── right-click context menus (shipment + card) ──
+  let activeCtxMenu = null;
+  function closeCtxMenu() {
+    if (activeCtxMenu) { activeCtxMenu.remove(); activeCtxMenu = null; }
+  }
+
+  function buildCtxMenu(e, buildFn) {
+    const menu = document.createElement('div');
+    menu.className = 'ship-ctx-menu';
+    function ctxItem(label, disabled, action) {
+      const d = document.createElement('div');
+      d.className = 'ship-ctx-item' + (disabled ? ' ctx-disabled' : '');
+      d.textContent = label;
+      if (!disabled) d.addEventListener('mousedown', (ev) => { ev.preventDefault(); });
+      if (!disabled) d.addEventListener('click', () => { closeCtxMenu(); action(); });
+      return d;
+    }
+    function ctxDivider() {
+      const d = document.createElement('div'); d.className = 'ship-ctx-divider'; return d;
+    }
+    buildFn(menu, ctxItem, ctxDivider);
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    document.body.appendChild(menu);
+    activeCtxMenu = menu;
+    requestAnimationFrame(() => {
+      const r = menu.getBoundingClientRect();
+      if (r.right > window.innerWidth - 8) menu.style.left = (e.clientX - r.width) + 'px';
+      if (r.bottom > window.innerHeight - 8) menu.style.top = (e.clientY - r.height) + 'px';
+    });
+  }
+
+  function findOrCreateShipInMonth(monthEl, shipName) {
+    const existing = [...monthEl.querySelectorAll('.shipment')].find(s =>
+      ((STATE.shipmentData[s.dataset.id] || {}).name || '').trim().toLowerCase() === shipName.trim().toLowerCase()
+    );
+    if (existing) return existing.querySelector('.ship-body');
+    const sid = uid('s_');
+    STATE.shipmentData[sid] = { name: shipName, notes: '' };
+    const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: [] }));
+    monthEl.querySelector('.month-list').append(newEl);
+    makeShipSortable(newEl.querySelector('.ship-body'));
+    return newEl.querySelector('.ship-body');
+  }
+
+  board.addEventListener('contextmenu', (e) => {
+    // Card menu takes priority over shipment menu
+    const cardEl = e.target.closest('.card[data-id]');
+    if (cardEl) {
+      e.preventDefault();
+      closeCtxMenu();
+      const container = cardEl.parentElement;
+      const monthEl = cardEl.closest('.month');
+      const allMonths = [...board.querySelectorAll('.month')];
+      const monthIdx = allMonths.indexOf(monthEl);
+      const siblings = [...container.children];
+      const myIdx = siblings.indexOf(cardEl);
+      const isFirst = myIdx === 0;
+      const isLast = myIdx === siblings.length - 1;
+      const hasPrev = monthIdx > 0;
+      const hasNext = monthIdx < allMonths.length - 1;
+
+      function cardDest(targetMonthEl) {
+        if (container.classList.contains('ship-body')) {
+          const shipEl = container.closest('.shipment');
+          const shipName = (STATE.shipmentData[shipEl.dataset.id] || {}).name || '';
+          return findOrCreateShipInMonth(targetMonthEl, shipName);
+        }
+        return targetMonthEl.querySelector('.month-list');
+      }
+
+      buildCtxMenu(e, (menu, ctxItem, ctxDivider) => {
+        menu.appendChild(ctxItem('Move to Top', isFirst, () => { container.prepend(cardEl); recalcAll(); persist(); }));
+        menu.appendChild(ctxItem('Move to End', isLast, () => { container.append(cardEl); recalcAll(); persist(); }));
+        menu.appendChild(ctxDivider());
+        menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => {
+          cardDest(allMonths[monthIdx + 1]).append(cardEl); recalcAll(); persist();
+        }));
+        menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => {
+          cardDest(allMonths[monthIdx - 1]).append(cardEl); recalcAll(); persist();
+        }));
+        menu.appendChild(ctxDivider());
+        menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => {
+          const newId = uid('c_');
+          STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
+          const newEl = el(cardHTML(newId));
+          cardDest(allMonths[monthIdx + 1]).append(newEl);
+          recalcAll(); persist();
+        }));
+      });
+      return;
+    }
+
+    const shipEl = e.target.closest('.shipment');
+    if (!shipEl) return;
+    e.preventDefault();
+    closeCtxMenu();
+
+    const monthEl = shipEl.closest('.month');
+    const list = monthEl.querySelector('.month-list');
+    const allMonths = [...board.querySelectorAll('.month')];
+    const monthIdx = allMonths.indexOf(monthEl);
+    const listChildren = [...list.children];
+    const myIdx = listChildren.indexOf(shipEl);
+    const isFirst = myIdx === 0;
+    const isLast = myIdx === listChildren.length - 1;
+    const hasPrev = monthIdx > 0;
+    const hasNext = monthIdx < allMonths.length - 1;
+
+    buildCtxMenu(e, (menu, ctxItem, ctxDivider) => {
+      menu.appendChild(ctxItem('Move to Top', isFirst, () => {
+        list.prepend(shipEl); recalcAll(); persist();
+      }));
+      menu.appendChild(ctxItem('Move to End', isLast, () => {
+        list.append(shipEl); recalcAll(); persist();
+      }));
+      menu.appendChild(ctxDivider());
+      menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => {
+        allMonths[monthIdx + 1].querySelector('.month-list').append(shipEl);
+        recalcAll(); persist();
+      }));
+      menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => {
+        allMonths[monthIdx - 1].querySelector('.month-list').append(shipEl);
+        recalcAll(); persist();
+      }));
+      menu.appendChild(ctxDivider());
+      menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => {
+        const sid = uid('s_');
+        STATE.shipmentData[sid] = Object.assign({}, STATE.shipmentData[shipEl.dataset.id] || {});
+        const oldCardIds = [...shipEl.querySelectorAll(':scope .ship-body > .card[data-id]')].map(c => c.dataset.id);
+        const newCards = oldCardIds.map(oldId => {
+          const newId = uid('c_');
+          STATE.cardData[newId] = Object.assign({}, STATE.cardData[oldId] || {});
+          return newId;
+        });
+        const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
+        allMonths[monthIdx + 1].querySelector('.month-list').append(newEl);
+        makeShipSortable(newEl.querySelector('.ship-body'));
+        recalcAll(); persist();
+      }));
+    });
+  });
+
+  document.addEventListener('click', closeCtxMenu);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCtxMenu(); });
 
   // ── public API (lazy init from the tab switcher) ──
   let booted = false;
@@ -1891,18 +2343,16 @@
   const YNAB_BASE = 'https://api.ynab.com/v1';
   const TOKEN_KEY = 'np_ynab_token';
   const BUDGET_KEY = 'np_ynab_budget_id';
-  const HEALTH_GROUP = 'Health';
+  const GROUP_KEY  = 'np_ynab_group';
   const MON3 = { Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',
                  Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12' };
 
-  const statusEl = document.getElementById('ynab-status');
-  const syncBtn   = document.getElementById('sync-ynab');
-  const connectBtn = document.getElementById('connect-ynab');
+  function getGroupName() { try { return localStorage.getItem(GROUP_KEY) || 'Health'; } catch { return 'Health'; } }
+
+  const connectBtn = document.getElementById('update-ynab');
 
   function setStatus(text, cls) {
-    if (!statusEl) return;
-    statusEl.textContent = text;
-    statusEl.className = 'ynab-status' + (cls ? ' ' + cls : '');
+    if (cls === 'err') console.error('YNAB:', text);
   }
   function getToken() { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } }
   function getBudgetId() { try { return localStorage.getItem(BUDGET_KEY); } catch { return null; } }
@@ -1939,10 +2389,19 @@
       if (!mm || !year) continue;
 
       const ynabMonth = `${year}-${mm}-01`;
-      const data = await ynabFetch(`/budgets/${budgetId}/months/${ynabMonth}`, token);
-      const cats = data.data.month.categories || [];
+      let cats = [];
+      try {
+        const data = await ynabFetch(`/budgets/${budgetId}/months/${ynabMonth}`, token);
+        cats = data.data.month.categories || [];
+      } catch (e) {
+        if (e.message.includes('404')) { spentByMonth[name] = 0; continue; } // month not in YNAB yet
+        throw e; // re-throw real errors (401, network, etc.)
+      }
+      const groupName = getGroupName();
+      const allGroups = [...new Set(cats.map(c => c.category_group_name).filter(Boolean))];
+      console.log(`YNAB ${ynabMonth}: ${cats.length} categories across groups:`, allGroups, `— filtering by "${groupName}"`);
       const activityMilliunits = cats
-        .filter(c => c.category_group_name === HEALTH_GROUP && !c.deleted)
+        .filter(c => c.category_group_name === groupName && !c.deleted)
         .reduce((s, c) => s + c.activity, 0);
 
       // YNAB spending = negative activity; negate to get positive "spent"
@@ -1982,20 +2441,26 @@
     );
     if (!t || !t.trim()) return;
     const token = t.trim();
-    try { localStorage.setItem(TOKEN_KEY, token); localStorage.removeItem(BUDGET_KEY); } catch {}
+
+    const g = window.prompt(
+      'Which YNAB category group tracks health spending?\n\n' +
+      'Must match the group name exactly as it appears in YNAB.\n' +
+      '(Open the browser console after saving to see all group names returned by the API.)',
+      getGroupName()
+    );
+    if (g == null) return; // cancelled
+    try {
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(BUDGET_KEY);
+      if (g.trim()) localStorage.setItem(GROUP_KEY, g.trim());
+    } catch {}
     refreshLabels();
     runSync(token);
   }
 
-  function refreshLabels() {
-    const hasToken = !!getToken();
-    if (connectBtn) connectBtn.textContent = hasToken ? 'YNAB ✓' : '+ YNAB';
-    if (syncBtn) syncBtn.hidden = !hasToken;
-    if (!hasToken && statusEl) statusEl.textContent = '';
-  }
+  function refreshLabels() {}
 
   if (connectBtn) connectBtn.addEventListener('click', promptForToken);
-  if (syncBtn) syncBtn.addEventListener('click', () => runSync());
 
   // auto-sync when the board tab is opened (if token exists and board is ready)
   document.addEventListener('boardReady', () => {
@@ -2021,15 +2486,10 @@
   };
   const FILE_KEY = 'np_inventory_file';
 
-  const statusEl = () => document.getElementById('inv-status');
-  const connectBtn = document.getElementById('connect-inventory');
-  const changeBtn = document.getElementById('change-inventory');
+  const selectBtn = document.getElementById('select-inventory');
 
   function setStatus(text, cls) {
-    const el = statusEl(); if (!el) return;
-    el.textContent = text;
-    el.classList.remove('ok', 'err');
-    if (cls) el.classList.add(cls);
+    if (cls === 'err') console.error('Inventory:', text);
   }
   function getCachedFile() {
     try { return JSON.parse(localStorage.getItem(FILE_KEY)); } catch (e) { return null; }
@@ -2048,18 +2508,37 @@
     });
   }
 
-  const HINT_KEY = 'np_google_hint';
+  const HINT_KEY  = 'np_google_hint';
+  const TOKEN_KEY = 'np_google_token';
   function getHint() { try { return localStorage.getItem(HINT_KEY) || ''; } catch { return ''; } }
   function setHint(h) { try { if (h) localStorage.setItem(HINT_KEY, h); } catch {} }
+  function getCachedToken() {
+    try {
+      const t = JSON.parse(localStorage.getItem(TOKEN_KEY));
+      // 5-min safety buffer so we don't use a token right before it expires
+      return (t && t.token && t.exp > Date.now() + 5 * 60 * 1000) ? t.token : null;
+    } catch { return null; }
+  }
+  function setCachedToken(token) {
+    try {
+      // Google access tokens last 1 hour; cache for 55 min
+      localStorage.setItem(TOKEN_KEY, JSON.stringify({ token, exp: Date.now() + 55 * 60 * 1000 }));
+    } catch {}
+  }
 
   let tokenClient = null;
-  // silent=true: use prompt:'none' (no popup, fails fast if interaction needed)
-  // silent=false: use prompt:'' (shows account picker if required)
+  // silent=true: return cached token if available; skip popup entirely
+  // silent=false: full OAuth flow (may show account picker)
   // hint: pre-selects the last-used Google account so the user doesn't have to pick every time
   function getToken(silent = false) {
+    // Silent path: return cached token or fail immediately — no popup ever
+    if (silent) {
+      const cached = getCachedToken();
+      return cached ? Promise.resolve(cached) : Promise.reject(new Error('No token'));
+    }
+    // Interactive path: full OAuth flow (requires user gesture)
     return new Promise((resolve, reject) => {
       const hint = getHint();
-      // Rebuild client when hint changes (e.g., after first login stores email)
       if (!tokenClient || tokenClient._hint !== hint) {
         tokenClient = google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE.clientId, scope: GOOGLE.scopes, callback: () => {},
@@ -2069,7 +2548,7 @@
       }
       tokenClient.callback = async (resp) => {
         if (resp && resp.access_token) {
-          // Cache the account email as a hint for next time
+          setCachedToken(resp.access_token);
           if (!hint) {
             fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
               headers: { Authorization: 'Bearer ' + resp.access_token },
@@ -2081,7 +2560,8 @@
         }
       };
       tokenClient.error_callback = (err) => reject(new Error(err && err.type || 'OAuth error'));
-      tokenClient.requestAccessToken({ prompt: silent ? 'none' : '' });
+      // prompt:'' lets GIS use a background iframe when possible; shows picker only if needed
+      tokenClient.requestAccessToken({ prompt: '' });
     });
   }
 
@@ -2165,6 +2645,7 @@
     const idx = {
       item: ci('Item'), amount: ci('Amount'), bottle: ci('Bottle Size'),
       logged: ci('Logged On'), dose: ci('Daily Dose'), type: ci('Type'),
+      from1: ci('From 1'), from2: ci('From 2'),
     };
 
     // collect all rows per item
@@ -2174,10 +2655,10 @@
       const name = norm(r[idx.item]);
       if (!name || name.toLowerCase() === 'summary') continue;
       const key = name.toLowerCase();
-      // default to Reconcile when no Type column exists (backward-compatible)
-      const type = idx.type >= 0 ? (norm(r[idx.type]) || 'Reconcile') : 'Reconcile';
+      // default to Reset when no Type column exists (backward-compatible)
+      const type = idx.type >= 0 ? (norm(r[idx.type]) || 'Reset') : 'Reset';
       const loggedDate = idx.logged >= 0 ? parseSheetDate(norm(r[idx.logged])) : null;
-      if (!groups[key]) groups[key] = { name, recs: [] };
+      if (!groups[key]) groups[key] = { name, froms: [idx.from1 >= 0 ? norm(r[idx.from1]) : '', idx.from2 >= 0 ? norm(r[idx.from2]) : ''].filter(Boolean), recs: [] };
       groups[key].recs.push({
         type,
         loggedDate,
@@ -2190,17 +2671,18 @@
     // resolve each item to a single effective snapshot for calc()
     const map = {};
     for (const [key, { name, recs }] of Object.entries(groups)) {
-      // most recent Reconcile by Logged On date
+      // most recent Reset by Logged On date
+      const isAdditive = (t) => { const l = t.toLowerCase(); return l === 'ordered' || l === 'received'; };
       const reconciles = recs
-        .filter((r) => r.loggedDate && r.type.toLowerCase() !== 'adjustment')
+        .filter((r) => r.loggedDate && !isAdditive(r.type))
         .sort((a, b) => b.loggedDate - a.loggedDate);
       if (!reconciles.length) continue;
       const rec = reconciles[0];
 
-      // Adjustments on or after the reconcile date are additive to amount;
-      // earlier ones are superseded by the reconcile and ignored.
+      // Ordered/Received rows on or after the reset date are additive to amount;
+      // earlier ones are superseded by the reset and ignored.
       const adjSum = recs
-        .filter((r) => r.type.toLowerCase() === 'adjustment'
+        .filter((r) => isAdditive(r.type)
                     && r.loggedDate && r.loggedDate >= rec.loggedDate)
         .reduce((s, r) => s + r.amount, 0);
 
@@ -2209,7 +2691,7 @@
         + String(d.getMonth() + 1).padStart(2, '0') + '-'
         + String(d.getDate()).padStart(2, '0');
 
-      map[key] = { name, amount: rec.amount + adjSum, bottleSize: rec.bottleSize, dose: rec.dose, loggedOn };
+      map[key] = { name, amount: rec.amount + adjSum, bottleSize: rec.bottleSize, dose: rec.dose, loggedOn, froms: groups[key].froms || [] };
     }
     return map;
   }
@@ -2248,16 +2730,12 @@
     }
   }
 
-  function refreshLabels() {
-    const file = getCachedFile();
-    if (connectBtn) connectBtn.textContent = file ? 'Refresh Inventory' : 'Connect Inventory';
-    if (changeBtn) changeBtn.hidden = !file;
-    if (file) { const el = statusEl(); if (el && !el.classList.contains('ok') && !el.classList.contains('err')) setStatus('Inventory: ' + file.name + ' (click Refresh)'); }
-  }
+  function refreshLabels() {}
 
-  if (connectBtn) connectBtn.addEventListener('click', () => run(false));
-  if (changeBtn) changeBtn.addEventListener('click', () => run(true));
-  refreshLabels();
+  if (selectBtn) selectBtn.addEventListener('click', () => run(true));
+
+  const refreshInvBtn = document.getElementById('refresh-inv-btn');
+  if (refreshInvBtn) refreshInvBtn.addEventListener('click', () => run(false));
 
   // auto-refresh Inventory silently on board load — no popups, no error display
   document.addEventListener('boardReady', () => {

@@ -1,0 +1,1 @@
+* YNAB Category Group = "Health"* Inventory sheet = "Inventory"* "Out Soon" days = 10* "Restock" flag = 45

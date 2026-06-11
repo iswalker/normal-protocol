@@ -109,7 +109,23 @@ try {
     throw err;
   });
   await page.waitForFunction(() => document.fonts && document.fonts.status === 'loaded').catch(() => {});
-  await page.waitForTimeout(300); // let recalc settle
+
+  // Inject Inventory data so run-out dates render — enables visual inspection of date alignment
+  await page.evaluate(() => {
+    if (!window.SupplementBoard || !window.SupplementBoard.applyInventory) return;
+    window.SupplementBoard.applyInventory({
+      'atp':                { name: 'ATP',                amount: 110, dose: 11, bottleSize: 120, loggedOn: '2026-06-04' },
+      'drainage activator': { name: 'Drainage Activator', amount: 62,  dose: 6,  bottleSize: 120, loggedOn: '2026-06-04' },
+      'para 2':             { name: 'Para 2',             amount: 65,  dose: 8,  bottleSize: 120, loggedOn: '2026-06-04' },
+      'serratia':           { name: 'Serratia',           amount: 9,   dose: 1,  bottleSize: 180, loggedOn: '2026-06-04' },
+      'lymphactiv':         { name: 'LymphActiv',         amount: 40,  dose: 2,  bottleSize: 60,  loggedOn: '2026-06-04' },
+      'biotoxin':           { name: 'BioToxin',           amount: 53,  dose: 4,  bottleSize: 120, loggedOn: '2026-06-04' },
+      'para 1':             { name: 'Para 1',             amount: 151, dose: 4,  bottleSize: 120, loggedOn: '2026-06-04' },
+      'brain':              { name: 'Brain',              amount: 105, dose: 2,  bottleSize: 180, loggedOn: '2026-05-29' },
+      'thymus':             { name: 'Thymus',             amount: 249, dose: 3,  bottleSize: 180, loggedOn: '2026-05-29' },
+    });
+  });
+  await page.waitForTimeout(400); // let dates recalc and render
 
   const months = page.locator('#board .month');
   check('renders 3 month columns', (await months.count()) === 3,
