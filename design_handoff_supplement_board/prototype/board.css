@@ -189,6 +189,60 @@ body::-webkit-scrollbar-thumb {
   color: var(--accent-deep); text-align: right; padding-left: 4px;
 }
 
+/* ── shipment stage toggle ──────────────────────────────────────────── */
+.ship-stage {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  flex: none;
+}
+.stage-btn {
+  font: 500 10.5px/1 var(--font-ui);
+  padding: 4px 8px;
+  background: var(--paper);
+  color: var(--ink-3);
+  border: none;
+  border-left: 1px solid var(--line);
+  cursor: pointer;
+  transition: background .1s, color .1s;
+  white-space: nowrap;
+}
+.stage-btn:first-child { border-left: none; }
+.stage-btn:hover:not(.active) { background: var(--accent-tint); color: var(--ink-2); }
+.stage-btn.active { background: var(--ink); color: #fff; }
+
+/* ── locked shipment (any non-null stage) ───────────────────────────── */
+.shipment.is-locked > .ship-head {
+  background: #f3f4f4;
+  border-bottom-color: #d4d8d8;
+}
+.shipment.is-locked > .ship-head .truck {
+  background: #eaecec;
+  border-color: #d4d8d8;
+  color: #8a9798;
+}
+.shipment.is-locked > .ship-head > .block-grip { pointer-events: none; opacity: 0.3; }
+.shipment.is-locked .ship-body .card-grip { pointer-events: none; opacity: 0.3; }
+.shipment.is-locked .ship-body input[disabled] {
+  background: transparent;
+  opacity: 0.45;
+  cursor: default;
+}
+.shipment.is-locked .ship-body .incl-toggle[disabled] {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+.shipment.is-locked .ship-foot { display: none; }
+
+/* Divider above the first locked shipment — separates pending from settled */
+.month-list > *:not(.shipment.is-locked) + .shipment.is-locked {
+  margin-top: 14px;
+  border-top-width: 2px;
+  border-top-color: #b8bfbf;
+}
+
 .ship-body {
   padding: 9px; display: flex; flex-direction: column; gap: 9px;
   min-height: 30px;

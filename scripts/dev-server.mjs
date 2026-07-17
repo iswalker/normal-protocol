@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import * as orders from '../functions/api/orders.js';
 import * as intakes from '../functions/api/intakes.js';
 import * as suppliers from '../functions/api/suppliers.js';
+import * as inventory from '../functions/api/inventory.js';
 
 const ROOT = normalize(join(fileURLToPath(import.meta.url), '..', '..'));
 const PORT = Number(process.env.PORT) || 8788;
@@ -27,6 +28,7 @@ const ROUTES = {
   '/api/orders': { GET: orders.onRequestGet, PUT: orders.onRequestPut },
   '/api/intakes': { GET: intakes.onRequestGet },
   '/api/suppliers': { GET: suppliers.onRequestGet },
+  '/api/inventory': { GET: inventory.onRequestGet, POST: inventory.onRequestPost, PATCH: inventory.onRequestPatch, DELETE: inventory.onRequestDelete },
 };
 
 async function readBody(req) {
@@ -42,7 +44,7 @@ const server = createServer(async (req, res) => {
       const handler = route[req.method];
       if (!handler) { res.writeHead(405); res.end(); return; }
       const buf = await readBody(req);
-      const request = { json: async () => JSON.parse(buf.toString('utf8') || '{}'), text: async () => buf.toString('utf8') };
+      const request = { url: `http://localhost:${PORT}${req.url}`, json: async () => JSON.parse(buf.toString('utf8') || '{}'), text: async () => buf.toString('utf8') };
       const r = await handler({ env, request, params: {} });
       const body = await r.text();
       res.writeHead(r.status, { 'content-type': r.headers.get('content-type') || 'application/json' });

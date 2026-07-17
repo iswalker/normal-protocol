@@ -147,7 +147,7 @@
     tbody tr:hover { background: var(--cream); }
 
     tbody td {
-      padding: 12px 16px;
+      padding: 5px 16px;
       vertical-align: middle;
     }
 
@@ -311,8 +311,10 @@
 
     /* right side of the top bar — board-only Inventory controls */
     .header-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
-    .board-controls { display: none; align-items: center; gap: 10px; }
-    .board-controls.show { display: flex; }
+    .board-controls, .inv-controls { display: none; align-items: center; gap: 10px; }
+    .board-controls.show, .inv-controls.show { display: flex; }
+    .inv-soon-btn { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #e08a3c; color: #e08a3c; background: transparent; cursor: pointer; }
+    .inv-soon-btn.active { background: #e08a3c; color: #fff; }
     /* settings gear popout */
     .settings-wrap { position: relative; }
     .settings-btn {
@@ -372,6 +374,48 @@
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
+
+    /* ── Inventory tab ── */
+    #tab-inventory { padding-bottom: 20px; height: calc(100vh - 48px); overflow: auto; }
+    #tab-inventory .table-wrap { overflow: visible; }
+    #inv-table thead tr:first-child th { position: sticky; top: 0; z-index: 10; background: var(--cream); }
+    #inv-table .inv-filters th { position: sticky; top: 40px; z-index: 10; background: var(--cream); }
+
+    #inv-table td { font-size: 13px; }
+    #inv-table .inv-name { font-weight: 500; }
+    #inv-table .inv-onhand {
+      font-variant-numeric: tabular-nums; cursor: pointer;
+      border-radius: 4px; transition: background 0.12s;
+    }
+    #inv-table .inv-onhand:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    #inv-table .inv-bottles { font-variant-numeric: tabular-nums; color: var(--ink-60); cursor: pointer; border-radius: 4px; transition: background 0.12s; white-space: nowrap; }
+    #inv-table .inv-bottles:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    #inv-table .inv-num { font-variant-numeric: tabular-nums; color: var(--ink-60); }
+    #inv-table .inv-runout { font-size: 12px; white-space: nowrap; }
+    .inv-bars { display: inline-flex; gap: 1px; align-items: center; vertical-align: middle; margin-left: 4px; }
+    .inv-bar { display: block; flex-shrink: 0; width: 10px; height: 5px; border-radius: 1px; background: #3f8f87; opacity: 0.5; }
+    #inv-table .inv-runout.inv-empty { color: #d6504a; font-weight: 600; }
+    #inv-table .inv-runout.inv-soon { color: #e08a3c; }
+    #inv-table .inv-no-data { color: var(--ink-60); }
+    #inv-table .inv-supplier { font-size: 12px; color: var(--ink-60); }
+    #inv-table .inv-del-btn { background: none; border: none; cursor: pointer; color: var(--ink-60); font-size: 14px; padding: 2px 4px; border-radius: 4px; opacity: 0; transition: opacity 0.1s, color 0.1s; line-height: 1; }
+    #inv-table tr:hover .inv-del-btn { opacity: 1; }
+    #inv-table .inv-del-btn:hover { color: #d6504a; }
+    #inv-table .inv-filters th { padding: 3px 8px 6px; }
+    #inv-table .inv-filters input[type=search] {
+      width: 100%; box-sizing: border-box; padding: 3px 6px;
+      border: 1px solid var(--border); border-radius: 4px;
+      font-size: 12px; font-family: inherit;
+      background: var(--surface); color: var(--ink);
+    }
+    #inv-table .inv-filters input[type=search]:focus { outline: none; border-color: var(--teal); }
+    #inv-table .inv-filters input[type=search]::-webkit-search-cancel-button { cursor: pointer; }
+
+    .inv-edit-input {
+      width: 72px; padding: 3px 6px; border: 1.5px solid var(--teal);
+      border-radius: 4px; font-size: 13px; font-family: inherit;
+      font-variant-numeric: tabular-nums; outline: none;
+    }
   </style>
 
   <!-- ── Next Orders styles (compact layout, scoped to #tab-board) ── -->
@@ -843,6 +887,55 @@
       position: static; width: 18px; height: 18px; opacity: .4; flex: none;
     }
     #tab-board .board.layout-compact .card:hover .card-end .del { opacity: 1; }
+
+    /* ── shipment stage toggle ── */
+    #tab-board .ship-stage {
+      display: flex; border: 1px solid var(--line); border-radius: 6px;
+      overflow: hidden; flex: none;
+    }
+    #tab-board .stage-btn {
+      font: 500 10.5px/1 var(--font-ui); padding: 4px 8px;
+      background: var(--paper); color: var(--ink-3);
+      border: none; border-left: 1px solid var(--line);
+      cursor: pointer; transition: background .1s, color .1s; white-space: nowrap;
+    }
+    #tab-board .stage-btn:first-child { border-left: none; }
+    #tab-board .stage-btn:hover:not(.active) { background: var(--accent-tint); color: var(--ink-2); }
+    #tab-board .stage-btn.active { background: var(--b-ink); color: #fff; }
+
+    /* ── locked shipment (any non-null stage) ── */
+    #tab-board .shipment.is-locked {
+      background: #f3f4f4; border-color: #d4d8d8;
+    }
+    #tab-board .shipment.is-locked > .ship-head {
+      background: transparent;
+    }
+    #tab-board .shipment.is-locked > .ship-head .truck {
+      background: #eaecec; border-color: #d4d8d8; color: #8a9798;
+    }
+    #tab-board .shipment.is-locked > .ship-head > .truck.block-grip { pointer-events: none; opacity: 0.4; }
+    #tab-board .shipment.is-locked .ship-body .card-grip { pointer-events: none; opacity: 0.3; }
+    #tab-board .shipment.is-locked .ship-body input[disabled] {
+      background: transparent; opacity: 0.45; cursor: default;
+    }
+    #tab-board .shipment.is-locked .ship-body .incl-toggle[disabled] {
+      opacity: 0.35; cursor: default; pointer-events: none;
+    }
+    #tab-board .shipment.is-locked .ship-add { display: none; }
+
+    /* Divider above the first locked shipment */
+    #tab-board .month-list > *:not(.shipment.is-locked) + .shipment.is-locked {
+      margin-top: 14px;
+      border-top-width: 2px;
+      border-top-color: #b8bfbf;
+    }
+
+    /* compact mode: hide notes/min-date on locked ships so the toggle fits */
+    #tab-board .board.layout-compact .shipment.is-locked .ship-notes { display: none; }
+    #tab-board .board.layout-compact .shipment.is-locked .ship-min-date { display: none; }
+    /* in compact, unlocked ships: stage toggle sits between add-btn and del */
+    #tab-board .board.layout-compact .ship-stage { font-size: 9.5px; }
+    #tab-board .board.layout-compact .stage-btn { padding: 3px 5px; font-size: 9.5px; }
   </style>
 </head>
 <body>
@@ -855,8 +948,13 @@
   <nav class="tabs">
     <button class="tab-btn active" data-tab="intakes">Intakes</button>
     <button class="tab-btn" data-tab="board">Next Orders</button>
+    <button class="tab-btn" data-tab="inventory">Inventory</button>
   </nav>
   <div class="header-right">
+    <span class="inv-controls" id="inv-controls">
+      <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
+      <button class="refresh-inv-btn" id="inv-refresh-btn">↻ Refresh</button>
+    </span>
     <span class="board-controls" id="board-controls">
       <button class="refresh-inv-btn" id="refresh-inv-btn">↻ Refresh Inventory</button>
       <div class="settings-wrap">
@@ -900,6 +998,40 @@
 
 <section id="tab-board" class="tab-panel">
   <div id="board" class="board layout-compact"></div>
+</section>
+
+<section id="tab-inventory" class="tab-panel">
+  <div class="table-wrap" style="margin: 20px 20px 20px;">
+    <table id="inv-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Est. Run-Out</th>
+          <th>Bottles</th>
+          <th>On Hand</th>
+          <th>Bottle Size</th>
+          <th>Dose / Day</th>
+          <th>Lasts For</th>
+          <th>Last Reset</th>
+          <th>Annual Sale</th>
+          <th>Off-Cycle</th>
+          <th>Anyday</th>
+          <th></th>
+        </tr>
+        <tr class="inv-filters">
+          <th><input id="inv-filter-item" type="search" placeholder="Filter…" /></th>
+          <th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+          <th><input id="inv-filter-annual" type="search" placeholder="Filter…" /></th>
+          <th><input id="inv-filter-offcycle" type="search" placeholder="Filter…" /></th>
+          <th><input id="inv-filter-anyday" type="search" placeholder="Filter…" /></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="inv-body">
+        <tr><td colspan="12" class="loading">Open the Inventory tab to load data.</td></tr>
+      </tbody>
+    </table>
+  </div>
 </section>
 
 <script>
@@ -1128,15 +1260,17 @@
       p.classList.toggle("active", p.id === `tab-${tab}`));
     const bc = document.getElementById("board-controls");
     if (bc) bc.classList.toggle("show", tab === "board");
-    if (tab === "board" && !boardInitialized) {
+    const ic = document.getElementById("inv-controls");
+    if (ic) ic.classList.toggle("show", tab === "inventory");
+    if (!boardInitialized) {
       boardInitialized = true;
       if (window.SupplementBoard) {
         window.SupplementBoard.init();
       } else {
-        // SortableJS script still loading — retry once it has had time to settle
         setTimeout(() => window.SupplementBoard && window.SupplementBoard.init(), 500);
       }
     }
+    if (tab === "inventory") document.dispatchEvent(new CustomEvent("inventoryActivated"));
     try { localStorage.setItem(TAB_KEY, tab); } catch (e) {}
   }
   document.querySelectorAll(".tab-btn").forEach(btn =>
@@ -1145,7 +1279,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     let saved = "intakes";
     try { saved = localStorage.getItem(TAB_KEY) || "intakes"; } catch (e) {}
-    if (saved === "board") activateTab("board");
+    if (saved !== "intakes") activateTab(saved);
   });
 
   // settings gear popout toggle
@@ -1360,7 +1494,10 @@
         notes: it.notes || '',
       };
     });
-    orders.forEach((o) => { shipmentData[o.order_id] = { name: o.merchant || 'Order', notes: o.notes || '' }; });
+    orders.forEach((o) => {
+      const stage = o.status && o.status !== 'Staged' ? o.status.toLowerCase() : undefined;
+      shipmentData[o.order_id] = { name: o.merchant || 'Order', notes: o.notes || '', ...(stage ? { stage } : {}) };
+    });
 
     structure = months.map((m) => {
       const blocks = [];
@@ -1408,6 +1545,21 @@
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+
+  function applyShipmentStage(shipEl, stage) {
+    const locked = stage != null;
+    shipEl.classList.toggle('is-locked', locked);
+    shipEl.querySelectorAll('.stage-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.stage === stage);
+    });
+    shipEl.querySelectorAll('.ship-body input[data-field="price"], .ship-body input[data-field="qty"]').forEach((inp) => {
+      inp.disabled = locked;
+    });
+    shipEl.querySelectorAll('.ship-body .incl-toggle').forEach((btn) => {
+      btn.disabled = locked;
+    });
+  }
+
   function isoToday() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1473,9 +1625,14 @@
 
   function shipmentHTML(block) {
     const s = STATE.shipmentData[block.id] || { name: 'Shipment' };
+    const stage = s.stage || null;
+    const locked = stage != null;
     const cards = block.cards.map(cardHTML).join('');
+    const stageBtns = ['ordered', 'entered', 'received']
+      .map((st) => `<button class="stage-btn${stage === st ? ' active' : ''}" data-act="set-stage" data-stage="${st}">${st[0].toUpperCase() + st.slice(1)}</button>`)
+      .join('');
     return `
-    <div class="shipment" data-id="${block.id}" data-kind="shipment">
+    <div class="shipment${locked ? ' is-locked' : ''}" data-id="${block.id}" data-kind="shipment">
       <div class="ship-head">
         <span class="truck block-grip" title="Drag shipment">${ICON.truck}</span>
         <div class="ship-id">
@@ -1485,6 +1642,7 @@
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <span class="ship-min-date"></span>
         <div class="ship-total"><span class="amt">$0.00</span></div>
+        <div class="ship-stage">${stageBtns}</div>
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
         <button class="del" data-act="del-ship" title="Remove shipment">×</button>
       </div>
@@ -1531,10 +1689,26 @@
     </div>`;
   }
 
+  const STAGE_PRI = { ordered: 0, entered: 1, received: 2 };
+
   function render() {
     board.innerHTML = structure.map(monthHTML).join('');
     board.querySelectorAll('.month-list').forEach(makeMonthSortable);
     board.querySelectorAll('.ship-body').forEach(makeShipSortable);
+    board.querySelectorAll('.shipment').forEach((shipEl) => {
+      const sd = STATE.shipmentData[shipEl.dataset.id];
+      if (sd && sd.stage) applyShipmentStage(shipEl, sd.stage);
+    });
+    // Sort locked shipments into stage order: Ordered → Entered → Received
+    board.querySelectorAll('.month-list').forEach((list) => {
+      [...list.querySelectorAll(':scope > .shipment.is-locked')]
+        .sort((a, b) => {
+          const sa = (STATE.shipmentData[a.dataset.id] || {}).stage || '';
+          const sb = (STATE.shipmentData[b.dataset.id] || {}).stage || '';
+          return (STAGE_PRI[sa] ?? 0) - (STAGE_PRI[sb] ?? 0);
+        })
+        .forEach((el) => list.appendChild(el));
+    });
     recalcAll();
     observeSentinels();
   }
@@ -1599,7 +1773,18 @@
   // ── totals ──
   function monthSpent(monthEl) {
     const name = monthEl.querySelector('.mname')?.textContent.trim();
-    return SPENT_BY_MONTH[name] || 0;
+    let base = SPENT_BY_MONTH[name] || 0;
+    // Add ordered shipment totals (Entered/Received are excluded — user has entered in YNAB)
+    monthEl.querySelectorAll('.month-list > .shipment').forEach((shipEl) => {
+      const sd = STATE.shipmentData[shipEl.dataset.id] || {};
+      if (sd.stage === 'ordered') {
+        shipEl.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
+          const c = STATE.cardData[cardEl.dataset.id];
+          if (c) base += (Number(c.price) || 0) * (Number(c.qty) || 0);
+        });
+      }
+    });
+    return base;
   }
 
   // ── carry-forward: each subsequent listing of the same supplement starts
@@ -1610,6 +1795,10 @@
         amount: c._effectiveDays * Number(c.dose),
         loggedOn: isoToday(),
       }));
+    }
+    // Locked shipment cards: show run-out as of before the order was placed
+    if (c._preOrderAmount !== undefined && c.dose && c.loggedOn) {
+      return SB.calc(Object.assign({}, c, { amount: c._preOrderAmount }));
     }
     return SB.calc(c);
   }
@@ -1622,11 +1811,24 @@
       const hasInv = !c.untracked && !!c.dose && !!c.loggedOn;
       if (!hasInv) { delete c._effectiveDays; return; }
       const key = c.name.trim().toLowerCase();
-      if (seen.has(key)) c._effectiveDays = seen.get(key).daysLeft;
-      else delete c._effectiveDays;
-      if (c.includeInMonthTotal) {
-        const r = calcForCard(c);
-        seen.set(key, { daysLeft: r.newDaysLeft, runOut: r.newRunOut });
+      const inLocked = !!cardEl.closest('.shipment.is-locked');
+      if (inLocked) {
+        // Show pre-order run-out — don't absorb carry-forward; use _preOrderAmount in calcForCard.
+        // Still advance 'seen' so future unlocked orders project from the correct post-order baseline.
+        delete c._effectiveDays;
+        if (c.includeInMonthTotal) {
+          // c.amount = full invMap amount (includes this order) → curDaysLeft is the post-order baseline
+          const r = SB.calc(c);
+          seen.set(key, { daysLeft: r.curDaysLeft, runOut: r.curRunOut });
+        }
+      } else {
+        delete c._preOrderAmount; // clear stale value if shipment was unlocked
+        if (seen.has(key)) c._effectiveDays = seen.get(key).daysLeft;
+        else delete c._effectiveDays;
+        if (c.includeInMonthTotal) {
+          const r = calcForCard(c);
+          seen.set(key, { daysLeft: r.newDaysLeft, runOut: r.newRunOut });
+        }
       }
     });
     // expose final projected state for the item picker
@@ -1642,15 +1844,20 @@
 
       [...list.children].forEach((node) => {
         if (node.classList.contains('shipment')) {
+          const shipLocked = !!(STATE.shipmentData[node.dataset.id] || {}).stage;
           let sTot = 0, sCount = 0, minRunOut = null;
           node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
             const cost = updateCard(cardEl);
             const c = STATE.cardData[cardEl.dataset.id];
             const inc = c && c.includeInMonthTotal;
-            maxItems += cost;
-            if (inc) { sTot += cost; plannedItems += cost; sCount++; }
+            if (!shipLocked) {
+              maxItems += cost;
+              if (inc) { sTot += cost; plannedItems += cost; sCount++; }
+            } else {
+              if (inc) { sTot += cost; sCount++; }
+            }
             // track min new run-out across all ordered cards (needs Inventory data)
-            if (c && c.dose && c.loggedOn) {
+            if (!shipLocked && c && c.dose && c.loggedOn) {
               const r = calcForCard(c);
               if (r.hasOrder && isFinite(r.newRunOut)) {
                 if (!minRunOut || r.newRunOut < minRunOut) minRunOut = r.newRunOut;
@@ -1661,7 +1868,7 @@
           node.querySelector('.scount').textContent = sCount;
           const md = node.querySelector('.ship-min-date');
           if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
-          shipSum += sTot;
+          if ((STATE.shipmentData[node.dataset.id] || {}).stage !== 'received') shipSum += sTot;
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
           const cost = updateCard(node);
@@ -1679,8 +1886,23 @@
       monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
     });
+    updateMonthVisibility();
   }
   window.SBoard.recalc = recalcAll;
+
+  function updateMonthVisibility() {
+    const now = SB.today();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth(); // 0-indexed
+    board.querySelectorAll('.month').forEach((monthEl) => {
+      const name = monthEl.querySelector('.mname')?.textContent.trim() || '';
+      const year = parseInt(monthEl.querySelector('.msub')?.textContent.trim(), 10) || 0;
+      const mIdx = MONTH_NAMES.indexOf(name);
+      const isPast = year < curYear || (year === curYear && mIdx < curMonth);
+      const isEmpty = monthEl.querySelector('.month-list').children.length === 0;
+      monthEl.style.display = isPast && isEmpty ? 'none' : '';
+    });
+  }
 
   // ── persistence: serialize the DOM to the /api/orders shape and PUT it ──
   function pushItem(items, id, orderId, month, blockPos, itemPos) {
@@ -1715,7 +1937,8 @@
         if (n.classList.contains('shipment')) {
           const oid = n.dataset.id;
           const s = STATE.shipmentData[oid] || {};
-          orders.push({ order_id: oid, month, merchant: s.name || '', position: blockPos, status: 'Staged', notes: s.notes || '' });
+          const stageStatus = s.stage ? (s.stage[0].toUpperCase() + s.stage.slice(1)) : 'Staged';
+          orders.push({ order_id: oid, month, merchant: s.name || '', position: blockPos, status: stageStatus, notes: s.notes || '' });
           [...n.querySelectorAll(':scope .ship-body > .card')].forEach((cardEl, ci) => {
             pushItem(items, cardEl.dataset.id, oid, month, blockPos, ci + 1);
           });
@@ -1810,21 +2033,24 @@
     let shipSum = 0, plannedItems = 0, maxItems = 0;
     [...list.children].forEach((n) => {
       if (n.classList.contains('shipment')) {
+        const shipLocked = !!(STATE.shipmentData[n.dataset.id] || {}).stage;
         let sTot = 0, minRunOut = null;
         n.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           const c = STATE.cardData[cardEl.dataset.id];
           const r = c ? calcForCard(c) : null;
           const cost = r ? r.cost : 0;
-          maxItems += cost;
-          if (c && c.includeInMonthTotal) { sTot += cost; plannedItems += cost; }
-          if (c && c.dose && c.loggedOn && r && r.hasOrder && isFinite(r.newRunOut)) {
-            if (!minRunOut || r.newRunOut < minRunOut) minRunOut = r.newRunOut;
-          }
+          if (!shipLocked) {
+            maxItems += cost;
+            if (c && c.includeInMonthTotal) { sTot += cost; plannedItems += cost; }
+            if (c && c.dose && c.loggedOn && r && r.hasOrder && isFinite(r.newRunOut)) {
+              if (!minRunOut || r.newRunOut < minRunOut) minRunOut = r.newRunOut;
+            }
+          } else if (c && c.includeInMonthTotal) { sTot += cost; }
         });
         n.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
         const md = n.querySelector('.ship-min-date');
         if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
-        shipSum += sTot;
+        if ((STATE.shipmentData[n.dataset.id] || {}).stage !== 'received') shipSum += sTot;
       } else if (n.classList.contains('card')) {
         const c = STATE.cardData[n.dataset.id];
         const cost = c ? calcForCard(c).cost : 0;
@@ -1845,6 +2071,43 @@
     const act = e.target.closest('[data-act]');
     if (!act) return;
     const a = act.dataset.act;
+
+    if (a === 'set-stage') {
+      const shipEl = act.closest('.shipment');
+      const id = shipEl.dataset.id;
+      STATE.shipmentData[id] = STATE.shipmentData[id] || {};
+      const sd = STATE.shipmentData[id];
+      const oldStage = sd.stage || null;
+      const clicked = act.dataset.stage;
+      const newStage = clicked === oldStage ? null : clicked;
+      const monthEl = shipEl.closest('.month');
+
+      if (newStage == null) delete sd.stage; else sd.stage = newStage;
+
+      if (newStage != null) {
+        const list = monthEl.querySelector('.month-list');
+        const myPri = STAGE_PRI[newStage] ?? 0;
+        // Find first locked sibling whose stage is later than ours and insert before it
+        const anchor = [...list.querySelectorAll(':scope > .shipment.is-locked')]
+          .filter((el) => el !== shipEl)
+          .find((el) => (STAGE_PRI[(STATE.shipmentData[el.dataset.id] || {}).stage] ?? 0) > myPri);
+        if (anchor) list.insertBefore(shipEl, anchor);
+        else list.appendChild(shipEl);
+      }
+
+      applyShipmentStage(shipEl, newStage);
+      recalcAll();
+      persist();
+
+      if (window.InventoryWriter && newStage != null) {
+        const invCards = [...shipEl.querySelectorAll('.ship-body > .card')].map((c) => {
+          const d = STATE.cardData[c.dataset.id] || {};
+          return { name: d.name || '', bottleSize: d.bottleSize || 0, qty: Number(d.qty) || 0 };
+        });
+        window.InventoryWriter.writeShipment({ orderId: id, merchantName: sd.name || '', cards: invCards, newStage, oldStage });
+      }
+      return;
+    }
 
     if (a === 'toggle-include') {
       e.preventDefault();
@@ -1868,17 +2131,18 @@
       return;
     }
     if (a === 'add-card-ship') {
+      if (act.closest('.shipment').classList.contains('is-locked')) return;
       if (activePicker) { closeItemPicker(); return; }
       const shipEl = act.closest('.shipment');
       const body = shipEl.querySelector('.ship-body');
       const shipName = (STATE.shipmentData[shipEl.dataset.id]?.name || '').trim();
-      showItemPicker(act, (id) => { body.appendChild(el(cardHTML(id))); finishAdd(body.lastElementChild); }, shipName || null);
+      showItemPicker(act, (id) => { const c = el(cardHTML(id)); body.prepend(c); finishAdd(c); }, shipName || null);
       return;
     }
     if (a === 'add-card-month') {
       if (activePicker) { closeItemPicker(); return; }
       const list = act.closest('.month').querySelector('.month-list');
-      showItemPicker(act, (id) => { list.appendChild(el(cardHTML(id))); finishAdd(list.lastElementChild); });
+      showItemPicker(act, (id) => { const c = el(cardHTML(id)); list.prepend(c); finishAdd(c); });
       return;
     }
     if (a === 'add-ship') {
@@ -1886,7 +2150,7 @@
       const sid = uid('s_');
       STATE.shipmentData[sid] = { name: 'New merchant', notes: '' };
       const node = el(shipmentHTML({ type: 'shipment', id: sid, cards: [] }));
-      list.appendChild(node);
+      list.prepend(node);
       makeShipSortable(node.querySelector('.ship-body'));
       recalcAll(); persist();
       const nm = node.querySelector('.ship-name');
@@ -1912,9 +2176,6 @@
   }
   function finishAdd(node) {
     recalcAll(); persist();
-    // focus the name only when Inventory didn't provide one (free-text fallback)
-    const nm = node.querySelector('.card-name');
-    if (nm) nm.focus();
   }
 
   // ── Inventory picklist shown when "+ Item" is clicked ──────────────────
@@ -2054,6 +2315,7 @@
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { closeItemPicker(); return; }
       if (e.key === 'Enter') {
+        e.preventDefault(); // suppress keypress on the contenteditable card-name that focus lands on
         const first = list.querySelector('.inv-picker-opt');
         if (first) commit(first.dataset.name);
         else if (input.value.trim()) commit(input.value.trim());
@@ -2161,7 +2423,7 @@
     const sid = uid('s_');
     STATE.shipmentData[sid] = { name: shipName, notes: '' };
     const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: [] }));
-    monthEl.querySelector('.month-list').append(newEl);
+    monthEl.querySelector('.month-list').prepend(newEl);
     makeShipSortable(newEl.querySelector('.ship-body'));
     return newEl.querySelector('.ship-body');
   }
@@ -2197,17 +2459,17 @@
         menu.appendChild(ctxItem('Move to End', isLast, () => { container.append(cardEl); recalcAll(); persist(); }));
         menu.appendChild(ctxDivider());
         menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => {
-          cardDest(allMonths[monthIdx + 1]).append(cardEl); recalcAll(); persist();
+          cardDest(allMonths[monthIdx + 1]).prepend(cardEl); recalcAll(); persist();
         }));
         menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => {
-          cardDest(allMonths[monthIdx - 1]).append(cardEl); recalcAll(); persist();
+          cardDest(allMonths[monthIdx - 1]).prepend(cardEl); recalcAll(); persist();
         }));
         menu.appendChild(ctxDivider());
         menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => {
           const newId = uid('c_');
           STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
           const newEl = el(cardHTML(newId));
-          cardDest(allMonths[monthIdx + 1]).append(newEl);
+          cardDest(allMonths[monthIdx + 1]).prepend(newEl);
           recalcAll(); persist();
         }));
       });
@@ -2226,7 +2488,9 @@
     const listChildren = [...list.children];
     const myIdx = listChildren.indexOf(shipEl);
     const isFirst = myIdx === 0;
-    const isLast = myIdx === listChildren.length - 1;
+    const firstLocked = listChildren.find((n) => n.classList.contains('shipment') && (STATE.shipmentData[n.dataset.id] || {}).stage);
+    const unlockedEnd = firstLocked ? listChildren.indexOf(firstLocked) - 1 : listChildren.length - 1;
+    const isLast = myIdx === unlockedEnd;
     const hasPrev = monthIdx > 0;
     const hasNext = monthIdx < allMonths.length - 1;
 
@@ -2235,15 +2499,17 @@
         list.prepend(shipEl); recalcAll(); persist();
       }));
       menu.appendChild(ctxItem('Move to End', isLast, () => {
-        list.append(shipEl); recalcAll(); persist();
+        if (firstLocked) list.insertBefore(shipEl, firstLocked);
+        else list.append(shipEl);
+        recalcAll(); persist();
       }));
       menu.appendChild(ctxDivider());
       menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => {
-        allMonths[monthIdx + 1].querySelector('.month-list').append(shipEl);
+        allMonths[monthIdx + 1].querySelector('.month-list').prepend(shipEl);
         recalcAll(); persist();
       }));
       menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => {
-        allMonths[monthIdx - 1].querySelector('.month-list').append(shipEl);
+        allMonths[monthIdx - 1].querySelector('.month-list').prepend(shipEl);
         recalcAll(); persist();
       }));
       menu.appendChild(ctxDivider());
@@ -2257,7 +2523,7 @@
           return newId;
         });
         const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
-        allMonths[monthIdx + 1].querySelector('.month-list').append(newEl);
+        allMonths[monthIdx + 1].querySelector('.month-list').prepend(newEl);
         makeShipSortable(newEl.querySelector('.ship-body'));
         recalcAll(); persist();
       }));
@@ -2307,7 +2573,7 @@
     // invMap: { "<name lowercased>": { amount, bottleSize, dose, loggedOn(ISO) } }
     // These are exactly calc()'s inputs, so the board's native run-out math runs.
     // Not persisted — Orders stays staging-only.
-    applyInventory(invMap) {
+    applyInventory(invMap, preOrderMap) {
       if (!STATE || !STATE.cardData) return 0;
       INV_MAP = invMap; // keep for the add-item picker
       let matched = 0;
@@ -2318,9 +2584,23 @@
           c.bottleSize = inv.bottleSize;
           c.dose = inv.dose;
           c.loggedOn = inv.loggedOn;
+          delete c._preOrderAmount; // will be re-set below for locked shipment cards
           matched++;
         }
       });
+      // Set pre-order amounts for cards inside locked shipments
+      if (preOrderMap) {
+        board.querySelectorAll('.shipment.is-locked').forEach((shipEl) => {
+          const contrib = preOrderMap[shipEl.dataset.id];
+          if (!contrib) return;
+          shipEl.querySelectorAll('.ship-body > .card').forEach((cardEl) => {
+            const c = STATE.cardData[cardEl.dataset.id];
+            if (!c) return;
+            const key = (c.name || '').trim().toLowerCase();
+            if (contrib[key] != null) c._preOrderAmount = contrib[key];
+          });
+        });
+      }
       recalcAll();
       return matched;
     },
@@ -2472,9 +2752,9 @@
 </script>
 
 <!-- ── Inventory: Google OAuth (GIS) + Drive Picker + Sheets read ──
-     The user picks their Inventory spreadsheet; the file id is cached locally.
-     We read the "Inventory" tab via the Sheets API with the user's token and
-     merge dose / Good Until / Supply Days into the board (by supplement name).
+     The user picks their Google Spreadsheet; the file id is cached locally.
+     We read the "Items" tab (static metadata: name, bottle size, dose, suppliers)
+     and combine with inventory amounts fetched from Turso /api/inventory.
      Client ID + API key are public client-side values; restrict the API key by
      HTTP referrer in the Google Cloud console. -->
 <script>
@@ -2482,10 +2762,9 @@
   const GOOGLE = {
     clientId: '590352770305-b0agcr5v4c6e38taq7271gop7lub1q7u.apps.googleusercontent.com',
     apiKey: 'AIzaSyBTCb_yIVLNUcx1M3UlOeIwQQWmH2TYT2E',
-    scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets.readonly',
+    scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets',
   };
   const FILE_KEY = 'np_inventory_file';
-
   const selectBtn = document.getElementById('select-inventory');
 
   function setStatus(text, cls) {
@@ -2596,6 +2875,56 @@
     return r.json();
   }
 
+  async function postToTurso(row) {
+    const r = await fetch('/api/inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(row),
+    });
+    if (!r.ok) throw new Error('POST /api/inventory ' + r.status);
+    return r.json();
+  }
+
+  async function patchTurso(id, body) {
+    const r = await fetch('/api/inventory?id=' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error('PATCH /api/inventory?id=' + id + ' ' + r.status);
+    return r.json();
+  }
+
+  async function writeShipment({ orderId, cards, newStage, oldStage }) {
+    if (!newStage) return;
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      if (newStage === 'received') {
+        const r = await fetch('/api/inventory?order_id=' + encodeURIComponent(orderId));
+        const existing = r.ok ? await r.json() : [];
+        const orderedRows = existing.filter((row) => (row.type || '').toLowerCase() === 'ordered');
+        if (orderedRows.length) {
+          await Promise.all(orderedRows.map((row) => patchTurso(row.id, { type: 'Received' })));
+        } else {
+          const eligible = cards.filter((c) => c.name && c.qty > 0);
+          await Promise.all(eligible.map((c) => postToTurso({
+            item: c.name, amount: (c.bottleSize || 0) * (c.qty || 0),
+            type: 'Received', logged_on: today, order_id: orderId,
+          })));
+        }
+      } else if (oldStage == null) {
+        const eligible = cards.filter((c) => c.name && c.qty > 0);
+        await Promise.all(eligible.map((c) => postToTurso({
+          item: c.name, amount: (c.bottleSize || 0) * (c.qty || 0),
+          type: 'Ordered', logged_on: today, order_id: orderId,
+        })));
+      }
+      console.log('[Inventory] Turso write done orderId=' + orderId + ' newStage=' + newStage);
+    } catch (e) {
+      console.error('[Inventory] Turso write failed:', e.message);
+    }
+  }
+
   // header row = an "Item" cell plus an inventory column
   function findHeader(rows) {
     return rows.findIndex((r) => {
@@ -2605,17 +2934,112 @@
     });
   }
 
-  async function readInventory(token, fileId) {
-    const meta = await sheetsGet(token, fileId + '?fields=sheets.properties.title');
-    const titles = (meta.sheets || []).map((s) => s.properties.title).filter(Boolean);
-    const title = titles.find((t) => t.trim().toLowerCase() === 'inventory')
-               || titles.find((t) => /inventory/i.test(t));
-    if (!title) throw new Error('No "Inventory" tab found. Tabs: ' + titles.join(', '));
-    const vals = await sheetsGet(token, fileId + '/values/' + encodeURIComponent(title) + '?majorDimension=ROWS');
+  // Used only for the one-time migration from the old "Inventory" sheet tab
+  async function readOldInventoryTab(token, fileId) {
+    const meta = await sheetsGet(token, fileId + '?fields=sheets.properties(title)');
+    const props = (meta.sheets || []).map((s) => s.properties);
+    const found = props.find((p) => p.title.trim().toLowerCase() === 'inventory')
+               || props.find((p) => /inventory/i.test(p.title));
+    if (!found) throw new Error('No "Inventory" tab found. Tabs: ' + props.map((p) => p.title).join(', '));
+    const vals = await sheetsGet(token, fileId + '/values/' + encodeURIComponent(found.title) + '?majorDimension=ROWS');
     const rows = vals.values || [];
     const hi = findHeader(rows);
-    if (hi < 0) throw new Error('The "Inventory" tab has no "Item" header row');
-    return { title, rows, hi };
+    if (hi < 0) throw new Error('Inventory tab has no recognizable header row');
+    return { title: found.title, rows, hi };
+  }
+
+  // Items tab: static metadata (name, bottle size, dose, suppliers)
+  function findItemHeader(rows) {
+    return rows.findIndex((r) => {
+      if (!r) return false;
+      const low = r.map((c) => String(c == null ? '' : c).trim().toLowerCase());
+      return low.indexOf('item') >= 0
+        && (low.indexOf('bottle size') >= 0 || low.indexOf('daily dose') >= 0
+          || low.indexOf('annual sale') >= 0 || low.indexOf('anyday') >= 0);
+    });
+  }
+
+  async function readItemSheet(token, fileId) {
+    const meta = await sheetsGet(token, fileId + '?fields=sheets.properties(title)');
+    const props = (meta.sheets || []).map((s) => s.properties);
+    const found = props.find((p) => p.title.trim().toLowerCase() === 'items')
+               || props.find((p) => /^items$/i.test(p.title));
+    if (!found) throw new Error('No "Items" tab found. Tabs: ' + props.map((p) => p.title).join(', '));
+    const vals = await sheetsGet(token, fileId + '/values/' + encodeURIComponent(found.title) + '?majorDimension=ROWS');
+    const rows = vals.values || [];
+    const hi = findItemHeader(rows);
+    if (hi < 0) throw new Error('The "Items" tab has no recognizable header row');
+    return { rows, hi };
+  }
+
+  function buildItemMap(rows, hi) {
+    const norm = (s) => String(s == null ? '' : s).trim();
+    const header = rows[hi].map((c) => norm(c).toLowerCase());
+    const ci = (n) => header.indexOf(n.toLowerCase());
+    const idx = {
+      item: ci('item'), bottle: ci('bottle size'), dose: ci('daily dose'),
+      annual: ci('annual sale'), offcycle: ci('off-cycle sale'), anyday: ci('anyday'),
+    };
+    const map = {};
+    for (let i = hi + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const name = norm(r[idx.item]);
+      if (!name || name.toLowerCase() === 'summary') continue;
+      const key = name.toLowerCase();
+      map[key] = {
+        name,
+        bottleSize: idx.bottle >= 0 ? (Number(norm(r[idx.bottle])) || 0) : 0,
+        dose: idx.dose >= 0 ? (Number(norm(r[idx.dose])) || 0) : 0,
+        annualSale: idx.annual >= 0 ? norm(r[idx.annual]) : '',
+        offCycleSale: idx.offcycle >= 0 ? norm(r[idx.offcycle]) : '',
+        anyday: idx.anyday >= 0 ? norm(r[idx.anyday]) : '',
+      };
+    }
+    return map;
+  }
+
+  function computeOnHand(invLogRows) {
+    const isAdditive = (t) => { const l = (t || '').toLowerCase(); return l === 'ordered' || l === 'received'; };
+    const groups = {};
+    for (const r of invLogRows) {
+      const key = (r.item || '').trim().toLowerCase();
+      if (!key) continue;
+      if (!groups[key]) groups[key] = { name: r.item, recs: [] };
+      groups[key].recs.push({
+        id: Number(r.id) || 0,
+        type: r.type || 'Reset', amount: Number(r.amount) || 0,
+        loggedDate: r.logged_on ? new Date(r.logged_on + 'T00:00:00') : null,
+      });
+    }
+    const amountsMap = {};
+    for (const [key, { recs }] of Object.entries(groups)) {
+      const reconciles = recs.filter((r) => r.loggedDate && !isAdditive(r.type))
+                             .sort((a, b) => b.loggedDate - a.loggedDate || b.id - a.id);
+      if (!reconciles.length) continue;
+      const rec = reconciles[0];
+      const adjSum = recs.filter((r) => (r.type || '').toLowerCase() === 'received' && r.id > rec.id)
+                         .reduce((s, r) => s + r.amount, 0);
+      const d = rec.loggedDate;
+      amountsMap[key] = {
+        amount: rec.amount + adjSum,
+        loggedOn: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'),
+      };
+    }
+    return amountsMap;
+  }
+
+  function mergeItemAndAmounts(itemMap, amountsMap) {
+    const merged = {};
+    for (const [key, item] of Object.entries(itemMap)) {
+      const amt = amountsMap[key] || {};
+      merged[key] = {
+        name: item.name, bottleSize: item.bottleSize, dose: item.dose,
+        amount: amt.amount || 0, loggedOn: amt.loggedOn || null,
+        froms: [item.annualSale, item.offCycleSale, item.anyday].filter(Boolean),
+        annualSale: item.annualSale, offCycleSale: item.offCycleSale, anyday: item.anyday,
+      };
+    }
+    return merged;
   }
 
   function parseSheetDate(s) {
@@ -2636,68 +3060,81 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
-  // Inventory columns: Item | Amount | Bottle Size | Logged On | Daily Dose | Run Out
-  // (Expected Runway / Run Out are the sheet's own derived columns; the board recomputes.)
-  function buildInvMap(rows, hi) {
+  // Builds { orderId: { itemKey: amountBeforeThisOrder } } from Turso inventory_log rows.
+  // Passed to applyInventory so locked shipment cards can show their pre-order run-out.
+  function buildPreOrderMapFromLog(invLogRows) {
+    const isAdditive = (t) => { const l = (t || '').toLowerCase(); return l === 'ordered' || l === 'received'; };
+    const recs = invLogRows
+      .map((r) => ({
+        itemKey: (r.item || '').trim().toLowerCase(),
+        type: r.type || 'Reset',
+        loggedDate: r.logged_on ? new Date(r.logged_on + 'T00:00:00') : null,
+        amount: Number(r.amount) || 0,
+        orderId: r.order_id || null,
+      }))
+      .filter((r) => r.itemKey);
+    const orderIds = [...new Set(recs.filter((r) => r.orderId && isAdditive(r.type)).map((r) => r.orderId))];
+    const preOrderMap = {};
+    orderIds.forEach((orderId) => {
+      const orderRecs = recs.filter((r) => r.orderId === orderId && isAdditive(r.type));
+      if (!orderRecs.length) return;
+      const orderDate = orderRecs[0].loggedDate;
+      if (!orderDate) return;
+      preOrderMap[orderId] = {};
+      [...new Set(orderRecs.map((r) => r.itemKey))].forEach((itemKey) => {
+        const itemRecs = recs.filter((r) => r.itemKey === itemKey);
+        const resets = itemRecs
+          .filter((r) => !isAdditive(r.type) && r.loggedDate && r.loggedDate <= orderDate)
+          .sort((a, b) => b.loggedDate - a.loggedDate);
+        if (!resets.length) return;
+        const base = resets[0];
+        const adj = itemRecs
+          .filter((r) => (r.type || '').toLowerCase() === 'received' && r.id > base.id
+                      && r.loggedDate && r.loggedDate < orderDate)
+          .reduce((s, r) => s + r.amount, 0);
+        preOrderMap[orderId][itemKey] = base.amount + adj;
+      });
+    });
+    return preOrderMap;
+  }
+
+  async function migrateFromSheet() {
+    const file = getCachedFile();
+    if (!file) throw new Error('Select a spreadsheet first (Settings → Select Inventory Sheet)');
+    let token = getCachedToken();
+    if (!token) token = await getToken(false);
+    const { rows, hi } = await readOldInventoryTab(token, file.id);
     const norm = (s) => String(s == null ? '' : s).trim();
     const header = rows[hi].map((c) => norm(c).toLowerCase());
     const ci = (n) => header.indexOf(n.toLowerCase());
-    const idx = {
-      item: ci('Item'), amount: ci('Amount'), bottle: ci('Bottle Size'),
-      logged: ci('Logged On'), dose: ci('Daily Dose'), type: ci('Type'),
-      from1: ci('From 1'), from2: ci('From 2'),
-    };
-
-    // collect all rows per item
-    const groups = {};
+    const idx = { item: ci('item'), amount: ci('amount'), type: ci('type'), logged: ci('logged on'), orderid: ci('order id') };
+    const dataRows = [];
     for (let i = hi + 1; i < rows.length; i++) {
       const r = rows[i] || [];
       const name = norm(r[idx.item]);
       if (!name || name.toLowerCase() === 'summary') continue;
-      const key = name.toLowerCase();
-      // default to Reset when no Type column exists (backward-compatible)
-      const type = idx.type >= 0 ? (norm(r[idx.type]) || 'Reset') : 'Reset';
       const loggedDate = idx.logged >= 0 ? parseSheetDate(norm(r[idx.logged])) : null;
-      if (!groups[key]) groups[key] = { name, froms: [idx.from1 >= 0 ? norm(r[idx.from1]) : '', idx.from2 >= 0 ? norm(r[idx.from2]) : ''].filter(Boolean), recs: [] };
-      groups[key].recs.push({
-        type,
-        loggedDate,
+      if (!loggedDate) continue;
+      const d = loggedDate;
+      const logged_on = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      dataRows.push({
+        item: name,
         amount: Number(norm(r[idx.amount])) || 0,
-        dose: idx.dose >= 0 ? (Number(norm(r[idx.dose])) || 0) : 0,
-        bottleSize: idx.bottle >= 0 ? (Number(norm(r[idx.bottle])) || 0) : 0,
+        type: (idx.type >= 0 ? norm(r[idx.type]) : '') || 'Reset',
+        logged_on,
+        order_id: idx.orderid >= 0 ? (norm(r[idx.orderid]) || null) : null,
       });
     }
-
-    // resolve each item to a single effective snapshot for calc()
-    const map = {};
-    for (const [key, { name, recs }] of Object.entries(groups)) {
-      // most recent Reset by Logged On date
-      const isAdditive = (t) => { const l = t.toLowerCase(); return l === 'ordered' || l === 'received'; };
-      const reconciles = recs
-        .filter((r) => r.loggedDate && !isAdditive(r.type))
-        .sort((a, b) => b.loggedDate - a.loggedDate);
-      if (!reconciles.length) continue;
-      const rec = reconciles[0];
-
-      // Ordered/Received rows on or after the reset date are additive to amount;
-      // earlier ones are superseded by the reset and ignored.
-      const adjSum = recs
-        .filter((r) => isAdditive(r.type)
-                    && r.loggedDate && r.loggedDate >= rec.loggedDate)
-        .reduce((s, r) => s + r.amount, 0);
-
-      const d = rec.loggedDate;
-      const loggedOn = d.getFullYear() + '-'
-        + String(d.getMonth() + 1).padStart(2, '0') + '-'
-        + String(d.getDate()).padStart(2, '0');
-
-      map[key] = { name, amount: rec.amount + adjSum, bottleSize: rec.bottleSize, dose: rec.dose, loggedOn, froms: groups[key].froms || [] };
+    let imported = 0;
+    for (const row of dataRows) {
+      const res = await postToTurso(row);
+      if (res && res.ok) imported++;
     }
-    return map;
+    return { total: dataRows.length, imported };
   }
 
   // silent=true: called automatically on load — no popups, fails quietly
-  // forcePick=true: always show the Drive Picker even if file is cached
+  // forcePick=true: always show the Drive Picker
   async function run(forcePick, silent = false) {
     if (!window.SupplementBoard || !window.SupplementBoard.applyInventory) {
       if (!silent) setStatus('Open the board first', 'err');
@@ -2715,14 +3152,27 @@
         setCachedFile(file);
       }
       if (!silent) setStatus('Reading “' + file.name + '”…');
-      const { rows, hi } = await readInventory(token, file.id);
-      const matched = window.SupplementBoard.applyInventory(buildInvMap(rows, hi));
-      setStatus('Inventory: ' + file.name + ' · ' + matched + ' matched', 'ok');
+      const { rows, hi } = await readItemSheet(token, file.id);
+      const itemMap = buildItemMap(rows, hi);
+
+      let invLogRows = [];
+      try { const r = await fetch('/api/inventory'); if (r.ok) invLogRows = await r.json(); } catch {}
+
+      const amountsMap = computeOnHand(invLogRows);
+      const invMap = mergeItemAndAmounts(itemMap, amountsMap);
+      const preOrderMap = buildPreOrderMapFromLog(invLogRows);
+      const matched = window.SupplementBoard.applyInventory(invMap, preOrderMap);
+      window._INV_ITEM_MAP = itemMap;
+      window._INV_LOG_ROWS = invLogRows;
+      setStatus('Items: ' + file.name + ' · ' + matched + ' matched', 'ok');
       refreshLabels();
     } catch (e) {
       const silentErrors = ['interaction_required', 'consent_required', 'access_denied',
                             'immediate_failed', 'popup_closed', 'popup_failed_to_open'];
-      if (silent && (silentErrors.some(s => e.message.includes(s)) || e.message === 'No token')) {
+      const isSilentable = silentErrors.some(s => e.message.includes(s))
+        || e.message === 'No token'
+        || /Sheets API [45]\d\d/.test(e.message); // 4xx/5xx from Sheets = stale token, need manual re-auth
+      if (silent && isSilentable) {
         return; // needs UI interaction — user can click Refresh Inventory manually
       }
       console.error('Inventory connect failed:', e);
@@ -2737,9 +3187,320 @@
   const refreshInvBtn = document.getElementById('refresh-inv-btn');
   if (refreshInvBtn) refreshInvBtn.addEventListener('click', () => run(false));
 
-  // auto-refresh Inventory silently on board load — no popups, no error display
+  // auto-refresh Items silently on board load — no popups, no error display
   document.addEventListener('boardReady', () => {
-    if (getCachedFile()) run(false, true).catch(() => {});
+    if (getCachedFile()) run(false, true).then(() => {
+      document.dispatchEvent(new CustomEvent('inventoryDataReady'));
+    }).catch(() => {});
+  });
+
+  // Exposed so the board's set-stage handler and Inventory tab can use these
+  window.InventoryWriter = { writeShipment, migrateFromSheet, run };
+})();
+</script>
+
+<script>
+/* ── Inventory tab ── */
+(function () {
+  const body  = document.getElementById('inv-body');
+  const refreshBtn = document.getElementById('inv-refresh-btn');
+
+  function isoToday() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function computeOnHand(invLogRows) {
+    const isAdditive = (t) => { const l = (t || '').toLowerCase(); return l === 'ordered' || l === 'received'; };
+    const groups = {};
+    for (const r of invLogRows) {
+      const key = (r.item || '').trim().toLowerCase();
+      if (!key) continue;
+      if (!groups[key]) groups[key] = { name: r.item, recs: [] };
+      groups[key].recs.push({
+        id: Number(r.id) || 0,
+        type: r.type || 'Reset', amount: Number(r.amount) || 0,
+        loggedDate: r.logged_on ? new Date(r.logged_on + 'T00:00:00') : null,
+      });
+    }
+    const result = {};
+    for (const [key, { name, recs }] of Object.entries(groups)) {
+      const reconciles = recs.filter((r) => r.loggedDate && !isAdditive(r.type))
+                             .sort((a, b) => b.loggedDate - a.loggedDate || b.id - a.id);
+      if (!reconciles.length) continue;
+      const rec = reconciles[0];
+      const adjSum = recs.filter((r) => (r.type || '').toLowerCase() === 'received' && r.id > rec.id)
+                         .reduce((s, r) => s + r.amount, 0);
+      result[key] = { name, amount: rec.amount + adjSum, loggedOn: rec.loggedDate.toISOString().slice(0, 10) };
+    }
+    return result;
+  }
+
+  function estimateRunOut(amount, dose, loggedOn) {
+    if (!amount || !dose || !loggedOn) return null;
+    const base    = new Date(loggedOn + 'T00:00:00');
+    const today   = new Date(isoToday() + 'T00:00:00');
+    const elapsed = Math.floor((today - base) / 86400000);
+    const remaining = amount / dose - elapsed;
+    if (remaining <= 0) return { text: 'EMPTY', cls: 'inv-empty', date: null };
+    const runOut = new Date(today);
+    runOut.setDate(runOut.getDate() + Math.floor(remaining));
+    const label = SB.fmtDateShort(runOut) + ' (' + Math.floor(remaining) + 'd)';
+    return { text: label, cls: remaining < 30 ? 'inv-soon' : '', date: runOut };
+  }
+
+  function countCoveredMonths(runOut) {
+    if (!runOut) return 0;
+    const today = new Date(isoToday() + 'T00:00:00');
+    let count = 0;
+    let m = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    for (let i = 0; i < 12; i++) {
+      const threshold = new Date(m.getFullYear(), m.getMonth(), 8);
+      if (runOut >= threshold) { count++; m = new Date(m.getFullYear(), m.getMonth() + 1, 1); }
+      else break;
+    }
+    return count;
+  }
+
+  function barsHtml(fullCount, partialFraction) {
+    const n = Math.min(Math.floor(fullCount), 6);
+    if (n <= 0 && !(partialFraction > 0.05)) return '';
+    let h = '<span class="inv-bars">';
+    for (let i = 0; i < n; i++) h += '<span class="inv-bar"></span>';
+    if (partialFraction > 0.05 && n < 6)
+      h += '<span class="inv-bar" style="width:' + Math.max(1, Math.round(partialFraction * 10)) + 'px"></span>';
+    return h + '</span>';
+  }
+
+  let _rendering = false;
+  async function renderInventory() {
+    if (!body || _rendering) return;
+    _rendering = true;
+    // Show loading only on first load (table is empty); otherwise keep existing rows visible
+    const isEmpty = !body.querySelector('tr[data-key]');
+    if (isEmpty) body.innerHTML = '<tr><td colspan="10" class="loading">Loading…</td></tr>';
+    let invLogRows = [];
+    try {
+      const r = await fetch('/api/inventory');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      invLogRows = await r.json();
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="12" class="loading" style="color:#d6504a">Failed to load: ' + e.message + '</td></tr>';
+      _rendering = false;
+      return;
+    }
+    window._INV_LOG_ROWS = invLogRows;
+    const onHand  = computeOnHand(invLogRows);
+    const itemMap = window._INV_ITEM_MAP || {};
+    const allKeys = [...new Set([...Object.keys(itemMap), ...Object.keys(onHand)])].sort();
+
+    if (!allKeys.length) {
+      body.innerHTML = '<tr><td colspan="10" class="loading">No data yet — use "Import from Sheet" or refresh the board to load items.</td></tr>';
+      _rendering = false;
+      return;
+    }
+
+    body.innerHTML = '';
+    _rendering = false;
+    allKeys.forEach((key) => {
+      const meta   = itemMap[key] || {};
+      const amt    = onHand[key]  || {};
+      const amount = amt.amount   || 0;
+      const bs     = meta.bottleSize || 0;
+      const dose   = meta.dose    || 0;
+      // Project the Reset amount forward to today so On Hand and Est. Run-Out are consistent
+      const elapsed = (amt.loggedOn && dose > 0)
+        ? Math.max(0, Math.floor((new Date(isoToday() + 'T00:00:00') - new Date(amt.loggedOn + 'T00:00:00')) / 86400000))
+        : 0;
+      const currentAmount = dose > 0 ? Math.max(0, amount - dose * elapsed) : amount;
+      const bottleFloat = bs > 0 ? currentAmount / bs : 0;
+      const bottles = bs > 0 ? bottleFloat.toFixed(1) : '—';
+      const bottleBars = bs > 0 ? barsHtml(Math.floor(bottleFloat), bottleFloat % 1) : '';
+      const ro     = estimateRunOut(amount, dose, amt.loggedOn);
+      const roMonths = ro && ro.date ? countCoveredMonths(ro.date) : 0;
+      const roBars = ro ? barsHtml(roMonths, 0) : '';
+      const name   = meta.name || amt.name || key;
+
+      const tr = document.createElement('tr');
+      tr.dataset.key = key;
+      tr.innerHTML =
+        '<td class="inv-name">'     + name + '</td>' +
+        '<td class="inv-runout'     + (ro ? (' ' + ro.cls) : ' inv-no-data') + '">' + (ro ? ro.text : '—') + roBars + '</td>' +
+        '<td class="inv-bottles" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit bottles">' + bottles + bottleBars + '</td>' +
+        '<td class="inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit caps">' + Math.round(currentAmount) + '</td>' +
+        '<td class="inv-num">'      + (bs         || '—') + '</td>' +
+        '<td class="inv-num">'      + (dose       || '—') + '</td>' +
+        '<td class="inv-num">'      + (bs > 0 && dose > 0 ? (Math.round(bs / dose * 10) / 10) + 'd' : '—') + '</td>' +
+        '<td class="inv-num">'      + (amt.loggedOn ? ((d => (d.getMonth()+1)+'/'+d.getDate())(new Date(amt.loggedOn+'T00:00:00'))) : '—') + '</td>' +
+        '<td class="inv-supplier">' + (meta.annualSale   || '—') + '</td>' +
+        '<td class="inv-supplier">' + (meta.offCycleSale || '—') + '</td>' +
+        '<td class="inv-supplier">' + (meta.anyday       || '—') + '</td>' +
+        '<td><button class="inv-del-btn" data-key="' + key + '" data-name="' + name.replace(/"/g, '&quot;') + '" title="Delete all inventory rows for this item">✕</button></td>';
+      body.appendChild(tr);
+    });
+
+    attachEditHandlers(itemMap);
+    applyFilters();
+  }
+
+  function attachEditHandlers(itemMap) {
+    if (!body) return;
+    body.querySelectorAll('.inv-onhand').forEach((cell) => {
+      cell.onclick = () => startEdit(cell, itemMap, 'caps');
+    });
+    body.querySelectorAll('.inv-bottles').forEach((cell) => {
+      cell.onclick = () => startEdit(cell, itemMap, 'bottles');
+    });
+  }
+
+  function refreshRow(key, newCaps, loggedOn, itemMap) {
+    const tr = body.querySelector(`tr[data-key="${key}"]`);
+    if (!tr) return;
+    const meta = itemMap[key] || {};
+    const bs   = meta.bottleSize || 0;
+    const dose = meta.dose || 0;
+    const bottleFloat = bs > 0 ? newCaps / bs : 0;
+    const bottles     = bs > 0 ? bottleFloat.toFixed(1) : '—';
+    const bottleBars  = bs > 0 ? barsHtml(Math.floor(bottleFloat), bottleFloat % 1) : '';
+    const ro          = estimateRunOut(newCaps, dose, loggedOn);
+    const roMonths    = ro && ro.date ? countCoveredMonths(ro.date) : 0;
+    const roBars      = ro ? barsHtml(roMonths, 0) : '';
+
+    const capsCell     = tr.querySelector('.inv-onhand');
+    const bottlesCell  = tr.querySelector('.inv-bottles');
+    const runoutCell   = tr.querySelector('td:nth-child(2)');
+    const resetCell    = tr.querySelector('td:nth-child(8)');
+
+    if (capsCell)    { capsCell.dataset.amount = newCaps;    capsCell.textContent = Math.round(newCaps); }
+    if (bottlesCell) { bottlesCell.dataset.amount = newCaps; bottlesCell.innerHTML = bottles + bottleBars; }
+    if (runoutCell)  {
+      runoutCell.className = 'inv-runout' + (ro ? (' ' + ro.cls) : ' inv-no-data');
+      runoutCell.innerHTML = (ro ? ro.text : '—') + roBars;
+    }
+    if (resetCell && loggedOn) {
+      const d = new Date(loggedOn + 'T00:00:00');
+      resetCell.textContent = (d.getMonth() + 1) + '/' + d.getDate();
+    }
+    // Re-wire onclick (innerHTML reset detaches nothing; textContent on capsCell is fine)
+    if (bottlesCell) bottlesCell.onclick = () => startEdit(bottlesCell, itemMap, 'bottles');
+  }
+
+  function evalExpr(s) {
+    const clean = String(s).replace(/[^0-9+\-*/().\s]/g, '').trim();
+    if (!clean) return NaN;
+    try { return Number(Function('"use strict"; return (' + clean + ')')()) } catch { return NaN; }
+  }
+
+  function startEdit(cell, itemMap, mode) {
+    if (cell.querySelector('input')) return;
+    const key  = cell.dataset.key;
+    const bs   = (itemMap[key] || {}).bottleSize || 0;
+    const caps = Number(cell.dataset.amount) || 0;
+    const val  = mode === 'bottles' && bs > 0 ? (caps / bs).toFixed(2) : Math.round(caps);
+    const unit = mode === 'bottles' ? 'bottles' : 'caps';
+
+    cell.textContent = '';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.inputMode = 'decimal';
+    inp.value = val; inp.className = 'inv-edit-input';
+    inp.placeholder = unit;
+    cell.appendChild(inp);
+    inp.focus(); inp.select();
+
+    const today = isoToday();
+    let committed = false;
+    const save = async () => {
+      if (committed) return; committed = true;
+      const parsed = evalExpr(inp.value);
+      if (isNaN(parsed) || parsed < 0) { renderInventory(); return; }
+      const newCaps  = mode === 'bottles' && bs > 0 ? parsed * bs : parsed;
+      const itemName = (itemMap[key] || {}).name || key;
+      // Optimistic in-place update — no stutter
+      refreshRow(key, newCaps, today, itemMap);
+      try {
+        await fetch('/api/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item: itemName, amount: newCaps, type: 'Reset', logged_on: today }),
+        });
+      } catch (e) {
+        console.error('Inventory save failed:', e);
+        renderInventory(); // full reload on error to restore true state
+      }
+    };
+
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { committed = true; renderInventory(); }
+    });
+    inp.addEventListener('blur', () => setTimeout(save, 80));
+  }
+
+  const FILTER_COLS = [
+    { id: 'inv-filter-item',     colIdx: 0 },
+    { id: 'inv-filter-annual',   colIdx: 8 },
+    { id: 'inv-filter-offcycle', colIdx: 9 },
+    { id: 'inv-filter-anyday',   colIdx: 10 },
+  ].map(f => ({ el: document.getElementById(f.id), colIdx: f.colIdx })).filter(f => f.el);
+
+  let soonOnly = false;
+  const soonBtn = document.getElementById('inv-soon-btn');
+  if (soonBtn) soonBtn.addEventListener('click', () => {
+    soonOnly = !soonOnly;
+    soonBtn.classList.toggle('active', soonOnly);
+    applyFilters();
+  });
+
+  function applyFilters() {
+    const active = FILTER_COLS.map(f => ({ q: f.el.value.trim().toLowerCase(), colIdx: f.colIdx }));
+    body.querySelectorAll('tr').forEach((tr) => {
+      const cells = tr.querySelectorAll('td');
+      if (!cells.length) return;
+      const passesText = active.every(({ q, colIdx }) =>
+        !q || (cells[colIdx] && cells[colIdx].textContent.toLowerCase().includes(q))
+      );
+      const passesSoon = !soonOnly || (cells[1] && (cells[1].classList.contains('inv-soon') || cells[1].classList.contains('inv-empty')));
+      tr.style.display = passesText && passesSoon ? '' : 'none';
+    });
+  }
+
+  FILTER_COLS.forEach(f => f.el.addEventListener('input', applyFilters));
+
+  if (refreshBtn) refreshBtn.addEventListener('click', async () => {
+    refreshBtn.disabled = true;
+    try {
+      if (window.InventoryWriter && window.InventoryWriter.run) {
+        await window.InventoryWriter.run(false);
+      }
+      await renderInventory();
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  });
+
+  if (body) body.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.inv-del-btn');
+    if (!btn) return;
+    const name = btn.dataset.name;
+    if (!confirm('Delete all inventory records for "' + name + '"?\nThis cannot be undone.')) return;
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/inventory?' + new URLSearchParams({ item: name }), { method: 'DELETE' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      btn.closest('tr').remove();
+    } catch (e) {
+      alert('Delete failed: ' + e.message);
+      btn.disabled = false;
+    }
+  });
+
+  // Render when the Inventory tab is activated (click or programmatic restore)
+  document.addEventListener('inventoryActivated', () => renderInventory());
+
+  // Re-render after boardReady finishes run() so _INV_ITEM_MAP is populated
+  document.addEventListener('inventoryDataReady', () => {
+    if (document.getElementById('tab-inventory')?.classList.contains('active')) {
+      renderInventory();
+    }
   });
 })();
 </script>

@@ -100,9 +100,14 @@
 
   function shipmentHTML(block) {
     const s = STATE.shipmentData[block.id] || { name: 'Shipment' };
+    const stage = s.stage || null;
+    const locked = stage != null;
     const cards = block.cards.map(cardHTML).join('');
+    const stageBtns = ['ordered', 'entered', 'received']
+      .map((st) => `<button class="stage-btn${stage === st ? ' active' : ''}" data-act="set-stage" data-stage="${st}">${st[0].toUpperCase() + st.slice(1)}</button>`)
+      .join('');
     return `
-    <div class="shipment" data-id="${block.id}" data-kind="shipment">
+    <div class="shipment${locked ? ' is-locked' : ''}" data-id="${block.id}" data-kind="shipment">
       <div class="ship-head">
         <span class="grip block-grip" title="Drag shipment">${ICON.grip}</span>
         <span class="truck">${ICON.truck}</span>
@@ -111,6 +116,7 @@
           <span class="scount">0</span>
         </div>
         <div class="ship-total"><span class="amt">$0.00</span></div>
+        <div class="ship-stage">${stageBtns}</div>
         <button class="del" data-act="del-ship" title="Remove shipment">×</button>
       </div>
       <div class="ship-body" data-list="shipment">${cards}</div>
@@ -158,17 +164,63 @@
     </div>`;
   }
 
+  const STAGE_PRI = { ordered: 0, entered: 1, received: 2 };
+
   function render() {
     board.innerHTML = structure.map(monthHTML).join('');
     board.querySelectorAll('.month-list').forEach(makeMonthSortable);
     board.querySelectorAll('.ship-body').forEach(makeShipSortable);
     board.querySelectorAll('.spent-input').forEach(sizeSpent);
+    board.querySelectorAll('.shipment').forEach((shipEl) => {
+      const sd = STATE.shipmentData[shipEl.dataset.id];
+      if (sd && sd.stage) applyShipmentStage(shipEl, sd.stage);
+    });
+    board.querySelectorAll('.month-list').forEach((list) => {
+      [...list.querySelectorAll(':scope > .shipment.is-locked')]
+        .sort((a, b) => {
+          const sa = (STATE.shipmentData[a.dataset.id] || {}).stage || '';
+          const sb = (STATE.shipmentData[b.dataset.id] || {}).stage || '';
+          return (STAGE_PRI[sa] ?? 0) - (STAGE_PRI[sb] ?? 0);
+        })
+        .forEach((el) => list.appendChild(el));
+    });
     recalcAll();
   }
 
   function sizeSpent(input) {
     const len = Math.max(1, String(input.value).length);
     input.style.width = (len + 1.5) + 'ch';
+  }
+
+  // ── shipment stage helpers ───────────────────────────────────────────
+  function getShipmentTotal(shipEl) {
+    let tot = 0;
+    shipEl.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
+      const c = STATE.cardData[cardEl.dataset.id];
+      if (c) tot += SB.calc(c).cost;
+    });
+    return tot;
+  }
+
+  function adjustMonthSpent(monthEl, delta) {
+    const inp = monthEl.querySelector('.spent-input');
+    const next = Math.max(0, (Number(inp.value) || 0) + delta);
+    inp.value = String(next % 1 === 0 ? next : +next.toFixed(2));
+    sizeSpent(inp);
+  }
+
+  function applyShipmentStage(shipEl, stage) {
+    const locked = stage != null;
+    shipEl.classList.toggle('is-locked', locked);
+    shipEl.querySelectorAll('.stage-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.stage === stage);
+    });
+    shipEl.querySelectorAll('.ship-body input[data-field="price"], .ship-body input[data-field="qty"]').forEach((inp) => {
+      inp.disabled = locked;
+    });
+    shipEl.querySelectorAll('.ship-body .incl-toggle').forEach((btn) => {
+      btn.disabled = locked;
+    });
   }
 
   // ── per-card update ─────────────────────────────────────────────────
@@ -233,17 +285,20 @@
 
       [...list.children].forEach((node) => {
         if (node.classList.contains('shipment')) {
+          const shipLocked = !!(STATE.shipmentData[node.dataset.id] || {}).stage;
           let sTot = 0, sCount = 0;
           node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
             const cost = updateCard(cardEl);
             sTot += cost;
-            maxItems += cost;
-            if (STATE.cardData[cardEl.dataset.id] && STATE.cardData[cardEl.dataset.id].includeInMonthTotal) plannedItems += cost;
+            if (!shipLocked) {
+              maxItems += cost;
+              if (STATE.cardData[cardEl.dataset.id] && STATE.cardData[cardEl.dataset.id].includeInMonthTotal) plannedItems += cost;
+            }
             sCount++;
           });
           node.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
           node.querySelector('.scount').textContent = sCount;
-          shipSum += sTot;
+          if ((STATE.shipmentData[node.dataset.id] || {}).stage !== 'received') shipSum += sTot;
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
           const cost = updateCard(node);
@@ -363,15 +418,19 @@
     let shipSum = 0, plannedItems = 0, maxItems = 0;
     [...list.children].forEach((n) => {
       if (n.classList.contains('shipment')) {
+        const shipLocked = !!(STATE.shipmentData[n.dataset.id] || {}).stage;
         let sTot = 0;
         n.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           const c = STATE.cardData[cardEl.dataset.id];
           const cost = c ? SB.calc(c).cost : 0;
-          sTot += cost; maxItems += cost;
-          if (c && c.includeInMonthTotal) plannedItems += cost;
+          sTot += cost;
+          if (!shipLocked) {
+            maxItems += cost;
+            if (c && c.includeInMonthTotal) plannedItems += cost;
+          }
         });
         n.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
-        shipSum += sTot;
+        if ((STATE.shipmentData[n.dataset.id] || {}).stage !== 'received') shipSum += sTot;
       } else if (n.classList.contains('card')) {
         const c = STATE.cardData[n.dataset.id];
         const cost = c ? SB.calc(c).cost : 0;
@@ -391,6 +450,49 @@
     if (!act) return;
     const a = act.dataset.act;
 
+    if (a === 'set-stage') {
+      const shipEl = act.closest('.shipment');
+      const id = shipEl.dataset.id;
+      STATE.shipmentData[id] = STATE.shipmentData[id] || {};
+      const sd = STATE.shipmentData[id];
+      const oldStage = sd.stage || null;
+      const clicked = act.dataset.stage;
+      const newStage = clicked === oldStage ? null : clicked;
+      const monthEl = shipEl.closest('.month');
+      const shipTotal = getShipmentTotal(shipEl);
+
+      if (oldStage === 'ordered' && newStage !== 'ordered') adjustMonthSpent(monthEl, -shipTotal);
+      else if (oldStage !== 'ordered' && newStage === 'ordered') adjustMonthSpent(monthEl, +shipTotal);
+
+      if (newStage == null) delete sd.stage; else sd.stage = newStage;
+
+      if (newStage != null) {
+        const list = monthEl.querySelector('.month-list');
+        const myPri = STAGE_PRI[newStage] ?? 0;
+        const anchor = [...list.querySelectorAll(':scope > .shipment.is-locked')]
+          .filter((el) => el !== shipEl)
+          .find((el) => (STAGE_PRI[(STATE.shipmentData[el.dataset.id] || {}).stage] ?? 0) > myPri);
+        if (anchor) list.insertBefore(shipEl, anchor);
+        else list.appendChild(shipEl);
+      }
+
+      applyShipmentStage(shipEl, newStage);
+      recalcTotalsFor(shipEl);
+      persist();
+
+      if (newStage === 'ordered') {
+        const rows = [...shipEl.querySelectorAll('.ship-body > .card')].map((c) => {
+          const d = STATE.cardData[c.dataset.id] || {};
+          return { name: d.name, amount: (d.bottleSize || 0) * (d.qty || 0), from1: sd.name, loggedOn: isoToday() };
+        });
+        console.log('[Inventory stub] Would create rows:', rows);
+      }
+      if (newStage === 'received') {
+        console.log('[Inventory stub] Would mark Received for shipment:', sd.name);
+      }
+      return;
+    }
+
     if (a === 'toggle-include') {
       e.preventDefault();
       const cardEl = act.closest('.card');
@@ -409,11 +511,17 @@
       return;
     }
     if (a === 'del-ship') {
-      act.closest('.shipment').remove();
+      const shipEl = act.closest('.shipment');
+      const sd = STATE.shipmentData[shipEl.dataset.id] || {};
+      if (sd.stage === 'ordered') {
+        adjustMonthSpent(shipEl.closest('.month'), -getShipmentTotal(shipEl));
+      }
+      shipEl.remove();
       recalcAll(); persist();
       return;
     }
     if (a === 'add-card-ship') {
+      if (act.closest('.shipment').classList.contains('is-locked')) return;
       const body = act.closest('.shipment').querySelector('.ship-body');
       const id = newCard();
       const node = el(cardHTML(id));
