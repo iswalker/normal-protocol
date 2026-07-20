@@ -806,6 +806,12 @@
 
     /* ── Untracked (free-text) cards: no proj column, name is editable ── */
     #tab-board .card.card--untracked .status { display: none; }
+    #tab-board .card.card--divider { background: none; border: none; box-shadow: none; padding: 2px 0; margin: 2px 0; min-height: 0; }
+    #tab-board .card.card--divider .div-inner { display: flex; align-items: center; gap: 4px; padding: 0 2px; }
+    #tab-board .card.card--divider .div-line { flex: 1; border: 0; border-top: 1px solid var(--ink-12); margin: 0; }
+    #tab-board .card.card--divider .card-grip { opacity: 0.35; flex: none; }
+    #tab-board .card.card--divider .del { position: static; opacity: 0; font-size: 13px; width: 18px; height: 18px; }
+    #tab-board .card.card--divider:hover .del { opacity: 0.6; }
     #tab-board .board.layout-compact .card.card--untracked .proj { display: none; }
     #tab-board .board.layout-compact .card.card--untracked .card-body {
       grid-template-columns: 321px 82px 84px 317px;
@@ -1574,6 +1580,15 @@
   // ── builders ──
   function cardHTML(id) {
     const c = STATE.cardData[id];
+    if (c.name === '__divider__') {
+      return `<div class="card card--divider" data-id="${id}" data-kind="card">
+        <div class="div-inner">
+          <span class="card-grip block-grip" aria-hidden="true"></span>
+          <hr class="div-line">
+          <button class="del" data-act="del-card" title="Remove divider" aria-label="Remove divider">×</button>
+        </div>
+      </div>`;
+    }
     const untracked = !!c.untracked;
     return `
     <div class="card${untracked ? ' card--untracked' : ''}" data-id="${id}" data-kind="card">
@@ -1640,6 +1655,7 @@
           <span class="scount">0</span>
         </div>
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
+        <button class="add-btn ship-add" data-act="add-divider-ship">${ICON.plus} Divider</button>
         <span class="ship-min-date"></span>
         <div class="ship-total"><span class="amt">$0.00</span></div>
         <div class="ship-stage">${stageBtns}</div>
@@ -1666,6 +1682,7 @@
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
         <button class="add-btn month-add" data-act="add-card-month">${ICON.plus} Item</button>
+        <button class="add-btn month-add" data-act="add-divider-month">${ICON.plus} Divider</button>
         <div class="month-metrics">
           <div class="metric spent">
             <span class="mk">Spent</span>
@@ -1724,6 +1741,7 @@
     const id = cardEl.dataset.id;
     const c = STATE.cardData[id];
     if (!c) return 0;
+    if (c.name === '__divider__') return 0;
     const r = calcForCard(c);
     // run-out needs Inventory (dose/amount/loggedOn); absent until the sheet is wired
     const hasInv = !c.untracked && !!c.dose && !!c.loggedOn;
@@ -2139,10 +2157,29 @@
       showItemPicker(act, (id) => { const c = el(cardHTML(id)); body.prepend(c); finishAdd(c); }, shipName || null);
       return;
     }
+    if (a === 'add-divider-ship') {
+      if (act.closest('.shipment').classList.contains('is-locked')) return;
+      const body = act.closest('.shipment').querySelector('.ship-body');
+      const did = uid('c_');
+      STATE.cardData[did] = { name: '__divider__' };
+      const node = el(cardHTML(did));
+      body.prepend(node);
+      recalcAll(); persist();
+      return;
+    }
     if (a === 'add-card-month') {
       if (activePicker) { closeItemPicker(); return; }
       const list = act.closest('.month').querySelector('.month-list');
       showItemPicker(act, (id) => { const c = el(cardHTML(id)); list.prepend(c); finishAdd(c); });
+      return;
+    }
+    if (a === 'add-divider-month') {
+      const list = act.closest('.month').querySelector('.month-list');
+      const did = uid('c_');
+      STATE.cardData[did] = { name: '__divider__' };
+      const node = el(cardHTML(did));
+      list.prepend(node);
+      recalcAll(); persist();
       return;
     }
     if (a === 'add-ship') {
