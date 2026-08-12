@@ -416,6 +416,112 @@
       border-radius: 4px; font-size: 13px; font-family: inherit;
       font-variant-numeric: tabular-nums; outline: none;
     }
+
+    /* ── Barcode scanner ── */
+    .inv-scan-btn {
+      appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
+      cursor: pointer; padding: 5px 10px; border-radius: 7px; font-family: inherit;
+      font-size: 12px; color: var(--ink-60); white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .inv-scan-btn:hover { color: var(--teal); border-color: var(--teal); }
+
+    .scan-overlay {
+      position: fixed; inset: 0; background: rgba(23,26,28,0.55); z-index: 300;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .scan-modal {
+      background: var(--cream); border-radius: 14px; padding: 22px 24px 20px;
+      width: 390px; max-width: 95vw; box-shadow: 0 12px 40px rgba(23,26,28,0.2);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .scan-modal-head {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+    }
+    .scan-modal-head span { font-weight: 600; font-size: 14px; color: var(--ink); }
+    .scan-modal-head .scan-close-btn {
+      background: none; border: none; cursor: pointer; font-size: 20px; line-height: 1;
+      color: var(--ink-60); padding: 0 2px; border-radius: 4px;
+    }
+    .scan-modal-head .scan-close-btn:hover { color: var(--ink); }
+    .scan-video {
+      width: 100%; border-radius: 8px; background: #111;
+      aspect-ratio: 4/3; object-fit: cover; display: block; margin-bottom: 12px;
+    }
+    .scan-input-row { display: flex; gap: 8px; }
+    .scan-input-row input {
+      flex: 1; border: 1.5px solid var(--ink-12); border-radius: 7px;
+      padding: 8px 10px; font-size: 13px; font-family: inherit;
+      background: #fff; color: var(--ink); outline: none;
+    }
+    .scan-input-row input:focus { border-color: var(--teal); }
+    .scan-go-btn, .snm-confirm {
+      appearance: none; border: 1.5px solid var(--teal); background: var(--teal);
+      color: #fff; border-radius: 7px; padding: 8px 14px; font-size: 13px;
+      font-family: inherit; cursor: pointer; font-weight: 500; white-space: nowrap;
+    }
+    .scan-go-btn:hover, .snm-confirm:hover { filter: brightness(0.93); }
+    .snm-confirm:disabled { opacity: 0.45; cursor: default; filter: none; }
+    .scan-cam-row { margin-top: 10px; }
+    .scan-cam-btn {
+      appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
+      color: var(--ink-60); border-radius: 7px; padding: 5px 12px; font-size: 12px;
+      font-family: inherit; cursor: pointer; transition: color .15s, border-color .15s;
+    }
+    .scan-cam-btn:hover, .scan-cam-btn.active { border-color: var(--teal); color: var(--teal); }
+    .scan-status-msg { font-size: 12px; color: var(--ink-60); margin-top: 8px; min-height: 16px; }
+
+    /* No-match modal extras */
+    .snm-code {
+      font-size: 12px; font-family: monospace; background: var(--cream-dark);
+      display: inline-block; padding: 2px 8px; border-radius: 4px; margin: 0 0 14px;
+    }
+    .snm-section { margin-bottom: 12px; }
+    .snm-section > label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; cursor: pointer; margin-bottom: 6px; }
+    .snm-select {
+      width: 100%; border: 1.5px solid var(--ink-12); border-radius: 7px;
+      padding: 7px 10px; font-size: 13px; font-family: inherit;
+      background: #fff; color: var(--ink); outline: none; cursor: pointer;
+    }
+    .snm-select:focus { border-color: var(--teal); }
+    .snm-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .snm-field { display: flex; flex-direction: column; gap: 3px; }
+    .snm-field label { font-size: 11px; color: var(--ink-60); font-weight: 500; letter-spacing: .02em; }
+    .snm-field input {
+      border: 1.5px solid var(--ink-12); border-radius: 6px; padding: 6px 8px;
+      font-size: 13px; font-family: inherit; background: #fff; color: var(--ink); outline: none;
+    }
+    .snm-field input:focus { border-color: var(--teal); }
+    .snm-field.full { grid-column: 1 / -1; }
+    .snm-footer {
+      display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;
+      padding-top: 14px; border-top: 1px solid var(--ink-12);
+    }
+    .snm-cancel {
+      appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
+      color: var(--ink-60); border-radius: 7px; padding: 7px 14px; font-size: 13px;
+      font-family: inherit; cursor: pointer; transition: color .15s, border-color .15s;
+    }
+    .snm-cancel:hover { color: var(--ink); border-color: var(--ink-60); }
+
+    /* Scan success / error toast */
+    .scan-toast {
+      position: fixed; top: 60px; right: 24px; z-index: 400;
+      background: #fff; border: 1.5px solid var(--ink-12);
+      border-left: 4px solid var(--teal); border-radius: 10px;
+      padding: 12px 16px; min-width: 240px; max-width: 320px;
+      box-shadow: 0 4px 16px rgba(23,26,28,0.12);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      animation: scan-slide-in .2s ease; pointer-events: none;
+    }
+    .scan-toast.scan-toast-err { border-left-color: #d6504a; }
+    .scan-toast-name { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+    .scan-toast-detail { font-size: 12px; color: var(--ink-60); }
+    .scan-toast.scan-toast-err .scan-toast-name { color: #d6504a; }
+    @keyframes scan-slide-in {
+      from { transform: translateX(16px); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
   </style>
 
   <!-- ── Next Orders styles (compact layout, scoped to #tab-board) ── -->
@@ -959,6 +1065,7 @@
   <div class="header-right">
     <span class="inv-controls" id="inv-controls">
       <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
+      <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory">⊡ Scan</button>
       <button class="refresh-inv-btn" id="inv-refresh-btn">↻ Refresh</button>
     </span>
     <span class="board-controls" id="board-controls">
@@ -2954,6 +3061,32 @@
     return r.json();
   }
 
+  function colLetter(n) {
+    let s = ''; n++;
+    while (n > 0) { n--; s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26); }
+    return s;
+  }
+
+  async function sheetsWrite(token, fileId, range, values) {
+    const r = await fetch(
+      'https://sheets.googleapis.com/v4/spreadsheets/' + fileId + '/values/' + encodeURIComponent(range) + '?valueInputOption=USER_ENTERED',
+      { method: 'PUT', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ range, majorDimension: 'ROWS', values }) }
+    );
+    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('Sheets write ' + r.status + ': ' + t.slice(0, 120)); }
+    return r.json();
+  }
+
+  async function sheetsBatchUpdate(token, fileId, requests) {
+    const r = await fetch(
+      'https://sheets.googleapis.com/v4/spreadsheets/' + fileId + ':batchUpdate',
+      { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests }) }
+    );
+    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('Sheets batch ' + r.status + ': ' + t.slice(0, 120)); }
+    return r.json();
+  }
+
   async function postToTurso(row) {
     const r = await fetch('/api/inventory', {
       method: 'POST',
@@ -3039,7 +3172,7 @@
   }
 
   async function readItemSheet(token, fileId) {
-    const meta = await sheetsGet(token, fileId + '?fields=sheets.properties(title)');
+    const meta = await sheetsGet(token, fileId + '?fields=sheets.properties(title,sheetId)');
     const props = (meta.sheets || []).map((s) => s.properties);
     const found = props.find((p) => p.title.trim().toLowerCase() === 'items')
                || props.find((p) => /^items$/i.test(p.title));
@@ -3048,7 +3181,7 @@
     const rows = vals.values || [];
     const hi = findItemHeader(rows);
     if (hi < 0) throw new Error('The "Items" tab has no recognizable header row');
-    return { rows, hi };
+    return { rows, hi, title: found.title, sheetId: found.sheetId };
   }
 
   function buildItemMap(rows, hi) {
@@ -3058,6 +3191,7 @@
     const idx = {
       item: ci('item'), bottle: ci('bottle size'), dose: ci('daily dose'),
       annual: ci('annual sale'), offcycle: ci('off-cycle sale'), anyday: ci('anyday'),
+      barcode: ci('barcode'),
     };
     const map = {};
     for (let i = hi + 1; i < rows.length; i++) {
@@ -3072,8 +3206,12 @@
         annualSale: idx.annual >= 0 ? norm(r[idx.annual]) : '',
         offCycleSale: idx.offcycle >= 0 ? norm(r[idx.offcycle]) : '',
         anyday: idx.anyday >= 0 ? norm(r[idx.anyday]) : '',
+        barcode: idx.barcode >= 0 ? norm(r[idx.barcode]) : '',
+        _rowIndex: i,
       };
     }
+    Object.defineProperty(map, '_barcodeColIndex', { value: idx.barcode, enumerable: false, writable: true, configurable: true });
+    Object.defineProperty(map, '_headerLength',    { value: header.length, enumerable: false, writable: true, configurable: true });
     return map;
   }
 
@@ -3231,8 +3369,22 @@
         setCachedFile(file);
       }
       if (!silent) setStatus('Reading “' + file.name + '”…');
-      const { rows, hi } = await readItemSheet(token, file.id);
+      const { rows, hi, title: itemSheetTitle, sheetId: itemSheetId } = await readItemSheet(token, file.id);
       const itemMap = buildItemMap(rows, hi);
+
+      // Build barcode lookup and store sheet metadata for write-back
+      const barcodeMap = {};
+      for (const [key, item] of Object.entries(itemMap)) {
+        if (key.startsWith('_')) continue;
+        if (item.barcode) barcodeMap[item.barcode.trim()] = key;
+      }
+      window._INV_BARCODE_MAP = barcodeMap;
+      window._INV_SHEET_META = {
+        fileId: file.id, title: itemSheetTitle, sheetId: itemSheetId,
+        barcodeColIndex: itemMap._barcodeColIndex,
+        headerLength: itemMap._headerLength,
+        hi,
+      };
 
       let invLogRows = [];
       try { const r = await fetch('/api/inventory'); if (r.ok) invLogRows = await r.json(); } catch {}
@@ -3261,6 +3413,99 @@
 
   function refreshLabels() {}
 
+  async function writeBarcodeToSheet(itemKey, barcode) {
+    const meta = window._INV_SHEET_META;
+    const itemMap = window._INV_ITEM_MAP;
+    if (!meta || !itemMap) throw new Error('Inventory not loaded — refresh first');
+    const item = itemMap[itemKey];
+    if (!item) throw new Error('Unknown item: ' + itemKey);
+    const token = getCachedToken() || await getToken(false);
+    let colIdx = meta.barcodeColIndex;
+    if (colIdx < 0) {
+      // Barcode column doesn't exist yet — append it to the header
+      colIdx = meta.headerLength;
+      await sheetsWrite(token, meta.fileId,
+        meta.title + '!' + colLetter(colIdx) + (meta.hi + 1),
+        [['Barcode']]
+      );
+      meta.barcodeColIndex = colIdx;
+      meta.headerLength = colIdx + 1;
+      // Update all existing items so future writes use correct index
+      for (const v of Object.values(itemMap)) { if (v && typeof v === 'object' && '_rowIndex' in v) v.barcode = v.barcode || ''; }
+    }
+    const rowNum = item._rowIndex + 1; // 1-indexed
+    await sheetsWrite(token, meta.fileId,
+      meta.title + '!' + colLetter(colIdx) + rowNum,
+      [[barcode]]
+    );
+    item.barcode = barcode;
+    window._INV_BARCODE_MAP = window._INV_BARCODE_MAP || {};
+    window._INV_BARCODE_MAP[barcode.trim()] = itemKey;
+  }
+
+  async function addItemToSheet(fields, barcode) {
+    const meta = window._INV_SHEET_META;
+    if (!meta) throw new Error('Inventory not loaded — refresh first');
+    const token = getCachedToken() || await getToken(false);
+    // Re-read sheet to get current row layout
+    const { rows, hi, title, sheetId } = await readItemSheet(token, meta.fileId);
+    const norm = (s) => String(s == null ? '' : s).trim();
+    const header = rows[hi].map((c) => norm(c).toLowerCase());
+    const ci = (n) => header.indexOf(n.toLowerCase());
+    const idx = {
+      item: ci('item'), bottle: ci('bottle size'), dose: ci('daily dose'),
+      annual: ci('annual sale'), offcycle: ci('off-cycle sale'), anyday: ci('anyday'),
+      barcode: ci('barcode'),
+    };
+    // Determine alphabetical insertion point among data rows
+    const newNameLower = (fields.name || '').trim().toLowerCase();
+    let insertIdx = rows.length; // default: append
+    for (let i = hi + 1; i < rows.length; i++) {
+      const rowName = norm((rows[i] || [])[idx.item]).toLowerCase();
+      if (rowName && rowName !== 'summary' && rowName > newNameLower) { insertIdx = i; break; }
+    }
+    // Determine barcode column (auto-create header if missing)
+    let barcodeColIdx = idx.barcode;
+    const rowLen = Math.max(header.length, barcodeColIdx < 0 ? header.length + 1 : 0);
+    if (barcodeColIdx < 0) {
+      barcodeColIdx = header.length;
+      await sheetsWrite(token, meta.fileId, title + '!' + colLetter(barcodeColIdx) + (hi + 1), [['Barcode']]);
+      meta.barcodeColIndex = barcodeColIdx;
+      meta.headerLength = barcodeColIdx + 1;
+    }
+    // Build new row
+    const newRow = new Array(Math.max(rowLen, barcodeColIdx + 1)).fill('');
+    if (idx.item >= 0)     newRow[idx.item]     = fields.name || '';
+    if (idx.bottle >= 0)   newRow[idx.bottle]   = fields.bottleSize != null ? String(fields.bottleSize) : '';
+    if (idx.dose >= 0)     newRow[idx.dose]      = fields.dose != null ? String(fields.dose) : '';
+    if (idx.annual >= 0)   newRow[idx.annual]    = fields.annualSale || '';
+    if (idx.offcycle >= 0) newRow[idx.offcycle]  = fields.offCycleSale || '';
+    if (idx.anyday >= 0)   newRow[idx.anyday]    = fields.anyday || '';
+    if (barcode)           newRow[barcodeColIdx] = barcode;
+    // Insert blank row then write values
+    await sheetsBatchUpdate(token, meta.fileId, [{
+      insertDimension: { range: { sheetId, dimension: 'ROWS', startIndex: insertIdx, endIndex: insertIdx + 1 }, inheritFromBefore: false }
+    }]);
+    await sheetsWrite(token, meta.fileId,
+      title + '!A' + (insertIdx + 1) + ':' + colLetter(newRow.length - 1) + (insertIdx + 1),
+      [newRow]
+    );
+    // Update local maps
+    const key = fields.name.trim().toLowerCase();
+    window._INV_ITEM_MAP = window._INV_ITEM_MAP || {};
+    window._INV_ITEM_MAP[key] = {
+      name: fields.name.trim(), bottleSize: Number(fields.bottleSize) || 0,
+      dose: Number(fields.dose) || 0, annualSale: fields.annualSale || '',
+      offCycleSale: fields.offCycleSale || '', anyday: fields.anyday || '',
+      barcode: barcode || '', _rowIndex: insertIdx,
+    };
+    if (barcode) {
+      window._INV_BARCODE_MAP = window._INV_BARCODE_MAP || {};
+      window._INV_BARCODE_MAP[barcode.trim()] = key;
+    }
+    return key;
+  }
+
   if (selectBtn) selectBtn.addEventListener('click', () => run(true));
 
   const refreshInvBtn = document.getElementById('refresh-inv-btn');
@@ -3274,7 +3519,7 @@
   });
 
   // Exposed so the board's set-stage handler and Inventory tab can use these
-  window.InventoryWriter = { writeShipment, migrateFromSheet, run };
+  window.InventoryWriter = { writeShipment, migrateFromSheet, run, writeBarcodeToSheet, addItemToSheet };
 })();
 </script>
 
@@ -3581,6 +3826,287 @@
       renderInventory();
     }
   });
+
+  // ── Barcode Scanner ──────────────────────────────────────────────────────
+  (function () {
+    const scanBtn = document.getElementById('inv-scan-btn');
+    if (!scanBtn) return;
+
+    // ── build scanner modal ──
+    const scanOv = document.createElement('div');
+    scanOv.id = 'scan-overlay'; scanOv.className = 'scan-overlay'; scanOv.style.display = 'none';
+    scanOv.innerHTML = `
+      <div class="scan-modal">
+        <div class="scan-modal-head">
+          <span>Scan Barcode</span>
+          <button class="scan-close-btn" id="scan-close-btn">×</button>
+        </div>
+        <video id="scan-video" class="scan-video" playsinline autoplay muted style="display:none"></video>
+        <div class="scan-input-row">
+          <input type="text" id="scan-input" placeholder="Barcode number…" autocomplete="off" spellcheck="false">
+          <button class="scan-go-btn" id="scan-go-btn">Go</button>
+        </div>
+        <div class="scan-cam-row">
+          <button class="scan-cam-btn" id="scan-cam-btn">📷 Use Camera</button>
+        </div>
+        <div class="scan-status-msg" id="scan-status-msg">Point a camera at a barcode, or type / scan with a physical scanner then press Enter.</div>
+      </div>`;
+    document.body.appendChild(scanOv);
+
+    // ── build no-match modal ──
+    const nmOv = document.createElement('div');
+    nmOv.id = 'snm-overlay'; nmOv.className = 'scan-overlay'; nmOv.style.display = 'none';
+    nmOv.innerHTML = `
+      <div class="scan-modal">
+        <div class="scan-modal-head">
+          <span>Barcode Not Recognized</span>
+          <button class="scan-close-btn" id="snm-close-btn">×</button>
+        </div>
+        <code class="snm-code" id="snm-code"></code>
+        <div class="snm-section" id="snm-assign-section">
+          <label><input type="radio" name="snm-mode" value="assign" checked> Assign to existing item</label>
+          <select class="snm-select" id="snm-select"></select>
+        </div>
+        <div class="snm-section" id="snm-new-section">
+          <label><input type="radio" name="snm-mode" value="new"> Add as new item</label>
+          <div id="snm-new-fields" style="display:none">
+            <div class="snm-fields">
+              <div class="snm-field full"><label>Item Name *</label><input id="snm-name" type="text" placeholder="e.g. KL Support"></div>
+              <div class="snm-field"><label>Bottle Size</label><input id="snm-bottle" type="number" min="0" placeholder="120"></div>
+              <div class="snm-field"><label>Daily Dose</label><input id="snm-dose" type="number" min="0" placeholder="2"></div>
+              <div class="snm-field"><label>Annual Sale</label><input id="snm-annual" type="text"></div>
+              <div class="snm-field"><label>Off-Cycle Sale</label><input id="snm-offcycle" type="text"></div>
+              <div class="snm-field full"><label>Anyday</label><input id="snm-anyday" type="text"></div>
+            </div>
+          </div>
+        </div>
+        <div class="snm-footer">
+          <button class="snm-cancel" id="snm-cancel-btn">Cancel</button>
+          <button class="snm-confirm" id="snm-confirm-btn">Assign</button>
+        </div>
+      </div>`;
+    document.body.appendChild(nmOv);
+
+    // ── toast ──
+    function showToast(name, detail, isErr) {
+      const existing = document.querySelector('.scan-toast');
+      if (existing) existing.remove();
+      const t = document.createElement('div');
+      t.className = 'scan-toast' + (isErr ? ' scan-toast-err' : '');
+      t.innerHTML = '<div class="scan-toast-name">' + (isErr ? '✕ ' : '✓ ') + escHtml(name) + '</div>'
+                  + '<div class="scan-toast-detail">' + escHtml(detail) + '</div>';
+      document.body.appendChild(t);
+      setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 420); }, 3500);
+    }
+    function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // ── camera state ──
+    let camStream = null, camDetector = null, camLoop = null, camZXing = null;
+
+    function stopCamera() {
+      if (camLoop) { cancelAnimationFrame(camLoop); camLoop = null; }
+      if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+      if (camZXing)  { try { camZXing.reset(); } catch (_) {} camZXing = null; }
+      const v = document.getElementById('scan-video');
+      if (v) { v.srcObject = null; v.style.display = 'none'; }
+      const cb = document.getElementById('scan-cam-btn');
+      if (cb) cb.classList.remove('active');
+    }
+
+    function loadZXing() {
+      if (window.ZXing) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Could not load barcode library — check your internet connection'));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function startCamera() {
+      const v  = document.getElementById('scan-video');
+      const cb = document.getElementById('scan-cam-btn');
+      const sm = document.getElementById('scan-status-msg');
+      v.style.display = 'block';
+      cb.classList.add('active');
+      try {
+        if ('BarcodeDetector' in window) {
+          // Native API (Chrome on Android, some desktop builds)
+          camDetector = camDetector || new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code','data_matrix'] });
+          camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+          v.srcObject = camStream;
+          sm.textContent = 'Point camera at barcode…';
+          const detect = async () => {
+            if (!camStream) return;
+            if (v.readyState >= 2) {
+              const results = await camDetector.detect(v).catch(() => []);
+              if (results.length) {
+                const raw = results[0].rawValue;
+                stopCamera(); closeScanner(); processBarcode(raw); return;
+              }
+            }
+            camLoop = requestAnimationFrame(detect);
+          };
+          camLoop = requestAnimationFrame(detect);
+        } else {
+          // ZXing fallback — works on all desktop browsers
+          sm.textContent = 'Loading scanner library…';
+          await loadZXing();
+          sm.textContent = 'Point camera at barcode…';
+          camZXing = new window.ZXing.BrowserMultiFormatReader();
+          // decodeFromVideoDevice(null, videoEl, callback) — null = default camera
+          camZXing.decodeFromVideoDevice(null, v, (result, err) => {
+            if (result) {
+              const raw = result.getText();
+              stopCamera(); closeScanner(); processBarcode(raw);
+            }
+            // NotFoundException on every empty frame is normal — ZXing keeps looping
+          });
+        }
+      } catch (e) {
+        sm.textContent = 'Camera error: ' + e.message;
+        stopCamera();
+      }
+    }
+
+    // ── scanner open/close ──
+    function openScanner() {
+      scanOv.style.display = 'flex';
+      const inp = document.getElementById('scan-input');
+      inp.value = '';
+      startCamera();
+    }
+    function closeScanner() {
+      stopCamera();
+      scanOv.style.display = 'none';
+    }
+
+    scanBtn.addEventListener('click', openScanner);
+    document.getElementById('scan-close-btn').addEventListener('click', closeScanner);
+    scanOv.addEventListener('click', (e) => { if (e.target === scanOv) closeScanner(); });
+    document.getElementById('scan-cam-btn').addEventListener('click', () => {
+      if (camStream) { stopCamera(); }
+      else { startCamera(); }
+    });
+    const scanInput = document.getElementById('scan-input');
+    const scanGoBtn = document.getElementById('scan-go-btn');
+    const doSubmit = () => {
+      const v = scanInput.value.trim();
+      if (v) { closeScanner(); processBarcode(v); }
+    };
+    scanGoBtn.addEventListener('click', doSubmit);
+    scanInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doSubmit(); } });
+
+    // ── core barcode processing ──
+    function processBarcode(raw) {
+      const barcodeMap = window._INV_BARCODE_MAP || {};
+      const itemMap    = window._INV_ITEM_MAP    || {};
+      const key = barcodeMap[raw.trim()];
+      if (key && itemMap[key]) {
+        handleMatch(key, raw);
+      } else {
+        openNoMatch(raw);
+      }
+    }
+
+    async function handleMatch(key, raw) {
+      const itemMap = window._INV_ITEM_MAP || {};
+      const item = itemMap[key];
+      if (!item) return;
+      const name = item.name || key;
+      const bs   = item.bottleSize || 0;
+      // Read current on-hand from DOM before re-render
+      const existingRow = body && body.querySelector('tr[data-key="' + key + '"]');
+      const oldCaps = existingRow ? (Number(existingRow.querySelector('.inv-onhand')?.dataset.amount) || 0) : 0;
+      const newCaps = oldCaps + bs;
+      const today = isoToday();
+      try {
+        await fetch('/api/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item: name, amount: bs, type: 'Received', logged_on: today }),
+        });
+        showToast(name, oldCaps + ' → ' + newCaps + ' caps (+' + bs + ')');
+        renderInventory();
+      } catch (e) {
+        showToast(name, 'Save failed: ' + e.message, true);
+      }
+    }
+
+    // ── no-match modal ──
+    let _pendingBarcode = '';
+    function openNoMatch(raw) {
+      _pendingBarcode = raw;
+      document.getElementById('snm-code').textContent = raw;
+      // Populate item select
+      const sel = document.getElementById('snm-select');
+      sel.innerHTML = '';
+      const itemMap = window._INV_ITEM_MAP || {};
+      Object.entries(itemMap)
+        .filter(([k]) => !k.startsWith('_'))
+        .sort((a, b) => (a[1].name || a[0]).localeCompare(b[1].name || b[0]))
+        .forEach(([key, item]) => {
+          const opt = document.createElement('option');
+          opt.value = key; opt.textContent = item.name || key;
+          sel.appendChild(opt);
+        });
+      // Reset radio to "assign"
+      nmOv.querySelectorAll('input[name="snm-mode"]').forEach(r => { r.checked = r.value === 'assign'; });
+      document.getElementById('snm-new-fields').style.display = 'none';
+      document.getElementById('snm-confirm-btn').textContent = 'Assign';
+      nmOv.style.display = 'flex';
+    }
+    function closeNoMatch() { nmOv.style.display = 'none'; }
+
+    document.getElementById('snm-close-btn').addEventListener('click', closeNoMatch);
+    document.getElementById('snm-cancel-btn').addEventListener('click', closeNoMatch);
+    nmOv.addEventListener('click', (e) => { if (e.target === nmOv) closeNoMatch(); });
+
+    nmOv.querySelectorAll('input[name="snm-mode"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        const isNew = radio.value === 'new' && radio.checked;
+        document.getElementById('snm-new-fields').style.display = isNew ? 'block' : 'none';
+        document.getElementById('snm-select').style.display = isNew ? 'none' : 'block';
+        document.getElementById('snm-confirm-btn').textContent = isNew ? 'Add Item' : 'Assign';
+      });
+    });
+
+    document.getElementById('snm-confirm-btn').addEventListener('click', async () => {
+      const mode = [...nmOv.querySelectorAll('input[name="snm-mode"]')].find(r => r.checked)?.value;
+      const btn = document.getElementById('snm-confirm-btn');
+      btn.disabled = true;
+      try {
+        if (mode === 'assign') {
+          const key = document.getElementById('snm-select').value;
+          if (!key) { btn.disabled = false; return; }
+          await window.InventoryWriter.writeBarcodeToSheet(key, _pendingBarcode);
+          closeNoMatch();
+          await handleMatch(key, _pendingBarcode);
+        } else {
+          const name = document.getElementById('snm-name').value.trim();
+          if (!name) { document.getElementById('snm-name').focus(); btn.disabled = false; return; }
+          const fields = {
+            name,
+            bottleSize: document.getElementById('snm-bottle').value,
+            dose:       document.getElementById('snm-dose').value,
+            annualSale: document.getElementById('snm-annual').value.trim(),
+            offCycleSale: document.getElementById('snm-offcycle').value.trim(),
+            anyday:     document.getElementById('snm-anyday').value.trim(),
+          };
+          const key = await window.InventoryWriter.addItemToSheet(fields, _pendingBarcode);
+          closeNoMatch();
+          // New item has no on-hand yet — just show a confirmation
+          showToast(name, 'Item added to sheet. Scan again to log received bottles.');
+          renderInventory();
+        }
+      } catch (e) {
+        showToast('Error', e.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  })();
 })();
 </script>
 </body>
