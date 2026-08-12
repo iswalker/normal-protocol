@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.25, maximum-scale=5.0" />
   <title>Normal Protocol — Intakes</title>
   <link rel="icon" type="image/svg+xml" href="Logos/icon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -521,6 +521,39 @@
     @keyframes scan-slide-in {
       from { transform: translateX(16px); opacity: 0; }
       to   { transform: translateX(0);    opacity: 1; }
+    }
+
+    /* ── Mobile header ── */
+    @media (max-width: 680px) {
+      header {
+        padding: 0 12px;
+        gap: 6px;
+        min-height: 54px;
+      }
+      /* Hide brand text, keep logo only */
+      .brand h1 { display: none; }
+      .brand { flex: 0 0 auto; min-width: 0; }
+
+      /* Bigger tap targets on tabs */
+      .tabs { gap: 0; }
+      .tab-btn {
+        padding: 0 12px;
+        font-size: 14px;
+        min-height: 54px;
+        min-width: 44px;
+      }
+
+      /* Bigger tap targets on header control buttons */
+      .inv-soon-btn,
+      .inv-scan-btn,
+      .refresh-inv-btn {
+        font-size: 13px;
+        padding: 8px 12px;
+        min-height: 40px;
+        border-radius: 8px;
+      }
+      .inv-controls, .board-controls { gap: 6px; }
+      .header-right { gap: 6px; }
     }
   </style>
 
