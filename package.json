@@ -7,6 +7,7 @@
     "dev": "wrangler pages dev .",
     "dev:local": "node scripts/dev-server.mjs",
     "migrate": "node scripts/migrate-orders.mjs",
+    "create-items-table": "node scripts/create-inventory-items-table.mjs",
     "verify": "node scripts/verify-board.mjs",
     "verify:orders": "node scripts/verify-orders-integration.mjs"
   },

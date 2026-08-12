@@ -391,6 +391,8 @@
       border-radius: 4px; transition: background 0.12s;
     }
     #inv-table .inv-onhand:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    #inv-table td.inv-bs, #inv-table td.inv-dose { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
+    #inv-table td.inv-bs:hover, #inv-table td.inv-dose:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table .inv-bottles { font-variant-numeric: tabular-nums; color: var(--ink-60); cursor: pointer; border-radius: 4px; transition: background 0.12s; white-space: nowrap; }
     #inv-table .inv-bottles:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table .inv-num { font-variant-numeric: tabular-nums; color: var(--ink-60); }
@@ -1127,7 +1129,7 @@
         </button>
         <div class="settings-panel" id="settings-panel">
           <div class="settings-panel-title">Settings</div>
-          <button class="settings-action-btn" id="select-inventory">Select Inventory Sheet</button>
+          <button class="settings-action-btn" id="select-inventory">Re-import from Google Sheets</button>
           <button class="settings-action-btn" id="update-ynab">Update YNAB API Key</button>
         </div>
       </div>
@@ -3234,60 +3236,6 @@
     return { title: found.title, rows, hi };
   }
 
-  // Items tab: static metadata (name, bottle size, dose, suppliers)
-  function findItemHeader(rows) {
-    return rows.findIndex((r) => {
-      if (!r) return false;
-      const low = r.map((c) => String(c == null ? '' : c).trim().toLowerCase());
-      return low.indexOf('item') >= 0
-        && (low.indexOf('bottle size') >= 0 || low.indexOf('daily dose') >= 0
-          || low.indexOf('annual sale') >= 0 || low.indexOf('anyday') >= 0);
-    });
-  }
-
-  async function readItemSheet(token, fileId) {
-    const meta = await sheetsGet(token, fileId + '?fields=sheets.properties(title,sheetId)');
-    const props = (meta.sheets || []).map((s) => s.properties);
-    const found = props.find((p) => p.title.trim().toLowerCase() === 'items')
-               || props.find((p) => /^items$/i.test(p.title));
-    if (!found) throw new Error('No "Items" tab found. Tabs: ' + props.map((p) => p.title).join(', '));
-    const vals = await sheetsGet(token, fileId + '/values/' + encodeURIComponent(found.title) + '?majorDimension=ROWS');
-    const rows = vals.values || [];
-    const hi = findItemHeader(rows);
-    if (hi < 0) throw new Error('The "Items" tab has no recognizable header row');
-    return { rows, hi, title: found.title, sheetId: found.sheetId };
-  }
-
-  function buildItemMap(rows, hi) {
-    const norm = (s) => String(s == null ? '' : s).trim();
-    const header = rows[hi].map((c) => norm(c).toLowerCase());
-    const ci = (n) => header.indexOf(n.toLowerCase());
-    const idx = {
-      item: ci('item'), bottle: ci('bottle size'), dose: ci('daily dose'),
-      annual: ci('annual sale'), offcycle: ci('off-cycle sale'), anyday: ci('anyday'),
-      barcode: ci('barcode'),
-    };
-    const map = {};
-    for (let i = hi + 1; i < rows.length; i++) {
-      const r = rows[i] || [];
-      const name = norm(r[idx.item]);
-      if (!name || name.toLowerCase() === 'summary') continue;
-      const key = name.toLowerCase();
-      map[key] = {
-        name,
-        bottleSize: idx.bottle >= 0 ? (Number(norm(r[idx.bottle])) || 0) : 0,
-        dose: idx.dose >= 0 ? (Number(norm(r[idx.dose])) || 0) : 0,
-        annualSale: idx.annual >= 0 ? norm(r[idx.annual]) : '',
-        offCycleSale: idx.offcycle >= 0 ? norm(r[idx.offcycle]) : '',
-        anyday: idx.anyday >= 0 ? norm(r[idx.anyday]) : '',
-        barcode: idx.barcode >= 0 ? norm(r[idx.barcode]) : '',
-        _rowIndex: i,
-      };
-    }
-    Object.defineProperty(map, '_barcodeColIndex', { value: idx.barcode, enumerable: false, writable: true, configurable: true });
-    Object.defineProperty(map, '_headerLength',    { value: header.length, enumerable: false, writable: true, configurable: true });
-    return map;
-  }
 
   function computeOnHand(invLogRows) {
     const isAdditive = (t) => { const l = (t || '').toLowerCase(); return l === 'ordered' || l === 'received'; };
@@ -3424,160 +3372,173 @@
     return { total: dataRows.length, imported };
   }
 
-  // silent=true: called automatically on load — no popups, fails quietly
-  // forcePick=true: always show the Drive Picker
-  async function run(forcePick, silent = false) {
-    if (!window.SupplementBoard || !window.SupplementBoard.applyInventory) {
-      if (!silent) setStatus('Open the board first', 'err');
-      return;
+  // ── Turso-first inventory item helpers ──────────────────────────────────
+
+  function buildMapsFromItems(items) {
+    const itemMap = {};
+    const barcodeMap = {};
+    for (const item of items) {
+      const key = item.name.trim().toLowerCase();
+      itemMap[key] = {
+        name:         item.name,
+        bottleSize:   item.bottle_size   || 0,
+        dose:         item.daily_dose    || 0,
+        annualSale:   item.annual_sale   || '',
+        offCycleSale: item.off_cycle_sale || '',
+        anyday:       item.anyday        || '',
+        barcode:      item.barcode       || '',
+        _id:          item.id,
+      };
+      if (item.barcode) barcodeMap[item.barcode.trim()] = key;
     }
-    if (!silent) setStatus('Connecting…');
+    window._INV_ITEM_MAP    = itemMap;
+    window._INV_BARCODE_MAP = barcodeMap;
+    return itemMap;
+  }
+
+  async function fetchLogAndApply() {
+    let invLogRows = [];
+    try { const r = await fetch('/api/inventory'); if (r.ok) invLogRows = await r.json(); } catch {}
+    window._INV_LOG_ROWS = invLogRows;
+    const amountsMap  = computeOnHand(invLogRows);
+    const preOrderMap = buildPreOrderMapFromLog(invLogRows);
+    if (window.SupplementBoard?.applyInventory) {
+      window.SupplementBoard.applyInventory(mergeItemAndAmounts(window._INV_ITEM_MAP || {}, amountsMap), preOrderMap);
+    }
+    document.dispatchEvent(new CustomEvent('inventoryDataReady'));
+  }
+
+  async function writeBarcodeToTurso(key, barcode) {
+    const item = (window._INV_ITEM_MAP || {})[key];
+    if (!item || !item._id) throw new Error('Item not in Turso yet — refresh first');
+    const r = await fetch('/api/inventory-items?id=' + item._id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ barcode }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    item.barcode = barcode;
+    window._INV_BARCODE_MAP = window._INV_BARCODE_MAP || {};
+    window._INV_BARCODE_MAP[barcode.trim()] = key;
+  }
+
+  async function addItemToTurso(fields, barcode) {
+    const name = (fields.name || '').trim();
+    if (!name) throw new Error('Name is required');
+    const r = await fetch('/api/inventory-items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        bottle_size:   Number(fields.bottleSize)   || 0,
+        daily_dose:    Number(fields.dose)         || 0,
+        annual_sale:   fields.annualSale           || '',
+        off_cycle_sale: fields.offCycleSale        || '',
+        anyday:        fields.anyday               || '',
+        barcode:       barcode                     || '',
+      }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    // Reload from Turso to get the new id
+    const fresh = await fetch('/api/inventory-items').then(x => x.json());
+    buildMapsFromItems(fresh);
+    return name.toLowerCase();
+  }
+
+  // forcePick=true: force re-import from Google Sheets (one-time migration or manual re-sync)
+  // silent=true: called automatically — no popups, fails quietly
+  async function run(forcePick, silent = false) {
+    // Fast path: Turso already has items (skip Google entirely)
+    if (!forcePick) {
+      try {
+        const r = await fetch('/api/inventory-items');
+        if (r.ok) {
+          const items = await r.json();
+          if (items.length > 0) {
+            buildMapsFromItems(items);
+            await fetchLogAndApply();
+            return;
+          }
+        }
+      } catch { /* fall through to Google Sheets fallback */ }
+    }
+
+    // Google Sheets fallback — used for initial migration or manual re-import
+    if (!silent) setStatus('Connecting to Google Sheets…');
     try {
       await waitFor(() => window.google && google.accounts && google.accounts.oauth2 && window.gapi);
       const token = await getToken(silent);
       let file = getCachedFile();
       if (forcePick || !file) {
-        if (silent) return; // never show Picker automatically
+        if (silent) { await fetchLogAndApply(); return; }
         file = await pickFile(token);
-        if (!file) { refreshLabels(); return; }
+        if (!file) return;
         setCachedFile(file);
       }
-      if (!silent) setStatus('Reading “' + file.name + '”…');
-      const { rows, hi, title: itemSheetTitle, sheetId: itemSheetId } = await readItemSheet(token, file.id);
-      const itemMap = buildItemMap(rows, hi);
+      if (!silent) setStatus('Reading Items sheet…');
 
-      // Build barcode lookup and store sheet metadata for write-back
-      const barcodeMap = {};
-      for (const [key, item] of Object.entries(itemMap)) {
-        if (key.startsWith('_')) continue;
-        if (item.barcode) barcodeMap[item.barcode.trim()] = key;
-      }
-      window._INV_BARCODE_MAP = barcodeMap;
-      window._INV_SHEET_META = {
-        fileId: file.id, title: itemSheetTitle, sheetId: itemSheetId,
-        barcodeColIndex: itemMap._barcodeColIndex,
-        headerLength: itemMap._headerLength,
-        hi,
+      // Read Items sheet and migrate to Turso
+      const meta = await sheetsGet(token, file.id + '?fields=sheets.properties(title,sheetId)');
+      const props = (meta.sheets || []).map((s) => s.properties);
+      const found = props.find((p) => p.title.trim().toLowerCase() === 'items')
+                 || props.find((p) => /^items$/i.test(p.title));
+      if (!found) throw new Error('No “Items” tab in this spreadsheet');
+      const vals = await sheetsGet(token, file.id + '/values/' + encodeURIComponent(found.title) + '?majorDimension=ROWS');
+      const rows = vals.values || [];
+      const norm = (s) => String(s == null ? '' : s).trim();
+      // Find header row
+      const hi = rows.findIndex((r) => {
+        const low = (r || []).map((c) => norm(c).toLowerCase());
+        return low.includes('item') && (low.includes('bottle size') || low.includes('daily dose') || low.includes('annual sale'));
+      });
+      if (hi < 0) throw new Error('No recognizable header row in Items tab');
+      const header = rows[hi].map((c) => norm(c).toLowerCase());
+      const ci = (n) => header.indexOf(n.toLowerCase());
+      const idx = {
+        item: ci('item'), bottle: ci('bottle size'), dose: ci('daily dose'),
+        annual: ci('annual sale'), offcycle: ci('off-cycle sale'), anyday: ci('anyday'), barcode: ci('barcode'),
       };
+      const sheetItems = [];
+      for (let i = hi + 1; i < rows.length; i++) {
+        const r = rows[i] || [];
+        const name = norm(r[idx.item]);
+        if (!name || name.toLowerCase() === 'summary') continue;
+        sheetItems.push({
+          name,
+          bottle_size:   idx.bottle   >= 0 ? (Number(norm(r[idx.bottle]))   || 0) : 0,
+          daily_dose:    idx.dose     >= 0 ? (Number(norm(r[idx.dose]))     || 0) : 0,
+          annual_sale:   idx.annual   >= 0 ? norm(r[idx.annual])   : '',
+          off_cycle_sale: idx.offcycle >= 0 ? norm(r[idx.offcycle]) : '',
+          anyday:        idx.anyday   >= 0 ? norm(r[idx.anyday])   : '',
+          barcode:       idx.barcode  >= 0 ? norm(r[idx.barcode])  : '',
+          sort_order:    i - hi - 1,
+        });
+      }
 
-      let invLogRows = [];
-      try { const r = await fetch('/api/inventory'); if (r.ok) invLogRows = await r.json(); } catch {}
-
-      const amountsMap = computeOnHand(invLogRows);
-      const invMap = mergeItemAndAmounts(itemMap, amountsMap);
-      const preOrderMap = buildPreOrderMapFromLog(invLogRows);
-      const matched = window.SupplementBoard.applyInventory(invMap, preOrderMap);
-      window._INV_ITEM_MAP = itemMap;
-      window._INV_LOG_ROWS = invLogRows;
-      setStatus('Items: ' + file.name + ' · ' + matched + ' matched', 'ok');
-      refreshLabels();
+      // Bulk-upsert into Turso
+      if (sheetItems.length) {
+        await fetch('/api/inventory-items?bulk=1', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sheetItems),
+        });
+      }
+      // Reload with Turso-assigned ids
+      const freshR = await fetch('/api/inventory-items');
+      const freshItems = freshR.ok ? await freshR.json() : sheetItems.map((x, i) => ({ ...x, id: i }));
+      buildMapsFromItems(freshItems);
+      if (!silent) setStatus('Migrated ' + sheetItems.length + ' items to Turso ✓', 'ok');
+      await fetchLogAndApply();
     } catch (e) {
       const silentErrors = ['interaction_required', 'consent_required', 'access_denied',
                             'immediate_failed', 'popup_closed', 'popup_failed_to_open'];
-      const isSilentable = silentErrors.some(s => e.message.includes(s))
+      const isSilentable = silentErrors.some(s => e.message?.includes(s))
         || e.message === 'No token'
-        || /Sheets API [45]\d\d/.test(e.message); // 4xx/5xx from Sheets = stale token, need manual re-auth
-      if (silent && isSilentable) {
-        return; // needs UI interaction — user can click Refresh Inventory manually
-      }
+        || /Sheets API [45]\d\d/.test(e.message);
+      if (silent && isSilentable) { await fetchLogAndApply(); return; }
       console.error('Inventory connect failed:', e);
       if (!silent) setStatus('Connect failed: ' + e.message, 'err');
     }
-  }
-
-  function refreshLabels() {}
-
-  async function writeBarcodeToSheet(itemKey, barcode) {
-    const meta = window._INV_SHEET_META;
-    const itemMap = window._INV_ITEM_MAP;
-    if (!meta || !itemMap) throw new Error('Inventory not loaded — refresh first');
-    const item = itemMap[itemKey];
-    if (!item) throw new Error('Unknown item: ' + itemKey);
-    const token = getCachedToken() || await getToken(false);
-    let colIdx = meta.barcodeColIndex;
-    if (colIdx < 0) {
-      // Barcode column doesn't exist yet — append it to the header
-      colIdx = meta.headerLength;
-      await sheetsWrite(token, meta.fileId,
-        meta.title + '!' + colLetter(colIdx) + (meta.hi + 1),
-        [['Barcode']]
-      );
-      meta.barcodeColIndex = colIdx;
-      meta.headerLength = colIdx + 1;
-      // Update all existing items so future writes use correct index
-      for (const v of Object.values(itemMap)) { if (v && typeof v === 'object' && '_rowIndex' in v) v.barcode = v.barcode || ''; }
-    }
-    const rowNum = item._rowIndex + 1; // 1-indexed
-    await sheetsWrite(token, meta.fileId,
-      meta.title + '!' + colLetter(colIdx) + rowNum,
-      [[barcode]]
-    );
-    item.barcode = barcode;
-    window._INV_BARCODE_MAP = window._INV_BARCODE_MAP || {};
-    window._INV_BARCODE_MAP[barcode.trim()] = itemKey;
-  }
-
-  async function addItemToSheet(fields, barcode) {
-    const meta = window._INV_SHEET_META;
-    if (!meta) throw new Error('Inventory not loaded — refresh first');
-    const token = getCachedToken() || await getToken(false);
-    // Re-read sheet to get current row layout
-    const { rows, hi, title, sheetId } = await readItemSheet(token, meta.fileId);
-    const norm = (s) => String(s == null ? '' : s).trim();
-    const header = rows[hi].map((c) => norm(c).toLowerCase());
-    const ci = (n) => header.indexOf(n.toLowerCase());
-    const idx = {
-      item: ci('item'), bottle: ci('bottle size'), dose: ci('daily dose'),
-      annual: ci('annual sale'), offcycle: ci('off-cycle sale'), anyday: ci('anyday'),
-      barcode: ci('barcode'),
-    };
-    // Determine alphabetical insertion point among data rows
-    const newNameLower = (fields.name || '').trim().toLowerCase();
-    let insertIdx = rows.length; // default: append
-    for (let i = hi + 1; i < rows.length; i++) {
-      const rowName = norm((rows[i] || [])[idx.item]).toLowerCase();
-      if (rowName && rowName !== 'summary' && rowName > newNameLower) { insertIdx = i; break; }
-    }
-    // Determine barcode column (auto-create header if missing)
-    let barcodeColIdx = idx.barcode;
-    const rowLen = Math.max(header.length, barcodeColIdx < 0 ? header.length + 1 : 0);
-    if (barcodeColIdx < 0) {
-      barcodeColIdx = header.length;
-      await sheetsWrite(token, meta.fileId, title + '!' + colLetter(barcodeColIdx) + (hi + 1), [['Barcode']]);
-      meta.barcodeColIndex = barcodeColIdx;
-      meta.headerLength = barcodeColIdx + 1;
-    }
-    // Build new row
-    const newRow = new Array(Math.max(rowLen, barcodeColIdx + 1)).fill('');
-    if (idx.item >= 0)     newRow[idx.item]     = fields.name || '';
-    if (idx.bottle >= 0)   newRow[idx.bottle]   = fields.bottleSize != null ? String(fields.bottleSize) : '';
-    if (idx.dose >= 0)     newRow[idx.dose]      = fields.dose != null ? String(fields.dose) : '';
-    if (idx.annual >= 0)   newRow[idx.annual]    = fields.annualSale || '';
-    if (idx.offcycle >= 0) newRow[idx.offcycle]  = fields.offCycleSale || '';
-    if (idx.anyday >= 0)   newRow[idx.anyday]    = fields.anyday || '';
-    if (barcode)           newRow[barcodeColIdx] = barcode;
-    // Insert blank row then write values
-    await sheetsBatchUpdate(token, meta.fileId, [{
-      insertDimension: { range: { sheetId, dimension: 'ROWS', startIndex: insertIdx, endIndex: insertIdx + 1 }, inheritFromBefore: false }
-    }]);
-    await sheetsWrite(token, meta.fileId,
-      title + '!A' + (insertIdx + 1) + ':' + colLetter(newRow.length - 1) + (insertIdx + 1),
-      [newRow]
-    );
-    // Update local maps
-    const key = fields.name.trim().toLowerCase();
-    window._INV_ITEM_MAP = window._INV_ITEM_MAP || {};
-    window._INV_ITEM_MAP[key] = {
-      name: fields.name.trim(), bottleSize: Number(fields.bottleSize) || 0,
-      dose: Number(fields.dose) || 0, annualSale: fields.annualSale || '',
-      offCycleSale: fields.offCycleSale || '', anyday: fields.anyday || '',
-      barcode: barcode || '', _rowIndex: insertIdx,
-    };
-    if (barcode) {
-      window._INV_BARCODE_MAP = window._INV_BARCODE_MAP || {};
-      window._INV_BARCODE_MAP[barcode.trim()] = key;
-    }
-    return key;
   }
 
   if (selectBtn) selectBtn.addEventListener('click', () => run(true));
@@ -3585,15 +3546,11 @@
   const refreshInvBtn = document.getElementById('refresh-inv-btn');
   if (refreshInvBtn) refreshInvBtn.addEventListener('click', () => run(false));
 
-  // auto-refresh Items silently on board load — no popups, no error display
-  document.addEventListener('boardReady', () => {
-    if (getCachedFile()) run(false, true).then(() => {
-      document.dispatchEvent(new CustomEvent('inventoryDataReady'));
-    }).catch(() => {});
-  });
+  // auto-load Items on board load — Turso-first, no popups
+  document.addEventListener('boardReady', () => { run(false, true).catch(() => {}); });
 
   // Exposed so the board's set-stage handler and Inventory tab can use these
-  window.InventoryWriter = { writeShipment, migrateFromSheet, run, writeBarcodeToSheet, addItemToSheet };
+  window.InventoryWriter = { writeShipment, migrateFromSheet, run, writeBarcodeToTurso, addItemToTurso };
 })();
 </script>
 
@@ -3692,7 +3649,7 @@
     const allKeys = [...new Set([...Object.keys(itemMap), ...Object.keys(onHand)])].sort();
 
     if (!allKeys.length) {
-      body.innerHTML = '<tr><td colspan="10" class="loading">No data yet — use "Import from Sheet" or refresh the board to load items.</td></tr>';
+      body.innerHTML = '<tr><td colspan="12" class="loading">No items found — click Refresh or open the board to load.</td></tr>';
       _rendering = false;
       return;
     }
@@ -3720,19 +3677,20 @@
 
       const tr = document.createElement('tr');
       tr.dataset.key = key;
+      if (meta._id) tr.dataset.id = meta._id;
       tr.innerHTML =
         '<td class="inv-name">'     + name + '</td>' +
         '<td class="inv-runout'     + (ro ? (' ' + ro.cls) : ' inv-no-data') + '">' + (ro ? ro.text : '—') + roBars + '</td>' +
         '<td class="inv-bottles" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit bottles">' + bottles + bottleBars + '</td>' +
         '<td class="inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit caps">' + Math.round(currentAmount) + '</td>' +
-        '<td class="inv-num">'      + (bs         || '—') + '</td>' +
-        '<td class="inv-num">'      + (dose       || '—') + '</td>' +
-        '<td class="inv-num">'      + (bs > 0 && dose > 0 ? (Math.round(bs / dose * 10) / 10) + 'd' : '—') + '</td>' +
+        '<td class="inv-num inv-bs" data-key="' + key + '" title="Click to edit bottle size">' + (bs || '—') + '</td>' +
+        '<td class="inv-num inv-dose" data-key="' + key + '" title="Click to edit daily dose">' + (dose || '—') + '</td>' +
+        '<td class="inv-num inv-dpb">' + (bs > 0 && dose > 0 ? (Math.round(bs / dose * 10) / 10) + 'd' : '—') + '</td>' +
         '<td class="inv-num">'      + (amt.loggedOn ? ((d => (d.getMonth()+1)+'/'+d.getDate())(new Date(amt.loggedOn+'T00:00:00'))) : '—') + '</td>' +
         '<td class="inv-supplier">' + (meta.annualSale   || '—') + '</td>' +
         '<td class="inv-supplier">' + (meta.offCycleSale || '—') + '</td>' +
         '<td class="inv-supplier">' + (meta.anyday       || '—') + '</td>' +
-        '<td><button class="inv-del-btn" data-key="' + key + '" data-name="' + name.replace(/"/g, '&quot;') + '" title="Delete all inventory rows for this item">✕</button></td>';
+        '<td><button class="inv-del-btn" data-key="' + key + '" data-id="' + (meta._id || '') + '" data-name="' + name.replace(/"/g, '&quot;') + '" title="Delete item and all inventory rows">✕</button></td>';
       body.appendChild(tr);
     });
 
@@ -3742,12 +3700,10 @@
 
   function attachEditHandlers(itemMap) {
     if (!body) return;
-    body.querySelectorAll('.inv-onhand').forEach((cell) => {
-      cell.onclick = () => startEdit(cell, itemMap, 'caps');
-    });
-    body.querySelectorAll('.inv-bottles').forEach((cell) => {
-      cell.onclick = () => startEdit(cell, itemMap, 'bottles');
-    });
+    body.querySelectorAll('.inv-onhand').forEach((cell) => { cell.onclick = () => startEdit(cell, itemMap, 'caps'); });
+    body.querySelectorAll('.inv-bottles').forEach((cell) => { cell.onclick = () => startEdit(cell, itemMap, 'bottles'); });
+    body.querySelectorAll('.inv-bs').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'bottle_size'); });
+    body.querySelectorAll('.inv-dose').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'daily_dose'); });
   }
 
   function refreshRow(key, newCaps, loggedOn, itemMap) {
@@ -3833,6 +3789,61 @@
     inp.addEventListener('blur', () => setTimeout(save, 80));
   }
 
+  // Inline edit for Bottle Size or Daily Dose — PATCHes /api/inventory-items
+  function startMetaEdit(cell, itemMap, field) {
+    if (cell.querySelector('input')) return;
+    const key  = cell.dataset.key;
+    const meta = itemMap[key] || {};
+    if (!meta._id) return; // item not yet in Turso
+    const curVal = field === 'bottle_size' ? (meta.bottleSize || '') : (meta.dose || '');
+
+    cell.textContent = '';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.inputMode = 'decimal';
+    inp.value = curVal; inp.className = 'inv-edit-input';
+    inp.placeholder = field === 'bottle_size' ? 'caps/bottle' : 'caps/day';
+    cell.appendChild(inp);
+    inp.focus(); inp.select();
+
+    let committed = false;
+    const save = async () => {
+      if (committed) return; committed = true;
+      const parsed = evalExpr(inp.value);
+      if (isNaN(parsed) || parsed < 0) { cell.textContent = curVal || '—'; return; }
+
+      // Update local map immediately so refreshRow uses new values
+      if (field === 'bottle_size') meta.bottleSize = parsed;
+      else                          meta.dose       = parsed;
+
+      // Update this cell and the days-per-bottle cell
+      cell.textContent = parsed || '—';
+      const tr = body.querySelector('tr[data-key="' + key + '"]');
+      if (tr) {
+        const dpbCell = tr.querySelector('.inv-dpb');
+        const bs = meta.bottleSize || 0, dose = meta.dose || 0;
+        if (dpbCell) dpbCell.textContent = bs > 0 && dose > 0 ? (Math.round(bs / dose * 10) / 10) + 'd' : '—';
+      }
+
+      try {
+        await fetch('/api/inventory-items?id=' + meta._id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [field]: parsed }),
+        });
+        // Full re-render to recalculate run-out, bottles, etc.
+        renderInventory();
+      } catch (e) {
+        console.error('Meta save failed:', e);
+        renderInventory();
+      }
+    };
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { committed = true; cell.textContent = curVal || '—'; }
+    });
+    inp.addEventListener('blur', () => setTimeout(save, 80));
+  }
+
   const FILTER_COLS = [
     { id: 'inv-filter-item',     colIdx: 0 },
     { id: 'inv-filter-annual',   colIdx: 8 },
@@ -3866,10 +3877,8 @@
   if (refreshBtn) refreshBtn.addEventListener('click', async () => {
     refreshBtn.disabled = true;
     try {
-      if (window.InventoryWriter && window.InventoryWriter.run) {
-        await window.InventoryWriter.run(false);
-      }
-      await renderInventory();
+      if (window.InventoryWriter?.run) await window.InventoryWriter.run(false);
+      else await renderInventory();
     } finally {
       refreshBtn.disabled = false;
     }
@@ -3879,14 +3888,20 @@
     const btn = e.target.closest('.inv-del-btn');
     if (!btn) return;
     const name = btn.dataset.name;
-    if (!confirm('Delete all inventory records for "' + name + '"?\nThis cannot be undone.')) return;
+    const itemId = btn.dataset.id;
+    if (!confirm('Delete "' + name + '" and all its inventory log rows?\nThis cannot be undone.')) return;
     btn.disabled = true;
     try {
-      const r = await fetch('/api/inventory?' + new URLSearchParams({ item: name }), { method: 'DELETE' });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      // Delete from inventory_log (history)
+      await fetch('/api/inventory?' + new URLSearchParams({ item: name }), { method: 'DELETE' });
+      // Delete from inventory_items (definition)
+      if (itemId) await fetch('/api/inventory-items?id=' + itemId, { method: 'DELETE' });
+      // Remove from local maps
+      const key = name.trim().toLowerCase();
+      if (window._INV_ITEM_MAP) delete window._INV_ITEM_MAP[key];
       btn.closest('tr').remove();
-    } catch (e) {
-      alert('Delete failed: ' + e.message);
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
       btn.disabled = false;
     }
   });
@@ -4154,7 +4169,7 @@
         if (mode === 'assign') {
           const key = document.getElementById('snm-select').value;
           if (!key) { btn.disabled = false; return; }
-          await window.InventoryWriter.writeBarcodeToSheet(key, _pendingBarcode);
+          await window.InventoryWriter.writeBarcodeToTurso(key, _pendingBarcode);
           closeNoMatch();
           await handleMatch(key, _pendingBarcode);
         } else {
@@ -4162,16 +4177,15 @@
           if (!name) { document.getElementById('snm-name').focus(); btn.disabled = false; return; }
           const fields = {
             name,
-            bottleSize: document.getElementById('snm-bottle').value,
-            dose:       document.getElementById('snm-dose').value,
-            annualSale: document.getElementById('snm-annual').value.trim(),
+            bottleSize:   document.getElementById('snm-bottle').value,
+            dose:         document.getElementById('snm-dose').value,
+            annualSale:   document.getElementById('snm-annual').value.trim(),
             offCycleSale: document.getElementById('snm-offcycle').value.trim(),
-            anyday:     document.getElementById('snm-anyday').value.trim(),
+            anyday:       document.getElementById('snm-anyday').value.trim(),
           };
-          const key = await window.InventoryWriter.addItemToSheet(fields, _pendingBarcode);
+          const key = await window.InventoryWriter.addItemToTurso(fields, _pendingBarcode);
           closeNoMatch();
-          // New item has no on-hand yet — just show a confirmation
-          showToast(name, 'Item added to sheet. Scan again to log received bottles.');
+          showToast(name, 'Item added. Scan again to log received bottles.');
           renderInventory();
         }
       } catch (e) {
