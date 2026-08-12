@@ -380,11 +380,31 @@
 
     /* ── Inventory tab ── */
     #tab-inventory { padding-bottom: 20px; height: calc(100vh - 48px); overflow: auto; }
-    #tab-inventory .table-wrap { overflow: visible; }
+    #tab-inventory .table-wrap { overflow-x: auto; }
+
+    /* ── Inventory column widths (px) — edit these to resize columns ──────
+       Cells clip with ellipsis; headers still wrap freely.
+       Cols map 1-to-1 with <col> elements in <colgroup> below.          */
+    #inv-table col.ci-item     { width: 160px; }
+    #inv-table col.ci-runout   { width: 104px; }
+    #inv-table col.ci-bottles  { width:  80px; }
+    #inv-table col.ci-onhand   { width:  72px; }
+    #inv-table col.ci-bs       { width:  84px; }
+    #inv-table col.ci-dose     { width:  80px; }
+    #inv-table col.ci-lasts    { width:  72px; }
+    #inv-table col.ci-reset    { width:  76px; }
+    #inv-table col.ci-annual   { width: 110px; }
+    #inv-table col.ci-offcycle { width: 100px; }
+    #inv-table col.ci-anyday   { width: 100px; }
+    #inv-table col.ci-del      { width:  32px; }
+    /* ─────────────────────────────────────────────────────────────────── */
+
+    #inv-table { table-layout: fixed; }
     #inv-table thead tr:first-child th { position: sticky; top: 0; z-index: 10; background: var(--cream); }
     #inv-table .inv-filters th { position: sticky; top: 40px; z-index: 10; background: var(--cream); }
 
-    #inv-table td { font-size: 13px; }
+    #inv-table td { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+    #inv-table th { white-space: normal; }
     #inv-table .inv-name { font-weight: 500; }
     #inv-table .inv-onhand {
       font-variant-numeric: tabular-nums; cursor: pointer;
@@ -393,10 +413,10 @@
     #inv-table .inv-onhand:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table td.inv-bs, #inv-table td.inv-dose { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
     #inv-table td.inv-bs:hover, #inv-table td.inv-dose:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
-    #inv-table .inv-bottles { font-variant-numeric: tabular-nums; color: var(--ink-60); cursor: pointer; border-radius: 4px; transition: background 0.12s; white-space: nowrap; }
+    #inv-table .inv-bottles { font-variant-numeric: tabular-nums; color: var(--ink-60); cursor: pointer; border-radius: 4px; transition: background 0.12s; }
     #inv-table .inv-bottles:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table .inv-num { font-variant-numeric: tabular-nums; color: var(--ink-60); }
-    #inv-table .inv-runout { font-size: 12px; white-space: nowrap; }
+    #inv-table .inv-runout { font-size: 12px; }
     .inv-bars { display: inline-flex; gap: 1px; align-items: center; vertical-align: middle; margin-left: 4px; }
     .inv-bar { display: block; flex-shrink: 0; width: 10px; height: 5px; border-radius: 1px; background: #3f8f87; opacity: 0.5; }
     #inv-table .inv-runout.inv-empty { color: #d6504a; font-weight: 600; }
@@ -1169,6 +1189,20 @@
 <section id="tab-inventory" class="tab-panel">
   <div class="table-wrap" style="margin: 20px 20px 20px;">
     <table id="inv-table">
+      <colgroup>
+        <col class="ci-item">
+        <col class="ci-runout">
+        <col class="ci-bottles">
+        <col class="ci-onhand">
+        <col class="ci-bs">
+        <col class="ci-dose">
+        <col class="ci-lasts">
+        <col class="ci-reset">
+        <col class="ci-annual">
+        <col class="ci-offcycle">
+        <col class="ci-anyday">
+        <col class="ci-del">
+      </colgroup>
       <thead>
         <tr>
           <th>Item</th>
