@@ -3517,17 +3517,34 @@
 
       // Bulk-upsert into Turso
       if (sheetItems.length) {
-        await fetch('/api/inventory-items?bulk=1', {
+        const migrateR = await fetch('/api/inventory-items?bulk=1', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(sheetItems),
         });
+        if (!migrateR.ok) {
+          const errText = await migrateR.text().catch(() => migrateR.status);
+          console.error('inventory-items bulk POST failed:', migrateR.status, errText);
+          if (!silent) setStatus('Migration failed (' + migrateR.status + ') — see console', 'err');
+        }
       }
       // Reload with Turso-assigned ids
       const freshR = await fetch('/api/inventory-items');
-      const freshItems = freshR.ok ? await freshR.json() : sheetItems.map((x, i) => ({ ...x, id: i }));
-      buildMapsFromItems(freshItems);
-      if (!silent) setStatus('Migrated ' + sheetItems.length + ' items to Turso ✓', 'ok');
+      const freshItems = freshR.ok ? await freshR.json() : [];
+      if (freshItems.length) {
+        buildMapsFromItems(freshItems);
+        if (!silent) setStatus('Migrated ' + freshItems.length + ' items to Turso ✓', 'ok');
+      } else {
+        // Migration failed — fall back to using Google Sheets data without ids
+        window._INV_ITEM_MAP = Object.fromEntries(
+          sheetItems.map(x => [x.name.trim().toLowerCase(), {
+            name: x.name, bottleSize: x.bottle_size, dose: x.daily_dose,
+            annualSale: x.annual_sale, offCycleSale: x.off_cycle_sale,
+            anyday: x.anyday, barcode: x.barcode,
+          }])
+        );
+        if (!silent) setStatus('Loaded ' + sheetItems.length + ' items from Google (Turso migration pending)', 'err');
+      }
       await fetchLogAndApply();
     } catch (e) {
       const silentErrors = ['interaction_required', 'consent_required', 'access_denied',
