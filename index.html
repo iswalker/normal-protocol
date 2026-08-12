@@ -3,14 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, user-scalable=yes" />
-  <title>Normal Protocol — Intakes</title>
+  <title>Normal Protocol</title>
   <link rel="icon" type="image/svg+xml" href="Logos/icon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <!-- Google Identity Services (OAuth token client) + gapi (Drive Picker) for the Inventory tab -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://apis.google.com/js/api.js" async defer></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -56,50 +53,6 @@
       white-space: nowrap;
     }
 
-    main { padding: 28px 32px; }
-
-    .toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .section-title {
-      font-size: 13px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--ink-60);
-    }
-
-    .search-wrap { position: relative; }
-
-    .search-wrap svg {
-      position: absolute;
-      left: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--ink-60);
-      pointer-events: none;
-    }
-
-    #search {
-      background: white;
-      border: 1.5px solid var(--ink-12);
-      border-radius: var(--radius);
-      padding: 7px 12px 7px 32px;
-      font-size: 13px;
-      color: var(--ink);
-      outline: none;
-      width: 220px;
-      transition: border-color 0.15s;
-    }
-
-    #search:focus { border-color: var(--teal); }
-    #search::placeholder { color: var(--ink-60); }
 
     .table-wrap {
       overflow-x: auto;
@@ -171,18 +124,6 @@
       font-weight: 600;
     }
 
-    .listing-id {
-      font-size: 12px;
-      color: var(--ink-60);
-      font-family: "SF Mono", "Fira Code", monospace;
-    }
-
-    .payment {
-      font-size: 12px;
-      color: var(--ink-60);
-      max-width: 260px;
-    }
-
     .empty, .loading, .error {
       text-align: center;
       padding: 48px 16px;
@@ -190,103 +131,6 @@
     }
 
     .error { color: #c0392b; }
-
-    #count {
-      font-size: 12px;
-      color: var(--ink-60);
-      margin-top: 12px;
-    }
-
-    /* ── Source dropdown ── */
-    .source-cell { position: relative; }
-
-    .source-trigger {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 3px 8px 3px 10px;
-      border: 1.5px solid transparent;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-      color: var(--ink);
-      background: transparent;
-      transition: border-color 0.15s, background 0.15s;
-      white-space: nowrap;
-      max-width: 180px;
-    }
-
-    .source-trigger:hover {
-      border-color: var(--ink-12);
-      background: white;
-    }
-
-    .source-trigger.open {
-      border-color: var(--teal);
-      background: white;
-    }
-
-    .source-trigger svg {
-      flex-shrink: 0;
-      color: var(--ink-60);
-      transition: transform 0.15s;
-    }
-
-    .source-trigger.open svg { transform: rotate(180deg); }
-
-    .source-menu {
-      display: none;
-      position: absolute;
-      top: calc(100% + 4px);
-      left: 0;
-      z-index: 100;
-      background: white;
-      border: 1.5px solid var(--ink-12);
-      border-radius: 8px;
-      box-shadow: 0 4px 16px rgba(23,26,28,0.10);
-      min-width: 160px;
-      padding: 4px 0;
-      overflow: hidden;
-    }
-
-    .source-menu.open { display: block; }
-
-    .source-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 12px;
-      font-size: 13px;
-      cursor: pointer;
-      color: var(--ink);
-      transition: background 0.1s;
-    }
-
-    .source-option:hover { background: var(--cream); }
-
-    .source-option.selected { font-weight: 600; }
-
-    .source-option .check {
-      width: 14px;
-      flex-shrink: 0;
-      color: var(--teal);
-      visibility: hidden;
-    }
-
-    .source-option.selected .check { visibility: visible; }
-
-    .source-saving {
-      font-size: 11px;
-      color: var(--ink-60);
-      padding: 4px 10px 4px 34px;
-      font-style: italic;
-    }
-
-    .source-error {
-      font-size: 11px;
-      color: #c0392b;
-      padding: 4px 10px 4px 34px;
-    }
 
     /* ── Tab navigation (centered in the top bar) ── */
     .tabs { display: flex; align-items: stretch; gap: 2px; }
@@ -1121,6 +965,99 @@
     /* in compact, unlocked ships: stage toggle sits between add-btn and del */
     #tab-board .board.layout-compact .ship-stage { font-size: 9.5px; }
     #tab-board .board.layout-compact .stage-btn { padding: 3px 5px; font-size: 9.5px; }
+
+    /* ── YNAB not-connected warning banner ── */
+    .ynab-warning {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: #fff8e6;
+      border-bottom: 1.5px solid #f0d080;
+      color: #7a5700;
+      font-size: 13px;
+    }
+    .ynab-warning svg { flex-shrink: 0; color: #d4880a; }
+    .ynab-warning-link {
+      background: none; border: none; padding: 0;
+      color: #7a5700; font-size: 13px; font-weight: 600;
+      text-decoration: underline; cursor: pointer;
+    }
+    .ynab-warning-link:hover { color: #5a3f00; }
+
+    /* ── Mobile layout (≤ 680px) ── */
+    @media (max-width: 680px) {
+      /* Board tab: stack months vertically */
+      #board {
+        flex-direction: column !important;
+        padding: 12px !important;
+        gap: 12px !important;
+      }
+      .month { min-width: unset !important; width: 100% !important; max-width: 100% !important; }
+
+      /* Inventory tab: hide table, show cards */
+      #tab-inventory .table-wrap { display: none; }
+      #inv-cards {
+        display: flex !important;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+      }
+      .inv-card {
+        background: white;
+        border: 1.5px solid var(--ink-12);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        font-size: 13px;
+      }
+      .inv-card-name {
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 8px;
+      }
+      .inv-card-runout {
+        font-size: 12px;
+        font-weight: 500;
+        margin-bottom: 8px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        display: inline-block;
+        background: var(--cream);
+      }
+      .inv-card-runout.inv-empty  { background: #fde8e8; color: #c0392b; }
+      .inv-card-runout.inv-soon   { background: #fff3cd; color: #7a5700; }
+      .inv-card-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px solid var(--ink-12);
+        gap: 8px;
+      }
+      .inv-card-row:last-child { border-bottom: none; }
+      .inv-card-label { color: var(--ink-60); font-size: 12px; flex-shrink: 0; }
+      .inv-card-val { font-weight: 500; text-align: right; }
+      .inv-card-val input {
+        width: 60px;
+        text-align: right;
+        font-size: 13px;
+        border: 1.5px solid var(--ink-12);
+        border-radius: 4px;
+        padding: 2px 6px;
+        background: var(--cream);
+      }
+      .inv-card-val input:focus { outline: none; border-color: var(--teal); }
+      .inv-card-suppliers {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--ink-60);
+      }
+    }
+
+    /* Desktop: hide card view, show table */
+    @media (min-width: 681px) {
+      #inv-cards { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -1131,8 +1068,7 @@
     <h1>Normal Protocol</h1>
   </div>
   <nav class="tabs">
-    <button class="tab-btn active" data-tab="intakes">Intakes</button>
-    <button class="tab-btn" data-tab="board">Next Orders</button>
+    <button class="tab-btn active" data-tab="board">Next Orders</button>
     <button class="tab-btn" data-tab="inventory">Inventory</button>
   </nav>
   <div class="header-right">
@@ -1149,7 +1085,6 @@
         </button>
         <div class="settings-panel" id="settings-panel">
           <div class="settings-panel-title">Settings</div>
-          <button class="settings-action-btn" id="select-inventory">Re-import from Google Sheets</button>
           <button class="settings-action-btn" id="update-ynab">Update YNAB API Key</button>
         </div>
       </div>
@@ -1157,32 +1092,11 @@
   </div>
 </header>
 
-<main id="tab-intakes" class="tab-panel active">
-  <div class="toolbar">
-    <span class="section-title">Daily Supplements</span>
-    <div class="search-wrap">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-      </svg>
-      <input id="search" type="text" placeholder="Search items…" />
-    </div>
+<section id="tab-board" class="tab-panel active">
+  <div id="ynab-warning" class="ynab-warning" style="display:none">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    YNAB not connected — <button class="ynab-warning-link" id="ynab-warning-btn">add API key in Settings</button>
   </div>
-
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr id="header-row"></tr>
-      </thead>
-      <tbody id="table-body">
-        <tr><td colspan="7" class="loading">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div id="count"></div>
-</main>
-
-<section id="tab-board" class="tab-panel">
   <div id="board" class="board layout-compact"></div>
 </section>
 
@@ -1232,223 +1146,10 @@
       </tbody>
     </table>
   </div>
+  <div id="inv-cards" style="display:none"></div>
 </section>
 
 <script>
-  const COLUMNS = [
-    { key: "item",              label: "Item",       cls: "item" },
-    { key: "brand",             label: "Brand",      cls: "" },
-    { key: "daily_qty",         label: "Qty / day",  cls: "qty" },
-    { key: "from",              label: "Source",     cls: "source-cell" },
-    { key: "Price",             label: "Price",      cls: "qty" },
-    { key: "payment_structure", label: "Payment",    cls: "payment" },
-    { key: "listing_id",        label: "Listing ID", cls: "listing-id" },
-  ];
-
-  let allRows = [];
-  let suppliers = [];
-  let sortCol = "item";
-  let sortAsc = true;
-  let activeMenu = null;
-
-  function fmtPrice(v) {
-    const n = parseFloat(v);
-    return isNaN(n) ? "" : `$${n.toFixed(2)}`;
-  }
-
-  function esc(str) {
-    return String(str ?? "")
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  // ── Close any open menu ──
-  function closeMenu() {
-    if (!activeMenu) return;
-    const { trigger, menu } = activeMenu;
-    trigger.classList.remove("open");
-    menu.classList.remove("open");
-    activeMenu = null;
-  }
-
-  document.addEventListener("click", (e) => {
-    if (activeMenu && !activeMenu.trigger.contains(e.target) && !activeMenu.menu.contains(e.target)) {
-      closeMenu();
-    }
-  });
-
-  // ── Build a source dropdown cell ──
-  function makeSourceCell(row) {
-    const current = row["from"] ?? "";
-
-    const trigger = document.createElement("button");
-    trigger.className = "source-trigger";
-    trigger.innerHTML = `
-      <span class="source-label">${esc(current)}</span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="m6 9 6 6 6-6"/>
-      </svg>`;
-
-    const menu = document.createElement("div");
-    menu.className = "source-menu";
-
-    function buildOptions(selectedValue) {
-      menu.innerHTML = "";
-      suppliers.forEach(name => {
-        const opt = document.createElement("div");
-        opt.className = "source-option" + (name === selectedValue ? " selected" : "");
-        opt.innerHTML = `
-          <svg class="check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-            <path d="M20 6 9 17l-5-5"/>
-          </svg>
-          ${esc(name)}`;
-        opt.addEventListener("click", () => selectSupplier(name));
-        menu.appendChild(opt);
-      });
-    }
-
-    async function selectSupplier(name) {
-      if (name === row["from"]) { closeMenu(); return; }
-      closeMenu();
-
-      // Optimistic update
-      trigger.querySelector(".source-label").textContent = name;
-      const prevVal = row["from"];
-      row["from"] = name;
-
-      try {
-        const res = await fetch(`/api/intakes/${row.ID}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from: name }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      } catch (err) {
-        // Rollback on failure
-        row["from"] = prevVal;
-        trigger.querySelector(".source-label").textContent = prevVal;
-        const errNote = document.createElement("div");
-        errNote.className = "source-error";
-        errNote.textContent = "Save failed — try again";
-        menu.appendChild(errNote);
-        console.error("Source update failed:", err);
-      }
-    }
-
-    trigger.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (activeMenu && activeMenu.trigger === trigger) {
-        closeMenu();
-        return;
-      }
-      closeMenu();
-      buildOptions(row["from"]);
-      trigger.classList.add("open");
-      menu.classList.add("open");
-      activeMenu = { trigger, menu };
-    });
-
-    buildOptions(current);
-
-    const wrapper = document.createElement("div");
-    wrapper.style.position = "relative";
-    wrapper.style.display = "inline-block";
-    wrapper.appendChild(trigger);
-    wrapper.appendChild(menu);
-    return wrapper;
-  }
-
-  // ── Render headers ──
-  function renderHeaders() {
-    const tr = document.getElementById("header-row");
-    tr.innerHTML = "";
-    COLUMNS.forEach(col => {
-      const th = document.createElement("th");
-      const isSorted = sortCol === col.key;
-      if (isSorted) th.classList.add("sorted");
-      th.innerHTML = `${col.label}<span class="sort-icon">${isSorted ? (sortAsc ? "▲" : "▼") : "⇅"}</span>`;
-      th.addEventListener("click", () => {
-        if (sortCol === col.key) sortAsc = !sortAsc;
-        else { sortCol = col.key; sortAsc = true; }
-        render(document.getElementById("search").value);
-      });
-      tr.appendChild(th);
-    });
-  }
-
-  // ── Render table body ──
-  function render(query = "") {
-    renderHeaders();
-    const tbody = document.getElementById("table-body");
-    const q = query.toLowerCase();
-    let rows = allRows.filter(r =>
-      COLUMNS.some(c => String(r[c.key] ?? "").toLowerCase().includes(q))
-    );
-    rows.sort((a, b) => {
-      const numeric = sortCol === "daily_qty" || sortCol === "Price";
-      const n = numeric
-        ? (parseFloat(a[sortCol]) || 0) - (parseFloat(b[sortCol]) || 0)
-        : String(a[sortCol] ?? "").toLowerCase() < String(b[sortCol] ?? "").toLowerCase() ? -1
-        : String(a[sortCol] ?? "").toLowerCase() > String(b[sortCol] ?? "").toLowerCase() ? 1 : 0;
-      return sortAsc ? n : -n;
-    });
-
-    if (rows.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="${COLUMNS.length}" class="empty">No results found.</td></tr>`;
-      document.getElementById("count").textContent = "";
-      return;
-    }
-
-    tbody.innerHTML = "";
-    rows.forEach(r => {
-      const tr = document.createElement("tr");
-
-      const cells = [
-        { cls: "item",       html: esc(r.item) },
-        { cls: "",           html: `<span class="badge">${esc(r.brand)}</span>` },
-        { cls: "qty",        html: esc(r.daily_qty) },
-        { cls: "source-cell", node: makeSourceCell(r) },
-        { cls: "qty",        html: fmtPrice(r.Price) },
-        { cls: "payment",    html: esc(r.payment_structure) },
-        { cls: "listing-id", html: esc(r.listing_id) },
-      ];
-
-      cells.forEach(({ cls, html, node }) => {
-        const td = document.createElement("td");
-        if (cls) td.className = cls;
-        if (node) td.appendChild(node);
-        else td.innerHTML = html;
-        tr.appendChild(td);
-      });
-
-      tbody.appendChild(tr);
-    });
-
-    document.getElementById("count").textContent =
-      `${rows.length} item${rows.length !== 1 ? "s" : ""}`;
-  }
-
-  // ── Init: load intakes + suppliers in parallel ──
-  async function init() {
-    try {
-      const [intakesRes, suppliersRes] = await Promise.all([
-        fetch("/api/intakes"),
-        fetch("/api/suppliers"),
-      ]);
-      if (!intakesRes.ok) throw new Error(`Intakes: HTTP ${intakesRes.status}`);
-      if (!suppliersRes.ok) throw new Error(`Suppliers: HTTP ${suppliersRes.status}`);
-      allRows = await intakesRes.json();
-      suppliers = await suppliersRes.json();
-      render();
-    } catch (e) {
-      document.getElementById("table-body").innerHTML =
-        `<tr><td colspan="${COLUMNS.length}" class="error">Failed to load — ${e.message}</td></tr>`;
-    }
-  }
-
-  document.getElementById("search").addEventListener("input", e => render(e.target.value));
-
-  init();
 
   // ── Tab switching (persisted across reloads) ──
   const TAB_KEY = "np_active_tab";
@@ -1500,9 +1201,11 @@
 
   // restore the last-open tab once all scripts (incl. the board) have parsed
   document.addEventListener("DOMContentLoaded", () => {
-    let saved = "intakes";
-    try { saved = localStorage.getItem(TAB_KEY) || "intakes"; } catch (e) {}
-    if (saved !== "intakes") activateTab(saved);
+    const VALID_TABS = ["board", "inventory"];
+    let saved = "board";
+    try { saved = localStorage.getItem(TAB_KEY) || "board"; } catch (e) {}
+    if (!VALID_TABS.includes(saved)) saved = "board";
+    activateTab(saved);
   });
 
   // settings gear popout toggle
@@ -1589,53 +1292,9 @@
     return 'ok';
   }
 
-  const SEED = {
-    cardData: {
-      drainage:  { name: 'Drainage Activator', amount: 62,  dose: 6,  bottleSize: 120, loggedOn: '2026-06-04', price: 45, qty: 1, includeInMonthTotal: true },
-      biotoxin1: { name: 'BioToxin',           amount: 53,  dose: 4,  bottleSize: 120, loggedOn: '2026-06-04', price: 48, qty: 1, includeInMonthTotal: true },
-      atp:       { name: 'ATP',                amount: 110, dose: 11, bottleSize: 120, loggedOn: '2026-06-04', price: 63, qty: 1, includeInMonthTotal: true },
-      para2:     { name: 'Para 2',             amount: 65,  dose: 8,  bottleSize: 120, loggedOn: '2026-06-04', price: 40, qty: 1, includeInMonthTotal: true },
-      serratia:  { name: 'Serratia',           amount: 9,   dose: 1,  bottleSize: 180, loggedOn: '2026-06-04', price: 54, qty: 1, includeInMonthTotal: false },
-      biotoxin2: { name: 'BioToxin',           amount: 66,  dose: 4,  bottleSize: 120, loggedOn: '2026-05-29', price: 48, qty: 1, includeInMonthTotal: true },
-      lymph:     { name: 'LymphActiv',         amount: 40,  dose: 2,  bottleSize: 60,  loggedOn: '2026-06-04', price: 36, qty: 1, includeInMonthTotal: true },
-      para1:     { name: 'Para 1',             amount: 151, dose: 4,  bottleSize: 120, loggedOn: '2026-06-04', price: 42, qty: 1, includeInMonthTotal: false },
-      brain:     { name: 'Brain',              amount: 105, dose: 2,  bottleSize: 180, loggedOn: '2026-05-29', price: 58, qty: 1, includeInMonthTotal: true },
-      thymus:    { name: 'Thymus',             amount: 249, dose: 3,  bottleSize: 180, loggedOn: '2026-05-29', price: 39, qty: 1, includeInMonthTotal: true },
-    },
-    shipmentData: {
-      s_bluesky_jun: { name: 'Blue Sky Vitamin' },
-      s_cellcore:    { name: 'CellCore Direct' },
-      s_fullscript:  { name: 'Fullscript' },
-      s_bluesky_aug: { name: 'Blue Sky Vitamin' },
-    },
-    structure: [
-      {
-        id: 'm_jun', name: 'Jun', sub: '2026',
-        blocks: [
-          { type: 'shipment', id: 's_bluesky_jun', cards: ['atp', 'drainage', 'para2', 'serratia'] },
-          { type: 'card', id: 'lymph' },
-          { type: 'shipment', id: 's_cellcore', cards: ['biotoxin1', 'biotoxin2'] },
-        ],
-      },
-      {
-        id: 'm_jul', name: 'Jul', sub: '2026',
-        blocks: [
-          { type: 'shipment', id: 's_fullscript', cards: ['para1', 'brain'] },
-        ],
-      },
-      {
-        id: 'm_aug', name: 'Aug', sub: '2026',
-        blocks: [
-          { type: 'shipment', id: 's_bluesky_aug', cards: ['thymus'] },
-        ],
-      },
-    ],
-  };
-
   window.SB = {
     DAY, today, parseDate, addDays, daysBetween,
     calc, fmtDate, fmtDateShort, fmtMoney, fmtMoney0, fmtUnits, tier,
-    SEED,
   };
 })();
 </script>
@@ -2926,9 +2585,15 @@
   function getGroupName() { try { return localStorage.getItem(GROUP_KEY) || 'Health'; } catch { return 'Health'; } }
 
   const connectBtn = document.getElementById('update-ynab');
+  const warningEl  = document.getElementById('ynab-warning');
+  const warningBtn = document.getElementById('ynab-warning-btn');
 
   function setStatus(text, cls) {
     if (cls === 'err') console.error('YNAB:', text);
+    showWarning(!getToken());
+  }
+  function showWarning(show) {
+    if (warningEl) warningEl.style.display = show ? 'flex' : 'none';
   }
   function getToken() { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } }
   function getBudgetId() { try { return localStorage.getItem(BUDGET_KEY); } catch { return null; } }
@@ -3034,168 +2699,24 @@
     runSync(token);
   }
 
-  function refreshLabels() {}
+  function refreshLabels() { showWarning(!getToken()); }
 
   if (connectBtn) connectBtn.addEventListener('click', promptForToken);
+  if (warningBtn) warningBtn.addEventListener('click', promptForToken);
 
   // auto-sync when the board tab is opened (if token exists and board is ready)
   document.addEventListener('boardReady', () => {
     if (getToken()) runSync();
+    else showWarning(true);
   });
 
   refreshLabels();
 })();
 </script>
 
-<!-- ── Inventory: Google OAuth (GIS) + Drive Picker + Sheets read ──
-     The user picks their Google Spreadsheet; the file id is cached locally.
-     We read the "Items" tab (static metadata: name, bottle size, dose, suppliers)
-     and combine with inventory amounts fetched from Turso /api/inventory.
-     Client ID + API key are public client-side values; restrict the API key by
-     HTTP referrer in the Google Cloud console. -->
+<!-- ── Inventory: Turso-backed item metadata + log ── -->
 <script>
 (function () {
-  const GOOGLE = {
-    clientId: '590352770305-b0agcr5v4c6e38taq7271gop7lub1q7u.apps.googleusercontent.com',
-    apiKey: 'AIzaSyBTCb_yIVLNUcx1M3UlOeIwQQWmH2TYT2E',
-    scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets',
-  };
-  const FILE_KEY = 'np_inventory_file';
-  const selectBtn = document.getElementById('select-inventory');
-
-  function setStatus(text, cls) {
-    if (cls === 'err') console.error('Inventory:', text);
-  }
-  function getCachedFile() {
-    try { return JSON.parse(localStorage.getItem(FILE_KEY)); } catch (e) { return null; }
-  }
-  function setCachedFile(f) { try { localStorage.setItem(FILE_KEY, JSON.stringify(f)); } catch (e) {} }
-
-  // wait for the async-loaded Google libraries
-  function waitFor(test, ms = 8000) {
-    return new Promise((resolve, reject) => {
-      const t0 = Date.now();
-      (function tick() {
-        if (test()) return resolve();
-        if (Date.now() - t0 > ms) return reject(new Error('Google libraries failed to load'));
-        setTimeout(tick, 100);
-      })();
-    });
-  }
-
-  const HINT_KEY  = 'np_google_hint';
-  const TOKEN_KEY = 'np_google_token';
-  function getHint() { try { return localStorage.getItem(HINT_KEY) || ''; } catch { return ''; } }
-  function setHint(h) { try { if (h) localStorage.setItem(HINT_KEY, h); } catch {} }
-  function getCachedToken() {
-    try {
-      const t = JSON.parse(localStorage.getItem(TOKEN_KEY));
-      // 5-min safety buffer so we don't use a token right before it expires
-      return (t && t.token && t.exp > Date.now() + 5 * 60 * 1000) ? t.token : null;
-    } catch { return null; }
-  }
-  function setCachedToken(token) {
-    try {
-      // Google access tokens last 1 hour; cache for 55 min
-      localStorage.setItem(TOKEN_KEY, JSON.stringify({ token, exp: Date.now() + 55 * 60 * 1000 }));
-    } catch {}
-  }
-
-  let tokenClient = null;
-  // silent=true: return cached token if available; skip popup entirely
-  // silent=false: full OAuth flow (may show account picker)
-  // hint: pre-selects the last-used Google account so the user doesn't have to pick every time
-  function getToken(silent = false) {
-    // Silent path: return cached token or fail immediately — no popup ever
-    if (silent) {
-      const cached = getCachedToken();
-      return cached ? Promise.resolve(cached) : Promise.reject(new Error('No token'));
-    }
-    // Interactive path: full OAuth flow (requires user gesture)
-    return new Promise((resolve, reject) => {
-      const hint = getHint();
-      if (!tokenClient || tokenClient._hint !== hint) {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE.clientId, scope: GOOGLE.scopes, callback: () => {},
-          ...(hint ? { hint } : {}),
-        });
-        tokenClient._hint = hint;
-      }
-      tokenClient.callback = async (resp) => {
-        if (resp && resp.access_token) {
-          setCachedToken(resp.access_token);
-          if (!hint) {
-            fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: { Authorization: 'Bearer ' + resp.access_token },
-            }).then(r => r.ok ? r.json() : null).then(u => { if (u && u.email) setHint(u.email); }).catch(() => {});
-          }
-          resolve(resp.access_token);
-        } else {
-          reject(new Error(resp && resp.error || 'No token'));
-        }
-      };
-      tokenClient.error_callback = (err) => reject(new Error(err && err.type || 'OAuth error'));
-      // prompt:'' lets GIS use a background iframe when possible; shows picker only if needed
-      tokenClient.requestAccessToken({ prompt: '' });
-    });
-  }
-
-  function pickFile(token) {
-    return new Promise((resolve, reject) => {
-      gapi.load('picker', { callback: () => {
-        try {
-          const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
-            .setSelectFolderEnabled(false).setMode(google.picker.DocsViewMode.LIST);
-          const picker = new google.picker.PickerBuilder()
-            .setOAuthToken(token)
-            .setDeveloperKey(GOOGLE.apiKey)
-            .addView(view)
-            .setTitle('Choose your Inventory spreadsheet')
-            .setCallback((data) => {
-              if (data.action === google.picker.Action.PICKED) {
-                const d = data.docs[0]; resolve({ id: d.id, name: d.name });
-              } else if (data.action === google.picker.Action.CANCEL) { resolve(null); }
-            })
-            .build();
-          picker.setVisible(true);
-        } catch (e) { reject(e); }
-      } });
-    });
-  }
-
-  async function sheetsGet(token, path) {
-    const r = await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + path, {
-      headers: { Authorization: 'Bearer ' + token },
-    });
-    if (!r.ok) throw new Error('Sheets API ' + r.status + (r.status === 403 ? ' (sheet not shared / scope denied)' : ''));
-    return r.json();
-  }
-
-  function colLetter(n) {
-    let s = ''; n++;
-    while (n > 0) { n--; s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26); }
-    return s;
-  }
-
-  async function sheetsWrite(token, fileId, range, values) {
-    const r = await fetch(
-      'https://sheets.googleapis.com/v4/spreadsheets/' + fileId + '/values/' + encodeURIComponent(range) + '?valueInputOption=USER_ENTERED',
-      { method: 'PUT', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ range, majorDimension: 'ROWS', values }) }
-    );
-    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('Sheets write ' + r.status + ': ' + t.slice(0, 120)); }
-    return r.json();
-  }
-
-  async function sheetsBatchUpdate(token, fileId, requests) {
-    const r = await fetch(
-      'https://sheets.googleapis.com/v4/spreadsheets/' + fileId + ':batchUpdate',
-      { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requests }) }
-    );
-    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('Sheets batch ' + r.status + ': ' + t.slice(0, 120)); }
-    return r.json();
-  }
 
   async function postToTurso(row) {
     const r = await fetch('/api/inventory', {
@@ -3246,30 +2767,6 @@
       console.error('[Inventory] Turso write failed:', e.message);
     }
   }
-
-  // header row = an "Item" cell plus an inventory column
-  function findHeader(rows) {
-    return rows.findIndex((r) => {
-      if (!r) return false;
-      const low = r.map((c) => String(c == null ? '' : c).trim().toLowerCase());
-      return low.indexOf('item') >= 0 && (low.indexOf('daily dose') >= 0 || low.indexOf('run out') >= 0 || low.indexOf('amount') >= 0);
-    });
-  }
-
-  // Used only for the one-time migration from the old "Inventory" sheet tab
-  async function readOldInventoryTab(token, fileId) {
-    const meta = await sheetsGet(token, fileId + '?fields=sheets.properties(title)');
-    const props = (meta.sheets || []).map((s) => s.properties);
-    const found = props.find((p) => p.title.trim().toLowerCase() === 'inventory')
-               || props.find((p) => /inventory/i.test(p.title));
-    if (!found) throw new Error('No "Inventory" tab found. Tabs: ' + props.map((p) => p.title).join(', '));
-    const vals = await sheetsGet(token, fileId + '/values/' + encodeURIComponent(found.title) + '?majorDimension=ROWS');
-    const rows = vals.values || [];
-    const hi = findHeader(rows);
-    if (hi < 0) throw new Error('Inventory tab has no recognizable header row');
-    return { title: found.title, rows, hi };
-  }
-
 
   function computeOnHand(invLogRows) {
     const isAdditive = (t) => { const l = (t || '').toLowerCase(); return l === 'ordered' || l === 'received'; };
@@ -3371,42 +2868,7 @@
     return preOrderMap;
   }
 
-  async function migrateFromSheet() {
-    const file = getCachedFile();
-    if (!file) throw new Error('Select a spreadsheet first (Settings → Select Inventory Sheet)');
-    let token = getCachedToken();
-    if (!token) token = await getToken(false);
-    const { rows, hi } = await readOldInventoryTab(token, file.id);
-    const norm = (s) => String(s == null ? '' : s).trim();
-    const header = rows[hi].map((c) => norm(c).toLowerCase());
-    const ci = (n) => header.indexOf(n.toLowerCase());
-    const idx = { item: ci('item'), amount: ci('amount'), type: ci('type'), logged: ci('logged on'), orderid: ci('order id') };
-    const dataRows = [];
-    for (let i = hi + 1; i < rows.length; i++) {
-      const r = rows[i] || [];
-      const name = norm(r[idx.item]);
-      if (!name || name.toLowerCase() === 'summary') continue;
-      const loggedDate = idx.logged >= 0 ? parseSheetDate(norm(r[idx.logged])) : null;
-      if (!loggedDate) continue;
-      const d = loggedDate;
-      const logged_on = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-      dataRows.push({
-        item: name,
-        amount: Number(norm(r[idx.amount])) || 0,
-        type: (idx.type >= 0 ? norm(r[idx.type]) : '') || 'Reset',
-        logged_on,
-        order_id: idx.orderid >= 0 ? (norm(r[idx.orderid]) || null) : null,
-      });
-    }
-    let imported = 0;
-    for (const row of dataRows) {
-      const res = await postToTurso(row);
-      if (res && res.ok) imported++;
-    }
-    return { total: dataRows.length, imported };
-  }
-
-  // ── Turso-first inventory item helpers ──────────────────────────────────
+  // ── Turso inventory item helpers ──────────────────────────────────
 
   function buildMapsFromItems(items) {
     const itemMap = {};
@@ -3479,129 +2941,25 @@
     return name.toLowerCase();
   }
 
-  // forcePick=true: force re-import from Google Sheets (one-time migration or manual re-sync)
-  // silent=true: called automatically — no popups, fails quietly
-  async function run(forcePick, silent = false) {
-    // Fast path: Turso already has items (skip Google entirely)
-    if (!forcePick) {
-      try {
-        const r = await fetch('/api/inventory-items');
-        if (r.ok) {
-          const items = await r.json();
-          if (items.length > 0) {
-            buildMapsFromItems(items);
-            await fetchLogAndApply();
-            return;
-          }
-        }
-      } catch { /* fall through to Google Sheets fallback */ }
-    }
-
-    // Google Sheets fallback — used for initial migration or manual re-import
-    if (!silent) setStatus('Connecting to Google Sheets…');
+  async function run() {
     try {
-      await waitFor(() => window.google && google.accounts && google.accounts.oauth2 && window.gapi);
-      const token = await getToken(silent);
-      let file = getCachedFile();
-      if (forcePick || !file) {
-        if (silent) { await fetchLogAndApply(); return; }
-        file = await pickFile(token);
-        if (!file) return;
-        setCachedFile(file);
+      const r = await fetch('/api/inventory-items');
+      if (r.ok) {
+        const items = await r.json();
+        if (items.length > 0) buildMapsFromItems(items);
       }
-      if (!silent) setStatus('Reading Items sheet…');
-
-      // Read Items sheet and migrate to Turso
-      const meta = await sheetsGet(token, file.id + '?fields=sheets.properties(title,sheetId)');
-      const props = (meta.sheets || []).map((s) => s.properties);
-      const found = props.find((p) => p.title.trim().toLowerCase() === 'items')
-                 || props.find((p) => /^items$/i.test(p.title));
-      if (!found) throw new Error('No “Items” tab in this spreadsheet');
-      const vals = await sheetsGet(token, file.id + '/values/' + encodeURIComponent(found.title) + '?majorDimension=ROWS');
-      const rows = vals.values || [];
-      const norm = (s) => String(s == null ? '' : s).trim();
-      // Find header row
-      const hi = rows.findIndex((r) => {
-        const low = (r || []).map((c) => norm(c).toLowerCase());
-        return low.includes('item') && (low.includes('bottle size') || low.includes('daily dose') || low.includes('annual sale'));
-      });
-      if (hi < 0) throw new Error('No recognizable header row in Items tab');
-      const header = rows[hi].map((c) => norm(c).toLowerCase());
-      const ci = (n) => header.indexOf(n.toLowerCase());
-      const idx = {
-        item: ci('item'), bottle: ci('bottle size'), dose: ci('daily dose'),
-        annual: ci('annual sale'), offcycle: ci('off-cycle sale'), anyday: ci('anyday'), barcode: ci('barcode'),
-      };
-      const sheetItems = [];
-      for (let i = hi + 1; i < rows.length; i++) {
-        const r = rows[i] || [];
-        const name = norm(r[idx.item]);
-        if (!name || name.toLowerCase() === 'summary') continue;
-        sheetItems.push({
-          name,
-          bottle_size:   idx.bottle   >= 0 ? (Number(norm(r[idx.bottle]))   || 0) : 0,
-          daily_dose:    idx.dose     >= 0 ? (Number(norm(r[idx.dose]))     || 0) : 0,
-          annual_sale:   idx.annual   >= 0 ? norm(r[idx.annual])   : '',
-          off_cycle_sale: idx.offcycle >= 0 ? norm(r[idx.offcycle]) : '',
-          anyday:        idx.anyday   >= 0 ? norm(r[idx.anyday])   : '',
-          barcode:       idx.barcode  >= 0 ? norm(r[idx.barcode])  : '',
-          sort_order:    i - hi - 1,
-        });
-      }
-
-      // Bulk-upsert into Turso
-      if (sheetItems.length) {
-        const migrateR = await fetch('/api/inventory-items?bulk=1', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sheetItems),
-        });
-        if (!migrateR.ok) {
-          const errText = await migrateR.text().catch(() => migrateR.status);
-          console.error('inventory-items bulk POST failed:', migrateR.status, errText);
-          if (!silent) setStatus('Migration failed (' + migrateR.status + ') — see console', 'err');
-        }
-      }
-      // Reload with Turso-assigned ids
-      const freshR = await fetch('/api/inventory-items');
-      const freshItems = freshR.ok ? await freshR.json() : [];
-      if (freshItems.length) {
-        buildMapsFromItems(freshItems);
-        if (!silent) setStatus('Migrated ' + freshItems.length + ' items to Turso ✓', 'ok');
-      } else {
-        // Migration failed — fall back to using Google Sheets data without ids
-        window._INV_ITEM_MAP = Object.fromEntries(
-          sheetItems.map(x => [x.name.trim().toLowerCase(), {
-            name: x.name, bottleSize: x.bottle_size, dose: x.daily_dose,
-            annualSale: x.annual_sale, offCycleSale: x.off_cycle_sale,
-            anyday: x.anyday, barcode: x.barcode,
-          }])
-        );
-        if (!silent) setStatus('Loaded ' + sheetItems.length + ' items from Google (Turso migration pending)', 'err');
-      }
-      await fetchLogAndApply();
-    } catch (e) {
-      const silentErrors = ['interaction_required', 'consent_required', 'access_denied',
-                            'immediate_failed', 'popup_closed', 'popup_failed_to_open'];
-      const isSilentable = silentErrors.some(s => e.message?.includes(s))
-        || e.message === 'No token'
-        || /Sheets API [45]\d\d/.test(e.message);
-      if (silent && isSilentable) { await fetchLogAndApply(); return; }
-      console.error('Inventory connect failed:', e);
-      if (!silent) setStatus('Connect failed: ' + e.message, 'err');
-    }
+    } catch {}
+    await fetchLogAndApply();
   }
 
-  if (selectBtn) selectBtn.addEventListener('click', () => run(true));
-
   const refreshInvBtn = document.getElementById('refresh-inv-btn');
-  if (refreshInvBtn) refreshInvBtn.addEventListener('click', () => run(false));
+  if (refreshInvBtn) refreshInvBtn.addEventListener('click', () => run());
 
-  // auto-load Items on board load — Turso-first, no popups
-  document.addEventListener('boardReady', () => { run(false, true).catch(() => {}); });
+  // auto-load Items on board load
+  document.addEventListener('boardReady', () => { run().catch(() => {}); });
 
   // Exposed so the board's set-stage handler and Inventory tab can use these
-  window.InventoryWriter = { writeShipment, migrateFromSheet, run, writeBarcodeToTurso, addItemToTurso };
+  window.InventoryWriter = { writeShipment, run, writeBarcodeToTurso, addItemToTurso };
 })();
 </script>
 
@@ -3707,6 +3065,9 @@
 
     body.innerHTML = '';
     _rendering = false;
+    const cardsEl = document.getElementById('inv-cards');
+    if (cardsEl) cardsEl.innerHTML = '';
+
     allKeys.forEach((key) => {
       const meta   = itemMap[key] || {};
       const amt    = onHand[key]  || {};
@@ -3726,6 +3087,7 @@
       const roBars = ro ? barsHtml(roMonths, 0) : '';
       const name   = meta.name || amt.name || key;
 
+      // Table row (desktop)
       const tr = document.createElement('tr');
       tr.dataset.key = key;
       if (meta._id) tr.dataset.id = meta._id;
@@ -3743,6 +3105,27 @@
         '<td class="inv-supplier">' + (meta.anyday       || '—') + '</td>' +
         '<td><button class="inv-del-btn" data-key="' + key + '" data-id="' + (meta._id || '') + '" data-name="' + name.replace(/"/g, '&quot;') + '" title="Delete item and all inventory rows">✕</button></td>';
       body.appendChild(tr);
+
+      // Mobile card
+      if (cardsEl) {
+        const suppliers = [meta.annualSale, meta.offCycleSale, meta.anyday].filter(Boolean).join(' · ');
+        const card = document.createElement('div');
+        card.className = 'inv-card';
+        card.dataset.key = key;
+        card.innerHTML =
+          '<div class="inv-card-name">' + name + '</div>' +
+          '<div class="inv-card-runout ' + (ro ? ro.cls : 'inv-no-data') + '">' + (ro ? ro.text : 'No data') + '</div>' +
+          '<div class="inv-card-row"><span class="inv-card-label">On Hand (caps)</span>' +
+            '<span class="inv-card-val inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '">' + Math.round(currentAmount) + '</span></div>' +
+          '<div class="inv-card-row"><span class="inv-card-label">Bottles</span>' +
+            '<span class="inv-card-val inv-bottles" data-amount="' + currentAmount + '" data-key="' + key + '">' + bottles + '</span></div>' +
+          '<div class="inv-card-row"><span class="inv-card-label">Bottle Size</span>' +
+            '<span class="inv-card-val inv-bs" data-key="' + key + '">' + (bs || '—') + '</span></div>' +
+          '<div class="inv-card-row"><span class="inv-card-label">Dose / Day</span>' +
+            '<span class="inv-card-val inv-dose" data-key="' + key + '">' + (dose || '—') + '</span></div>' +
+          (suppliers ? '<div class="inv-card-suppliers">Suppliers: ' + suppliers + '</div>' : '');
+        cardsEl.appendChild(card);
+      }
     });
 
     attachEditHandlers(itemMap);
@@ -3750,11 +3133,15 @@
   }
 
   function attachEditHandlers(itemMap) {
-    if (!body) return;
-    body.querySelectorAll('.inv-onhand').forEach((cell) => { cell.onclick = () => startEdit(cell, itemMap, 'caps'); });
-    body.querySelectorAll('.inv-bottles').forEach((cell) => { cell.onclick = () => startEdit(cell, itemMap, 'bottles'); });
-    body.querySelectorAll('.inv-bs').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'bottle_size'); });
-    body.querySelectorAll('.inv-dose').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'daily_dose'); });
+    const wireContainer = (el) => {
+      if (!el) return;
+      el.querySelectorAll('.inv-onhand').forEach((cell) => { cell.onclick = () => startEdit(cell, itemMap, 'caps'); });
+      el.querySelectorAll('.inv-bottles').forEach((cell) => { cell.onclick = () => startEdit(cell, itemMap, 'bottles'); });
+      el.querySelectorAll('.inv-bs').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'bottle_size'); });
+      el.querySelectorAll('.inv-dose').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'daily_dose'); });
+    };
+    wireContainer(body);
+    wireContainer(document.getElementById('inv-cards'));
   }
 
   function refreshRow(key, newCaps, loggedOn, itemMap) {
@@ -3928,7 +3315,7 @@
   if (refreshBtn) refreshBtn.addEventListener('click', async () => {
     refreshBtn.disabled = true;
     try {
-      if (window.InventoryWriter?.run) await window.InventoryWriter.run(false);
+      if (window.InventoryWriter?.run) await window.InventoryWriter.run();
       else await renderInventory();
     } finally {
       refreshBtn.disabled = false;
