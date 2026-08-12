@@ -3623,8 +3623,12 @@
           };
           const key = await window.InventoryWriter.addItemToTurso(fields, _pendingBarcode);
           closeNoMatch();
-          showToast(name, 'Item added. Scan again to log received bottles.');
-          renderInventory();
+          if (Number(fields.bottleSize) > 0) {
+            await handleMatch(key, _pendingBarcode); // logs Received + shows receipt toast
+          } else {
+            showToast(name, 'Item added — enter a Bottle Size to log receipts');
+            renderInventory();
+          }
         }
       } catch (e) {
         showToast('Error', e.message, true);
