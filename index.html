@@ -1443,7 +1443,8 @@
     btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
 
   // Mobile FAB — proxy to the real header buttons
-  (function () {
+  // Must run after DOMContentLoaded because mob-inv-fab is defined after all scripts in the HTML
+  document.addEventListener('DOMContentLoaded', function () {
     const proxy = (mobId, headId) => {
       const m = document.getElementById(mobId), h = document.getElementById(headId);
       if (m && h) m.addEventListener('click', () => h.click());
@@ -1459,7 +1460,7 @@
         mobSoon.classList.toggle('active', headSoon.classList.contains('active'));
       });
     }
-  })();
+  });
 
   // restore the last-open tab once all scripts (incl. the board) have parsed
   document.addEventListener("DOMContentLoaded", () => {
