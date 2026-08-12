@@ -42,6 +42,9 @@
       min-height: 46px;
       background: var(--cream-dark);
       border-bottom: 1.5px solid var(--ink-12);
+      position: sticky;
+      top: 0;
+      z-index: 50;
     }
 
     .brand { display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 0; }
@@ -537,7 +540,8 @@
 
       /* Hide action buttons from header — they move to the mobile FAB */
       .inv-controls { display: none !important; }
-      /* Hide board refresh btn; keep only the settings gear */
+      /* Always show the settings gear on mobile (accessible from any tab) */
+      .board-controls { display: flex !important; }
       .board-controls .refresh-inv-btn { display: none; }
     }
 
