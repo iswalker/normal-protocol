@@ -380,14 +380,14 @@
 
     /* ── Inventory tab ── */
     #tab-inventory { padding-bottom: 20px; height: calc(100vh - 48px); overflow: auto; }
-    #tab-inventory .table-wrap { overflow-x: auto; }
+    #tab-inventory .table-wrap { overflow: visible; } /* let #tab-inventory scroll both axes so sticky headers work */
 
     /* ── Inventory column widths (px) — edit these to resize columns ──────
        Cells clip with ellipsis; headers still wrap freely.
        Cols map 1-to-1 with <col> elements in <colgroup> below.          */
     #inv-table col.ci-item     { width: 160px; }
-    #inv-table col.ci-runout   { width: 104px; }
-    #inv-table col.ci-bottles  { width:  80px; }
+    #inv-table col.ci-runout   { width: 180px; }
+    #inv-table col.ci-bottles  { width:  130px; }
     #inv-table col.ci-onhand   { width:  72px; }
     #inv-table col.ci-bs       { width:  84px; }
     #inv-table col.ci-dose     { width:  80px; }
