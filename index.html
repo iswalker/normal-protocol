@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.25, maximum-scale=5.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, user-scalable=yes" />
   <title>Normal Protocol — Intakes</title>
   <link rel="icon" type="image/svg+xml" href="Logos/icon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -525,35 +525,49 @@
 
     /* ── Mobile header ── */
     @media (max-width: 680px) {
-      header {
-        padding: 0 12px;
-        gap: 6px;
-        min-height: 54px;
-      }
-      /* Hide brand text, keep logo only */
+      header { padding: 0 10px; gap: 4px; min-height: 52px; }
+
+      /* Logo only — no text */
       .brand h1 { display: none; }
-      .brand { flex: 0 0 auto; min-width: 0; }
+      .brand { flex: 0 0 auto; }
 
-      /* Bigger tap targets on tabs */
+      /* Larger tap targets on tabs */
       .tabs { gap: 0; }
-      .tab-btn {
-        padding: 0 12px;
-        font-size: 14px;
-        min-height: 54px;
-        min-width: 44px;
-      }
+      .tab-btn { padding: 0 11px; font-size: 14px; min-height: 52px; }
 
-      /* Bigger tap targets on header control buttons */
-      .inv-soon-btn,
-      .inv-scan-btn,
-      .refresh-inv-btn {
-        font-size: 13px;
-        padding: 8px 12px;
-        min-height: 40px;
-        border-radius: 8px;
+      /* Hide action buttons from header — they move to the mobile FAB */
+      .inv-controls { display: none !important; }
+      /* Hide board refresh btn; keep only the settings gear */
+      .board-controls .refresh-inv-btn { display: none; }
+    }
+
+    /* ── Mobile floating action bar (inventory tab only) ── */
+    .mob-inv-fab {
+      display: none; /* hidden on desktop */
+    }
+    @media (max-width: 680px) {
+      .mob-inv-fab {
+        position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+        display: none; align-items: center; gap: 4px;
+        background: #fff; border: 1.5px solid var(--ink-12);
+        border-radius: 999px; padding: 5px;
+        box-shadow: 0 6px 24px rgba(23,26,28,0.18);
+        z-index: 100; white-space: nowrap;
       }
-      .inv-controls, .board-controls { gap: 6px; }
-      .header-right { gap: 6px; }
+      .mob-inv-fab.show { display: flex; }
+      .mob-fab-btn {
+        appearance: none; border: none; background: transparent;
+        padding: 10px 16px; border-radius: 999px; font-size: 14px;
+        font-family: inherit; cursor: pointer; font-weight: 500;
+        color: var(--ink-60); min-height: 44px; transition: background .12s;
+      }
+      .mob-fab-btn:active { background: var(--cream-dark); }
+      .mob-fab-btn.mob-fab-soon.active { color: #e08a3c; }
+      .mob-fab-primary {
+        background: var(--teal); color: #fff;
+        padding: 10px 22px; font-size: 15px;
+      }
+      .mob-fab-primary:active { filter: brightness(0.9); background: var(--teal); }
     }
   </style>
 
@@ -1408,6 +1422,8 @@
     if (bc) bc.classList.toggle("show", tab === "board");
     const ic = document.getElementById("inv-controls");
     if (ic) ic.classList.toggle("show", tab === "inventory");
+    const mf = document.getElementById("mob-inv-fab");
+    if (mf) mf.classList.toggle("show", tab === "inventory");
     if (!boardInitialized) {
       boardInitialized = true;
       if (window.SupplementBoard) {
@@ -1421,6 +1437,26 @@
   }
   document.querySelectorAll(".tab-btn").forEach(btn =>
     btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
+
+  // Mobile FAB — proxy to the real header buttons
+  (function () {
+    const proxy = (mobId, headId) => {
+      const m = document.getElementById(mobId), h = document.getElementById(headId);
+      if (m && h) m.addEventListener('click', () => h.click());
+    };
+    proxy('mob-scan-btn',    'inv-scan-btn');
+    proxy('mob-refresh-btn', 'inv-refresh-btn');
+    // Soon button also mirrors the active state
+    const mobSoon  = document.getElementById('mob-soon-btn');
+    const headSoon = document.getElementById('inv-soon-btn');
+    if (mobSoon && headSoon) {
+      mobSoon.addEventListener('click', () => {
+        headSoon.click();
+        mobSoon.classList.toggle('active', headSoon.classList.contains('active'));
+      });
+    }
+  })();
+
   // restore the last-open tab once all scripts (incl. the board) have parsed
   document.addEventListener("DOMContentLoaded", () => {
     let saved = "intakes";
@@ -4142,5 +4178,13 @@
   })();
 })();
 </script>
+
+<!-- Mobile floating action bar — Inventory tab only -->
+<div class="mob-inv-fab" id="mob-inv-fab">
+  <button class="mob-fab-btn mob-fab-soon" id="mob-soon-btn">⚠ Soon</button>
+  <button class="mob-fab-btn mob-fab-primary" id="mob-scan-btn">⊡ Scan</button>
+  <button class="mob-fab-btn" id="mob-refresh-btn">↻</button>
+</div>
+
 </body>
 </html>
