@@ -2509,6 +2509,20 @@
           cardDest(allMonths[monthIdx + 1]).prepend(newEl);
           recalcAll(); persist();
         }));
+        menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => {
+          const newId = uid('c_');
+          STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
+          const newEl = el(cardHTML(newId));
+          cardDest(allMonths[monthIdx - 1]).prepend(newEl);
+          recalcAll(); persist();
+        }));
+        menu.appendChild(ctxItem('Duplicate', false, () => {
+          const newId = uid('c_');
+          STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
+          const newEl = el(cardHTML(newId));
+          cardEl.after(newEl);
+          recalcAll(); persist();
+        }));
       });
       return;
     }
@@ -2561,6 +2575,34 @@
         });
         const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
         allMonths[monthIdx + 1].querySelector('.month-list').prepend(newEl);
+        makeShipSortable(newEl.querySelector('.ship-body'));
+        recalcAll(); persist();
+      }));
+      menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => {
+        const sid = uid('s_');
+        STATE.shipmentData[sid] = Object.assign({}, STATE.shipmentData[shipEl.dataset.id] || {});
+        const oldCardIds = [...shipEl.querySelectorAll(':scope .ship-body > .card[data-id]')].map(c => c.dataset.id);
+        const newCards = oldCardIds.map(oldId => {
+          const newId = uid('c_');
+          STATE.cardData[newId] = Object.assign({}, STATE.cardData[oldId] || {});
+          return newId;
+        });
+        const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
+        allMonths[monthIdx - 1].querySelector('.month-list').prepend(newEl);
+        makeShipSortable(newEl.querySelector('.ship-body'));
+        recalcAll(); persist();
+      }));
+      menu.appendChild(ctxItem('Duplicate', false, () => {
+        const sid = uid('s_');
+        STATE.shipmentData[sid] = Object.assign({}, STATE.shipmentData[shipEl.dataset.id] || {});
+        const oldCardIds = [...shipEl.querySelectorAll(':scope .ship-body > .card[data-id]')].map(c => c.dataset.id);
+        const newCards = oldCardIds.map(oldId => {
+          const newId = uid('c_');
+          STATE.cardData[newId] = Object.assign({}, STATE.cardData[oldId] || {});
+          return newId;
+        });
+        const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
+        shipEl.after(newEl);
         makeShipSortable(newEl.querySelector('.ship-body'));
         recalcAll(); persist();
       }));
