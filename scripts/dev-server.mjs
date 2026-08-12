@@ -9,9 +9,8 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as orders from '../functions/api/orders.js';
-import * as intakes from '../functions/api/intakes.js';
-import * as suppliers from '../functions/api/suppliers.js';
 import * as inventory from '../functions/api/inventory.js';
+import * as inventoryItems from '../functions/api/inventory-items.js';
 
 const ROOT = normalize(join(fileURLToPath(import.meta.url), '..', '..'));
 const PORT = Number(process.env.PORT) || 8788;
@@ -25,10 +24,9 @@ const TYPES = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.
 
 // route table: path -> { METHOD: handlerExport }
 const ROUTES = {
-  '/api/orders': { GET: orders.onRequestGet, PUT: orders.onRequestPut },
-  '/api/intakes': { GET: intakes.onRequestGet },
-  '/api/suppliers': { GET: suppliers.onRequestGet },
-  '/api/inventory': { GET: inventory.onRequestGet, POST: inventory.onRequestPost, PATCH: inventory.onRequestPatch, DELETE: inventory.onRequestDelete },
+  '/api/orders':          { GET: orders.onRequestGet, PUT: orders.onRequestPut },
+  '/api/inventory':       { GET: inventory.onRequestGet, POST: inventory.onRequestPost, PATCH: inventory.onRequestPatch, DELETE: inventory.onRequestDelete },
+  '/api/inventory-items': { GET: inventoryItems.onRequestGet, POST: inventoryItems.onRequestPost, PATCH: inventoryItems.onRequestPatch, DELETE: inventoryItems.onRequestDelete },
 };
 
 async function readBody(req) {
