@@ -1936,6 +1936,24 @@
         else if (b.type === 'shipment') { b.cards = b.cards.filter(cid => !set.has(cid)); }
       }
     }
+    dropEmptyGhostShipments();
+  }
+
+  // A gs_ shipment is auto-created purely to hold ghosts, so once the last one
+  // leaves, the empty shell goes too. Shipments the user made are left alone even
+  // when empty — there an empty shipment is a deliberate placeholder — and so is
+  // any shipment that has been staged.
+  function dropEmptyGhostShipments() {
+    for (const m of structure) {
+      for (let bi = m.blocks.length - 1; bi >= 0; bi--) {
+        const b = m.blocks[bi];
+        if (b.type !== 'shipment' || !String(b.id).startsWith('gs_')) continue;
+        if (b.cards.length || STATE.shipmentData[b.id]?.stage) continue;
+        board.querySelector(`.shipment[data-id="${b.id}"]`)?.remove();
+        delete STATE.shipmentData[b.id];
+        m.blocks.splice(bi, 1);
+      }
+    }
   }
 
   function cleanGhostsForSource(sourceId) {
@@ -2343,8 +2361,7 @@
         if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
         cleanGhostsForSource(id);
       }
-      delete STATE.cardData[id];
-      cardEl.remove();
+      removeCards([id]);
       recalcAll(); persist();
       return;
     }
