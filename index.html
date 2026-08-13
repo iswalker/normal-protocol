@@ -3912,6 +3912,23 @@
       }
       if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
       if (camZXing)  { try { camZXing.reset(); } catch (_) {} camZXing = null; }
+      // The ZXing fallback acquires its own stream asynchronously, so a stream
+      // that was still being acquired when we tore down here attaches to the
+      // video only afterwards and would survive. Sweep again shortly after to
+      // catch it. Re-opening the scanner clears _camAborted, which makes any
+      // still-pending sweep a no-op.
+      [60, 250, 800, 2000].forEach((ms) => setTimeout(() => {
+        if (!_camAborted) return;
+        const el = document.getElementById('scan-video');
+        if (el && el.srcObject) {
+          try { el.srcObject.getTracks().forEach(t => t.stop()); } catch (_) {}
+          el.srcObject = null;
+        }
+        if (camStream) {
+          try { camStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+          camStream = null;
+        }
+      }, ms));
     }
 
     function loadZXing() {
@@ -3957,13 +3974,20 @@
           if (_camAborted) return;  // user dismissed while library was loading
           sm.textContent = 'Point camera at barcode…';
           camZXing = new window.ZXing.BrowserMultiFormatReader();
+          const reader = camZXing;
           // decodeFromVideoDevice(null, videoEl, callback) — null = default camera
-          camZXing.decodeFromVideoDevice(null, v, (result, err) => {
-            if (result) {
-              const raw = result.getText();
-              stopCamera(); closeScanner(); processBarcode(raw);
-            }
-            // NotFoundException on every empty frame is normal — ZXing keeps looping
+          Promise.resolve(
+            camZXing.decodeFromVideoDevice(null, v, (result, err) => {
+              if (result) {
+                const raw = result.getText();
+                stopCamera(); closeScanner(); processBarcode(raw);
+              }
+              // NotFoundException on every empty frame is normal — ZXing keeps looping
+            })
+          ).catch(() => {}).then(() => {
+            // Acquisition is done. A stop that landed while it was still starting
+            // had nothing to grab, so tear this stream down now.
+            if (_camAborted) { try { reader.reset(); } catch (_) {} stopCamera(); }
           });
         }
       } catch (e) {
