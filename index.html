@@ -267,6 +267,8 @@
     #inv-table .inv-runout { font-size: 12px; }
     .inv-bars { display: inline-flex; gap: 1px; align-items: center; vertical-align: middle; margin-left: 4px; }
     .inv-bar { display: block; flex-shrink: 0; width: 10px; height: 5px; border-radius: 1px; background: #3f8f87; opacity: 0.5; }
+    @keyframes inv-pulse { 0% { background-color: rgba(112,196,187,0.35); } 100% { background-color: transparent; } }
+    .inv-highlight { animation: inv-pulse 1.4s ease-out; }
     #inv-table .inv-runout.inv-empty { color: #d6504a; font-weight: 600; }
     #inv-table .inv-runout.inv-soon { color: #e08a3c; }
     #inv-table .inv-no-data { color: var(--ink-60); }
@@ -1095,6 +1097,11 @@
         min-width: 0;
         line-height: 1.4;
       }
+    }
+
+    /* Prevent iOS Safari from zooming on input focus (requires font-size >= 16px) */
+    @media (max-width: 680px) {
+      input, select, textarea { font-size: 16px !important; }
     }
 
     /* Desktop: hide card view, show table */
@@ -3680,6 +3687,18 @@
       }
     }
 
+    function highlightItem(key) {
+      const card = document.getElementById('inv-cards')?.querySelector('[data-key="' + key + '"]');
+      const tr   = body?.querySelector('tr[data-key="' + key + '"]');
+      const el   = card || tr;
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      el.classList.remove('inv-highlight');
+      void el.offsetWidth; // force reflow so re-adding the class restarts the animation
+      el.classList.add('inv-highlight');
+      setTimeout(() => el.classList.remove('inv-highlight'), 1400);
+    }
+
     async function handleMatch(key, raw) {
       const itemMap = window._INV_ITEM_MAP || {};
       const item = itemMap[key];
@@ -3698,7 +3717,8 @@
           body: JSON.stringify({ item: name, amount: bs, type: 'Received', logged_on: today }),
         });
         showToast(name, oldCaps + ' → ' + newCaps + ' caps (+' + bs + ')');
-        renderInventory();
+        await renderInventory();
+        highlightItem(key);
       } catch (e) {
         showToast(name, 'Save failed: ' + e.message, true);
       }
