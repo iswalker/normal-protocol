@@ -3122,6 +3122,12 @@
         })));
       }
       console.log('[Inventory] Turso write done orderId=' + orderId + ' newStage=' + newStage);
+      // Those rows are what buildPreOrderMapFromLog keys this shipment's pre-order
+      // baseline off. Without re-reading the log, preOrderMap has no entry for the
+      // order we just wrote, so _preOrderAmount stays undefined and the board
+      // projects the following month as if the order had never been placed —
+      // correcting itself only on the next page load.
+      await fetchLogAndApply();
     } catch (e) {
       console.error('[Inventory] Turso write failed:', e.message);
     }
