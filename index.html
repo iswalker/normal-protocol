@@ -824,7 +824,7 @@
       cursor: text;
     }
     #tab-board .ship-notes:empty::before { content: attr(placeholder); opacity: .4; pointer-events: none; }
-    #tab-board .ship-notes:focus { color: var(--fg); }
+    #tab-board .ship-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
     #tab-board .board.layout-compact .ship-notes {
       position: absolute; right: 37px; width: 248px;
       text-align: left; margin: 0;
@@ -920,12 +920,12 @@
     }
     /* card notes field — sits between toggle and × */
     #tab-board .card-notes {
-      flex: 1 1 0; min-width: 0; font-size: 12px; color: #222; padding-left: 10px;
+      flex: 1 1 0; min-width: 80px; font-size: 12px; color: #222; padding-left: 10px;
       outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       cursor: text;
     }
     #tab-board .card-notes:empty::before { content: attr(placeholder); opacity: .35; pointer-events: none; }
-    #tab-board .card-notes:focus { color: var(--fg); }
+    #tab-board .card-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
     #tab-board .board.layout-compact .card-end .del {
       position: static; width: 18px; height: 18px; opacity: .4; flex: none;
     }
