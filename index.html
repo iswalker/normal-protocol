@@ -1944,6 +1944,7 @@
     if (!src || !src.recur || src.recur < 1) return;
     const N = Math.max(1, Math.min(12, Math.round(Number(src.recur))));
     const { monthIdx: srcMi, shipId: srcShipId } = findCardLocation(sourceId);
+    console.log('[recur-dbg] syncGhosts', { sourceId, N, srcMi, structureLen: structure.length });
     if (srcMi === -1) return;
     const srcShipName = srcShipId ? (STATE.shipmentData[srcShipId]?.name || '').trim() : null;
     const monthEls = Array.from(board.querySelectorAll('.month'));
@@ -2116,10 +2117,13 @@
     // Never wipe Turso data if the board failed to load (structure would be empty).
     if (!structure || structure.length === 0) return;
     try {
+      const payload = toApi();
+      const recurItems = payload.items.filter(it => it.recur || it.recur_source);
+      console.log('[recur-dbg] persist payload — recur items:', JSON.stringify(recurItems));
       const res = await fetch('/api/orders', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toApi()),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
     } catch (e) {
