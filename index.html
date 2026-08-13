@@ -3196,6 +3196,7 @@
     const isAdditive = (t) => { const l = (t || '').toLowerCase(); return l === 'ordered' || l === 'received'; };
     const recs = invLogRows
       .map((r) => ({
+        id: Number(r.id) || 0,
         itemKey: (r.item || '').trim().toLowerCase(),
         type: r.type || 'Reset',
         loggedDate: r.logged_on ? new Date(r.logged_on + 'T00:00:00') : null,
@@ -3215,7 +3216,7 @@
         const itemRecs = recs.filter((r) => r.itemKey === itemKey);
         const resets = itemRecs
           .filter((r) => !isAdditive(r.type) && r.loggedDate && r.loggedDate <= orderDate)
-          .sort((a, b) => b.loggedDate - a.loggedDate);
+          .sort((a, b) => b.loggedDate - a.loggedDate || b.id - a.id);
         if (!resets.length) return;
         const base = resets[0];
         const adj = itemRecs
