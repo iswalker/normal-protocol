@@ -1803,9 +1803,14 @@
         // Still advance 'seen' so future unlocked orders project from the correct post-order baseline.
         delete c._effectiveDays;
         if (c.includeInMonthTotal) {
-          // c.amount = full invMap amount (includes this order) → curDaysLeft is the post-order baseline
-          const r = SB.calc(c);
-          seen.set(key, { daysLeft: r.curDaysLeft, runOut: r.curRunOut });
+          // computeOnHand folds only 'Received' rows into c.amount, so for an Ordered or
+          // Entered shipment c.amount is still the pre-order figure and curDaysLeft would
+          // hand the next month a baseline as if this order never happened. Carry forward
+          // the card's own post-order number, which is right for either stage.
+          const r = calcForCard(c);
+          seen.set(key, c._preOrderAmount !== undefined
+            ? { daysLeft: r.newDaysLeft, runOut: r.newRunOut }
+            : { daysLeft: r.curDaysLeft, runOut: r.curRunOut });
         }
       } else {
         delete c._preOrderAmount; // clear stale value if shipment was unlocked
