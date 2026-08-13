@@ -3606,8 +3606,10 @@
       if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
       if (camZXing)  { try { camZXing.reset(); } catch (_) {} camZXing = null; }
       const v = document.getElementById('scan-video');
-      if (v) { v.srcObject = null; v.style.display = 'none'; }
-      // no camera toggle button to update
+      if (v) {
+        if (v.srcObject) { try { v.srcObject.getTracks().forEach(t => t.stop()); } catch (_) {} }
+        v.srcObject = null; v.style.display = 'none';
+      }
     }
 
     function loadZXing() {
