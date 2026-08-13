@@ -1234,6 +1234,10 @@
       } else {
         setTimeout(() => window.SupplementBoard && window.SupplementBoard.init(), 500);
       }
+    } else if (tab === 'board') {
+      // Instantly apply cached inventory, then fetch fresh data in background
+      if (window._INV_LOG_ROWS) window.InventoryWriter?.syncBoard(window._INV_LOG_ROWS);
+      window.InventoryWriter?.run().catch(() => {});
     }
     if (tab === "inventory") document.dispatchEvent(new CustomEvent("inventoryActivated"));
     try { localStorage.setItem(TAB_KEY, tab); } catch (e) {}
@@ -3600,16 +3604,19 @@
 
     // ── camera state ──
     let camStream = null, camDetector = null, camLoop = null, camZXing = null;
+    let _camAborted = false;
 
     function stopCamera() {
+      _camAborted = true;
       if (camLoop) { cancelAnimationFrame(camLoop); camLoop = null; }
-      if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
-      if (camZXing)  { try { camZXing.reset(); } catch (_) {} camZXing = null; }
+      // Stop tracks immediately (turns off camera indicator light) before any cleanup
       const v = document.getElementById('scan-video');
       if (v) {
         if (v.srcObject) { try { v.srcObject.getTracks().forEach(t => t.stop()); } catch (_) {} }
         v.srcObject = null; v.style.display = 'none';
       }
+      if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+      if (camZXing)  { try { camZXing.reset(); } catch (_) {} camZXing = null; }
     }
 
     function loadZXing() {
@@ -3624,6 +3631,7 @@
     }
 
     async function startCamera() {
+      _camAborted = false;
       const v  = document.getElementById('scan-video');
       const sm = document.getElementById('scan-status-msg');
       v.style.display = 'block';
@@ -3632,6 +3640,7 @@
           // Native API (Chrome on Android, some desktop builds)
           camDetector = camDetector || new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code','data_matrix'] });
           camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+          if (_camAborted) { camStream.getTracks().forEach(t => t.stop()); camStream = null; return; }
           v.srcObject = camStream;
           sm.textContent = 'Point camera at barcode…';
           const detect = async () => {
@@ -3650,6 +3659,7 @@
           // ZXing fallback — works on all desktop browsers
           sm.textContent = 'Loading scanner library…';
           await loadZXing();
+          if (_camAborted) return;  // user dismissed while library was loading
           sm.textContent = 'Point camera at barcode…';
           camZXing = new window.ZXing.BrowserMultiFormatReader();
           // decodeFromVideoDevice(null, videoEl, callback) — null = default camera
@@ -3684,7 +3694,8 @@
     document.getElementById('scan-close-btn').addEventListener('click', closeScanner);
     scanOv.addEventListener('click', (e) => { if (e.target === scanOv) closeScanner(); });
     document.getElementById('scan-add-btn').addEventListener('click', () => {
-      closeScanner();
+      stopCamera();  // stop immediately on click, before any overlay transition
+      scanOv.style.display = 'none';
       openNoMatch('', { startNew: true });
     });
     const scanInput = document.getElementById('scan-input');
