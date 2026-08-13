@@ -1921,36 +1921,59 @@
   }
 
   // Remove all ghost cards (and their structure refs) for a given source ID.
-  function cleanGhostsForSource(sourceId) {
-    const ghostIds = new Set(Object.keys(STATE.cardData).filter(id => STATE.cardData[id]?.ghostOf === sourceId));
-    if (!ghostIds.size) return;
-    ghostIds.forEach(id => {
+  // Drop a set of card ids from STATE, the DOM and the structure model.
+  function removeCards(ids) {
+    const set = ids instanceof Set ? ids : new Set(ids);
+    if (!set.size) return;
+    set.forEach(id => {
       board.querySelector(`.card[data-id="${id}"]`)?.remove();
       delete STATE.cardData[id];
     });
     for (const m of structure) {
       for (let bi = m.blocks.length - 1; bi >= 0; bi--) {
         const b = m.blocks[bi];
-        if (b.type === 'card' && ghostIds.has(b.id)) { m.blocks.splice(bi, 1); }
-        else if (b.type === 'shipment') { b.cards = b.cards.filter(cid => !ghostIds.has(cid)); }
+        if (b.type === 'card' && set.has(b.id)) { m.blocks.splice(bi, 1); }
+        else if (b.type === 'shipment') { b.cards = b.cards.filter(cid => !set.has(cid)); }
       }
     }
   }
 
+  function cleanGhostsForSource(sourceId) {
+    removeCards(Object.keys(STATE.cardData).filter(id => STATE.cardData[id]?.ghostOf === sourceId));
+  }
+
   // Generate ghost cards/shipments for a recurring source card.
+  // Reconciles rather than rebuilds: a ghost already sitting in a month this
+  // source still wants is left alone, so re-running this (on load, or after a
+  // promote) neither churns ghost ids nor rewrites the whole board to Turso.
   function syncGhosts(sourceId) {
-    cleanGhostsForSource(sourceId);
     const src = STATE.cardData[sourceId];
-    if (!src || !src.recur || src.recur < 1) return;
+    if (!src || !src.recur || src.recur < 1) { cleanGhostsForSource(sourceId); recalcAll(); return; }
     const N = Math.max(1, Math.min(12, Math.round(Number(src.recur))));
     const { monthIdx: srcMi, shipId: srcShipId } = findCardLocation(sourceId);
-    console.log('[recur-dbg] syncGhosts', { sourceId, N, srcMi, structureLen: structure.length });
     if (srcMi === -1) return;
     const srcShipName = srcShipId ? (STATE.shipmentData[srcShipId]?.name || '').trim() : null;
     const monthEls = Array.from(board.querySelectorAll('.month'));
 
-    for (let off = N; srcMi + off < structure.length; off += N) {
-      const tMi = srcMi + off;
+    // Every remaining month at an N-month interval from the source.
+    const wanted = [];
+    for (let off = N; srcMi + off < structure.length; off += N) wanted.push(srcMi + off);
+    const wantedSet = new Set(wanted);
+
+    // Keep one existing ghost per wanted month; discard duplicates and strays.
+    const kept = new Map();
+    const strays = [];
+    Object.keys(STATE.cardData).forEach(id => {
+      if (STATE.cardData[id]?.ghostOf !== sourceId) return;
+      const { monthIdx } = findCardLocation(id);
+      if (wantedSet.has(monthIdx) && !kept.has(monthIdx)) kept.set(monthIdx, id);
+      else strays.push(id);
+    });
+    removeCards(strays);
+
+    let added = 0;
+    for (const tMi of wanted) {
+      if (kept.has(tMi)) continue;
       const tMonth = structure[tMi];
       const tMonthEl = monthEls[tMi] || null;
       if (!tMonth) break;
@@ -1990,9 +2013,12 @@
         tMonth.blocks.push({ type: 'card', id: gId });
         if (tMonthEl) tMonthEl.querySelector('.month-list').appendChild(el(cardHTML(gId)));
       }
+      added++;
     }
     recalcAll();
-    persistSoon();
+    // Only save when the ghost set actually changed, so a plain page load that
+    // reconciles to the same result doesn't rewrite Turso.
+    if (added || strays.length) persistSoon();
   }
 
   // On initial load: auto-promote ghosts whose source is already in an ordered shipment.
@@ -2040,8 +2066,16 @@
       }
     }
 
-    // Clean remaining ghosts of original source, then sync from promoted card
-    cleanGhostsForSource(sourceId);
+    // Hand the source's remaining ghosts over to the promoted card instead of
+    // deleting and regenerating them: regenerating gave every ghost a new id on
+    // each load, which rewrote the whole board to Turso and lost the linkage.
+    Object.keys(STATE.cardData).forEach(id => {
+      const g = STATE.cardData[id];
+      if (!g || g.ghostOf !== sourceId) return;
+      g.ghostOf = firstId;
+      const gEl = board.querySelector(`.card[data-id="${id}"]`);
+      if (gEl) gEl.dataset.ghostOf = firstId;
+    });
     syncGhosts(firstId);
   }
 
@@ -2117,13 +2151,10 @@
     // Never wipe Turso data if the board failed to load (structure would be empty).
     if (!structure || structure.length === 0) return;
     try {
-      const payload = toApi();
-      const recurItems = payload.items.filter(it => it.recur || it.recur_source);
-      console.log('[recur-dbg] persist payload — recur items:', JSON.stringify(recurItems));
       const res = await fetch('/api/orders', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(toApi()),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
     } catch (e) {
@@ -2176,9 +2207,7 @@
       if (newVal !== c.recur) {
         c.recur = newVal;
         cardEl.dataset.recur = String(newVal || '');
-        cleanGhostsForSource(id);
-        if (newVal) syncGhosts(id);
-        else recalcAll();
+        syncGhosts(id); // reconciles, and clears the ghosts when newVal is null
         persistSoon();
       }
     } else if (t.matches('input[data-field]')) {
