@@ -1074,7 +1074,7 @@
   <div class="header-right">
     <span class="inv-controls" id="inv-controls">
       <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
-      <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory">⊡ Scan</button>
+      <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><img src="/barcode.svg" alt="" style="width:16px;height:16px;vertical-align:middle;margin-right:5px;opacity:0.7"> Scan</button>
     </span>
     <span class="board-controls" id="board-controls">
       <div class="settings-wrap">
@@ -2782,7 +2782,19 @@
     for (const [key, { recs }] of Object.entries(groups)) {
       const reconciles = recs.filter((r) => r.loggedDate && !isAdditive(r.type))
                              .sort((a, b) => b.loggedDate - a.loggedDate || b.id - a.id);
-      if (!reconciles.length) continue;
+      if (!reconciles.length) {
+        // No Reset baseline — treat all Received records as the running total
+        const received = recs.filter((r) => (r.type || '').toLowerCase() === 'received' && r.loggedDate)
+                             .sort((a, b) => b.loggedDate - a.loggedDate || b.id - a.id);
+        if (!received.length) continue;
+        const total = received.reduce((s, r) => s + r.amount, 0);
+        const d = received[0].loggedDate;
+        amountsMap[key] = {
+          amount: total,
+          loggedOn: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'),
+        };
+        continue;
+      }
       const rec = reconciles[0];
       const adjSum = recs.filter((r) => (r.type || '').toLowerCase() === 'received' && r.id > rec.id)
                          .reduce((s, r) => s + r.amount, 0);
@@ -2983,7 +2995,15 @@
     for (const [key, { name, recs }] of Object.entries(groups)) {
       const reconciles = recs.filter((r) => r.loggedDate && !isAdditive(r.type))
                              .sort((a, b) => b.loggedDate - a.loggedDate || b.id - a.id);
-      if (!reconciles.length) continue;
+      if (!reconciles.length) {
+        // No Reset baseline — treat all Received records as the running total
+        const received = recs.filter((r) => (r.type || '').toLowerCase() === 'received' && r.loggedDate)
+                             .sort((a, b) => b.loggedDate - a.loggedDate || b.id - a.id);
+        if (!received.length) continue;
+        const total = received.reduce((s, r) => s + r.amount, 0);
+        result[key] = { name, amount: total, loggedOn: received[0].loggedDate.toISOString().slice(0, 10) };
+        continue;
+      }
       const rec = reconciles[0];
       const adjSum = recs.filter((r) => (r.type || '').toLowerCase() === 'received' && r.id > rec.id)
                          .reduce((s, r) => s + r.amount, 0);
@@ -3486,7 +3506,7 @@
       scanOv.style.display = 'flex';
       const inp = document.getElementById('scan-input');
       inp.value = '';
-      startCamera();
+      inp.focus();
     }
     function closeScanner() {
       stopCamera();
@@ -3627,7 +3647,7 @@
 <!-- Mobile floating action bar — Inventory tab only -->
 <div class="mob-inv-fab" id="mob-inv-fab">
   <button class="mob-fab-btn mob-fab-soon" id="mob-soon-btn">⚠ Soon</button>
-  <button class="mob-fab-btn mob-fab-primary" id="mob-scan-btn">⊡ Scan</button>
+  <button class="mob-fab-btn mob-fab-primary" id="mob-scan-btn"><img src="/barcode.svg" alt="" style="width:18px;height:18px;vertical-align:middle;margin-right:4px;filter:brightness(10)"> Scan</button>
 </div>
 
 </body>
