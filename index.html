@@ -919,7 +919,9 @@
       display: flex; align-items: center; justify-content: flex-start; gap: 4px;
     }
     /* ── Ghost (recurring) cards ── */
-    #tab-board .card--ghost { background: #edf0f0; border-left-color: #bdc5c7; }
+    /* Tint of --accent (#70c4bb), so a projected item reads as recurring at a
+       glance rather than as an ordinary white card. */
+    #tab-board .card--ghost { background: #dbf0ee; border-left-color: #7cc8be; }
     #tab-board .card--ghost .card-grip { pointer-events: none; cursor: default; opacity: 0.35; }
     #tab-board .board.layout-compact .card--ghost .card-grip { opacity: 0.35; }
     /* Recur control  ev [N] mo */
