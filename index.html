@@ -1558,7 +1558,7 @@
     const isGhost = !!c.ghostOf;
     const dis = isGhost ? ' disabled' : '';
     return `
-    <div class="card${isGhost ? ' card--ghost' : ''}${untracked && !isGhost ? ' card--untracked' : ''}" data-id="${id}" data-kind="card">
+    <div class="card${isGhost ? ' card--ghost' : ''}${untracked && !isGhost ? ' card--untracked' : ''}" data-id="${id}" data-kind="card" data-recur="${c.recur || ''}" data-ghost-of="${c.ghostOf || ''}">
       <div class="card-body">
         <div class="card-top">
           <span class="card-grip block-grip" aria-hidden="true"></span>
@@ -2030,6 +2030,7 @@
     const promotedEl = board.querySelector(`.card[data-id="${firstId}"]`);
     if (promotedEl) {
       promotedEl.classList.remove('card--ghost');
+      promotedEl.dataset.ghostOf = '';
       promotedEl.querySelectorAll('input').forEach(inp => { if (!inp.closest('.ship-head')) inp.disabled = false; });
       if (!promotedEl.querySelector('.recur-ctl')) {
         const toggle = promotedEl.querySelector('.incl-toggle');
@@ -2060,6 +2061,11 @@
   // ── persistence: serialize the DOM to the /api/orders shape and PUT it ──
   function pushItem(items, id, orderId, month, blockPos, itemPos) {
     const c = STATE.cardData[id] || {};
+    // Read recur and ghostOf from DOM attributes (stamped at render/create time and on change)
+    // as the authoritative source — STATE can drift if cleanGhostsForSource runs async.
+    const cardEl = board.querySelector(`.card[data-id="${id}"]`);
+    const domRecur = cardEl && cardEl.dataset.recur ? Number(cardEl.dataset.recur) : null;
+    const domGhostOf = cardEl ? (cardEl.dataset.ghostOf || null) : null;
     items.push({
       order_item_id: id,
       order_id: orderId,
@@ -2072,8 +2078,8 @@
       include_in_total: c.includeInMonthTotal ? 1 : 0,
       untracked: c.untracked ? 1 : 0,
       notes: c.notes || '',
-      recur: c.recur || null,
-      recur_source: c.ghostOf || null,
+      recur: domRecur || c.recur || null,
+      recur_source: domGhostOf !== null ? domGhostOf : (c.ghostOf || null),
     });
   }
   function toApi() {
@@ -2165,6 +2171,7 @@
       const newVal = t.value.trim() ? Math.max(1, Math.min(12, Math.round(Number(t.value)))) : null;
       if (newVal !== c.recur) {
         c.recur = newVal;
+        cardEl.dataset.recur = String(newVal || '');
         cleanGhostsForSource(id);
         if (newVal) syncGhosts(id);
         else recalcAll();
