@@ -162,6 +162,8 @@
     .board-controls.show, .inv-controls.show { display: flex; }
     .inv-soon-btn { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #e08a3c; color: #e08a3c; background: transparent; cursor: pointer; }
     .inv-soon-btn.active { background: #e08a3c; color: #fff; }
+    .inv-item-count { font-size: 12px; color: var(--ink-60); white-space: nowrap; }
+    .inv-item-count-mob { flex-shrink: 0; }
     /* settings gear popout */
     .settings-wrap { position: relative; }
     .settings-btn {
@@ -257,6 +259,8 @@
     #inv-table .inv-onhand:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table td.inv-bs, #inv-table td.inv-dose { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
     #inv-table td.inv-bs:hover, #inv-table td.inv-dose:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    #inv-table td.inv-supplier-edit { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
+    #inv-table td.inv-supplier-edit:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table .inv-bottles { font-variant-numeric: tabular-nums; color: var(--ink-60); cursor: pointer; border-radius: 4px; transition: background 0.12s; }
     #inv-table .inv-bottles:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table .inv-num { font-variant-numeric: tabular-nums; color: var(--ink-60); }
@@ -417,27 +421,27 @@
     }
     @media (max-width: 680px) {
       .mob-inv-fab {
-        position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-        display: none; align-items: center; gap: 4px;
-        background: #fff; border: 1.5px solid var(--ink-12);
-        border-radius: 999px; padding: 5px;
-        box-shadow: 0 6px 24px rgba(23,26,28,0.18);
-        z-index: 100; white-space: nowrap;
+        position: fixed; bottom: 24px; right: 16px;
+        display: none; z-index: 100;
       }
       .mob-inv-fab.show { display: flex; }
-      .mob-fab-btn {
-        appearance: none; border: none; background: transparent;
-        padding: 10px 16px; border-radius: 999px; font-size: 14px;
-        font-family: inherit; cursor: pointer; font-weight: 500;
-        color: var(--ink-60); min-height: 44px; transition: background .12s;
-      }
-      .mob-fab-btn:active { background: var(--cream-dark); }
-      .mob-fab-btn.mob-fab-soon.active { color: #e08a3c; }
       .mob-fab-primary {
+        appearance: none; border: none; cursor: pointer; font-family: inherit;
         background: var(--teal); color: #fff;
-        padding: 10px 22px; font-size: 15px;
+        padding: 12px 22px; border-radius: 999px; font-size: 15px; font-weight: 500;
+        box-shadow: 0 4px 18px rgba(23,26,28,0.22);
+        min-height: 48px; white-space: nowrap;
       }
-      .mob-fab-primary:active { filter: brightness(0.9); background: var(--teal); }
+      .mob-fab-primary:active { filter: brightness(0.9); }
+      /* Soon toggle inside the sticky filter row */
+      #inv-card-filter { flex: 1; min-width: 0; }
+      .mob-fab-soon {
+        appearance: none; cursor: pointer; font-family: inherit; font-size: 12px;
+        font-weight: 500; padding: 7px 10px; border-radius: 8px; white-space: nowrap;
+        border: 1.5px solid #e08a3c; color: #e08a3c; background: transparent;
+        min-height: 36px; flex-shrink: 0;
+      }
+      .mob-fab-soon.active { background: #e08a3c; color: #fff; }
     }
   </style>
 
@@ -997,6 +1001,18 @@
 
       /* Inventory tab: hide table, show cards */
       #tab-inventory .table-wrap { display: none; }
+      #inv-card-filter-wrap {
+        display: flex !important;
+        align-items: center;
+        gap: 8px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--bg, #f5f3ee);
+        padding: 8px 12px;
+        margin: 0;
+        border-bottom: 1px solid var(--ink-12);
+      }
       #inv-cards {
         display: flex !important;
         flex-direction: column;
@@ -1010,31 +1026,55 @@
         padding: 12px 14px;
         font-size: 13px;
       }
+      .inv-card-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .inv-card-name-group {
+        flex: 0 1 auto;
+        min-width: 0;
+        line-height: 1.5;
+      }
       .inv-card-name {
         font-weight: 600;
         font-size: 14px;
-        margin-bottom: 8px;
+        display: inline;
+        margin-right: 5px;
       }
       .inv-card-runout {
         font-size: 12px;
         font-weight: 500;
-        margin-bottom: 8px;
-        padding: 3px 8px;
+        padding: 2px 7px;
         border-radius: 4px;
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
         background: var(--cream);
+        white-space: nowrap;
+        vertical-align: middle;
       }
       .inv-card-runout.inv-empty  { background: #fde8e8; color: #c0392b; }
       .inv-card-runout.inv-soon   { background: #fff3cd; color: #7a5700; }
-      .inv-card-row {
+      .inv-card-pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        border-bottom: 1px solid var(--ink-12);
+        padding: 5px 0;
+      }
+      .inv-card-pair:last-of-type { border-bottom: none; }
+      .inv-card-half {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 5px 0;
-        border-bottom: 1px solid var(--ink-12);
-        gap: 8px;
+        gap: 4px;
+        min-width: 0;
       }
-      .inv-card-row:last-child { border-bottom: none; }
+      .inv-card-half + .inv-card-half {
+        padding-left: 10px;
+        border-left: 1px solid var(--ink-12);
+        margin-left: 4px;
+      }
       .inv-card-label { color: var(--ink-60); font-size: 12px; flex-shrink: 0; }
       .inv-card-val { font-weight: 500; text-align: right; }
       .inv-card-val input {
@@ -1048,9 +1088,12 @@
       }
       .inv-card-val input:focus { outline: none; border-color: var(--teal); }
       .inv-card-suppliers {
-        margin-top: 6px;
         font-size: 11px;
         color: var(--ink-60);
+        text-align: right;
+        flex: 1 1 0;
+        min-width: 0;
+        line-height: 1.4;
       }
     }
 
@@ -1073,7 +1116,7 @@
   </nav>
   <div class="header-right">
     <span class="inv-controls" id="inv-controls">
-      <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
+      <span class="inv-item-count" id="inv-item-count"></span>
       <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
     </span>
     <span class="board-controls" id="board-controls">
@@ -1132,7 +1175,8 @@
         </tr>
         <tr class="inv-filters">
           <th><input id="inv-filter-item" type="search" placeholder="Filter…" /></th>
-          <th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+          <th><button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button></th>
+          <th></th><th></th><th></th><th></th><th></th><th></th>
           <th><input id="inv-filter-annual" type="search" placeholder="Filter…" /></th>
           <th><input id="inv-filter-offcycle" type="search" placeholder="Filter…" /></th>
           <th><input id="inv-filter-anyday" type="search" placeholder="Filter…" /></th>
@@ -1143,6 +1187,11 @@
         <tr><td colspan="12" class="loading">Open the Inventory tab to load data.</td></tr>
       </tbody>
     </table>
+  </div>
+  <div id="inv-card-filter-wrap" style="display:none;">
+    <input id="inv-card-filter" type="search" placeholder="Filter…" style="padding:7px 10px; border:1.5px solid var(--ink-12); border-radius:8px; font-size:14px; background:var(--cream); color:var(--ink);" />
+    <span class="inv-item-count inv-item-count-mob" id="inv-item-count-mob"></span>
+    <button class="mob-fab-soon" id="mob-soon-btn">⚠ Soon</button>
   </div>
   <div id="inv-cards" style="display:none"></div>
 </section>
@@ -3113,9 +3162,9 @@
         '<td class="inv-num inv-dose" data-key="' + key + '" title="Click to edit daily dose">' + (dose || '—') + '</td>' +
         '<td class="inv-num inv-dpb">' + (bs > 0 && dose > 0 ? (Math.round(bs / dose * 10) / 10) + 'd' : '—') + '</td>' +
         '<td class="inv-num">'      + (amt.loggedOn ? ((d => (d.getMonth()+1)+'/'+d.getDate())(new Date(amt.loggedOn+'T00:00:00'))) : '—') + '</td>' +
-        '<td class="inv-supplier">' + (meta.annualSale   || '—') + '</td>' +
-        '<td class="inv-supplier">' + (meta.offCycleSale || '—') + '</td>' +
-        '<td class="inv-supplier">' + (meta.anyday       || '—') + '</td>' +
+        '<td class="inv-supplier inv-supplier-edit" data-key="' + key + '" data-field="annual_sale" title="Click to edit">' + (meta.annualSale   || '—') + '</td>' +
+        '<td class="inv-supplier inv-supplier-edit" data-key="' + key + '" data-field="off_cycle_sale" title="Click to edit">' + (meta.offCycleSale || '—') + '</td>' +
+        '<td class="inv-supplier inv-supplier-edit" data-key="' + key + '" data-field="anyday" title="Click to edit">' + (meta.anyday       || '—') + '</td>' +
         '<td><button class="inv-del-btn" data-key="' + key + '" data-id="' + (meta._id || '') + '" data-name="' + name.replace(/"/g, '&quot;') + '" title="Delete item and all inventory rows">✕</button></td>';
       body.appendChild(tr);
 
@@ -3126,17 +3175,26 @@
         card.className = 'inv-card';
         card.dataset.key = key;
         card.innerHTML =
-          '<div class="inv-card-name">' + name + '</div>' +
-          '<div class="inv-card-runout ' + (ro ? ro.cls : 'inv-no-data') + '">' + (ro ? ro.text : 'No data') + '</div>' +
-          '<div class="inv-card-row"><span class="inv-card-label">On Hand (caps)</span>' +
-            '<span class="inv-card-val inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '">' + Math.round(currentAmount) + '</span></div>' +
-          '<div class="inv-card-row"><span class="inv-card-label">Bottles</span>' +
-            '<span class="inv-card-val inv-bottles" data-amount="' + currentAmount + '" data-key="' + key + '">' + bottles + '</span></div>' +
-          '<div class="inv-card-row"><span class="inv-card-label">Bottle Size</span>' +
-            '<span class="inv-card-val inv-bs" data-key="' + key + '">' + (bs || '—') + '</span></div>' +
-          '<div class="inv-card-row"><span class="inv-card-label">Dose / Day</span>' +
-            '<span class="inv-card-val inv-dose" data-key="' + key + '">' + (dose || '—') + '</span></div>' +
-          (suppliers ? '<div class="inv-card-suppliers">Suppliers: ' + suppliers + '</div>' : '');
+          '<div class="inv-card-header">' +
+            '<div class="inv-card-name-group">' +
+              '<span class="inv-card-name">' + name + '</span>' +
+              '<span class="inv-card-runout ' + (ro ? ro.cls : 'inv-no-data') + '">' + (ro ? ro.text + roBars : 'No data') + '</span>' +
+            '</div>' +
+            (suppliers ? '<div class="inv-card-suppliers">' + suppliers + '</div>' : '') +
+          '</div>' +
+          '<div class="inv-card-pair">' +
+            '<div class="inv-card-half"><span class="inv-card-label">On Hand</span>' +
+              '<span class="inv-card-val inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '">' + Math.round(currentAmount) + '</span></div>' +
+            '<div class="inv-card-half"><span class="inv-card-label">Dose / Day</span>' +
+              '<span class="inv-card-val inv-dose" data-key="' + key + '">' + (dose || '—') + '</span></div>' +
+          '</div>' +
+          '<div class="inv-card-pair">' +
+            '<div class="inv-card-half"><span class="inv-card-label">Bottle Size</span>' +
+              '<span class="inv-card-val inv-bs" data-key="' + key + '">' + (bs || '—') + '</span></div>' +
+            '<div class="inv-card-half"><span class="inv-card-label">Bottles</span>' +
+              '<span class="inv-card-val inv-bottles" data-amount="' + currentAmount + '" data-key="' + key + '">' + bottles + '</span></div>' +
+          '</div>' +
+          '';
         cardsEl.appendChild(card);
       }
     });
@@ -3152,6 +3210,7 @@
       el.querySelectorAll('.inv-bottles').forEach((cell) => { cell.onclick = () => startEdit(cell, itemMap, 'bottles'); });
       el.querySelectorAll('.inv-bs').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'bottle_size'); });
       el.querySelectorAll('.inv-dose').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'daily_dose'); });
+      el.querySelectorAll('.inv-supplier-edit').forEach((cell) => { cell.onclick = () => startSupplierEdit(cell, itemMap); });
     };
     wireContainer(body);
     wireContainer(document.getElementById('inv-cards'));
@@ -3262,6 +3321,19 @@
       const parsed = evalExpr(inp.value);
       if (isNaN(parsed) || parsed < 0) { cell.textContent = curVal || '—'; return; }
 
+      // When dose changes, snapshot current on-hand as a new Reset dated today so the
+      // new dose only applies going forward — not retroactively from the last Reset date.
+      if (field === 'daily_dose' && parsed !== Number(curVal)) {
+        const tr = body.querySelector('tr[data-key="' + key + '"]');
+        const onHandCell = tr && tr.querySelector('.inv-onhand');
+        const currentCaps = onHandCell ? (Number(onHandCell.dataset.amount) || 0) : 0;
+        await fetch('/api/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item: meta.name || key, amount: currentCaps, type: 'Reset', logged_on: isoToday() }),
+        }).catch((e) => console.error('Reset snapshot failed:', e));
+      }
+
       // Update local map immediately so refreshRow uses new values
       if (field === 'bottle_size') meta.bottleSize = parsed;
       else                          meta.dose       = parsed;
@@ -3295,6 +3367,48 @@
     inp.addEventListener('blur', () => setTimeout(save, 80));
   }
 
+  function startSupplierEdit(cell, itemMap) {
+    if (cell.querySelector('input')) return;
+    const key   = cell.dataset.key;
+    const field = cell.dataset.field;
+    const meta  = itemMap[key] || {};
+    if (!meta._id) return;
+    const metaKey = field === 'annual_sale' ? 'annualSale' : field === 'off_cycle_sale' ? 'offCycleSale' : 'anyday';
+    const curVal = meta[metaKey] || '';
+
+    cell.textContent = '';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.value = curVal; inp.className = 'inv-edit-input';
+    inp.placeholder = field === 'anyday' ? 'e.g. Amazon' : 'e.g. iHerb';
+    inp.style.width = '100%';
+    cell.appendChild(inp);
+    inp.focus(); inp.select();
+
+    let committed = false;
+    const save = async () => {
+      if (committed) return; committed = true;
+      const val = inp.value.trim();
+      meta[metaKey] = val;
+      cell.textContent = val || '—';
+      try {
+        await fetch('/api/inventory-items?id=' + meta._id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [field]: val }),
+        });
+        renderInventory();
+      } catch (e) {
+        console.error('Supplier save failed:', e);
+        renderInventory();
+      }
+    };
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { committed = true; cell.textContent = curVal || '—'; }
+    });
+    inp.addEventListener('blur', () => setTimeout(save, 80));
+  }
+
   const FILTER_COLS = [
     { id: 'inv-filter-item',     colIdx: 0 },
     { id: 'inv-filter-annual',   colIdx: 8 },
@@ -3311,7 +3425,9 @@
   });
 
   function applyFilters() {
+    // Desktop table rows
     const active = FILTER_COLS.map(f => ({ q: f.el.value.trim().toLowerCase(), colIdx: f.colIdx }));
+    let visibleCount = 0;
     body.querySelectorAll('tr').forEach((tr) => {
       const cells = tr.querySelectorAll('td');
       if (!cells.length) return;
@@ -3319,11 +3435,35 @@
         !q || (cells[colIdx] && cells[colIdx].textContent.toLowerCase().includes(q))
       );
       const passesSoon = !soonOnly || (cells[1] && (cells[1].classList.contains('inv-soon') || cells[1].classList.contains('inv-empty')));
-      tr.style.display = passesText && passesSoon ? '' : 'none';
+      const show = passesText && passesSoon;
+      tr.style.display = show ? '' : 'none';
+      if (show) visibleCount++;
     });
+
+    // Mobile cards
+    const cardQ = (document.getElementById('inv-card-filter')?.value || '').trim().toLowerCase();
+    let visibleCardCount = 0;
+    document.getElementById('inv-cards')?.querySelectorAll('.inv-card').forEach((card) => {
+      const name = (card.querySelector('.inv-card-name')?.textContent || '').toLowerCase();
+      const roEl = card.querySelector('.inv-card-runout');
+      const passesSoon = !soonOnly || (roEl && (roEl.classList.contains('inv-soon') || roEl.classList.contains('inv-empty')));
+      const show = (!cardQ || name.includes(cardQ)) && passesSoon;
+      card.style.display = show ? '' : 'none';
+      if (show) visibleCardCount++;
+    });
+
+    // Update count badges — desktop reads table rows, mobile reads cards
+    const fmt = (n) => n + ' item' + (n === 1 ? '' : 's');
+    const deskCount = document.getElementById('inv-item-count');
+    const mobCount  = document.getElementById('inv-item-count-mob');
+    if (deskCount) deskCount.textContent = fmt(visibleCount);
+    if (mobCount)  mobCount.textContent  = fmt(visibleCardCount || visibleCount);
   }
 
   FILTER_COLS.forEach(f => f.el.addEventListener('input', applyFilters));
+
+  const cardFilterEl = document.getElementById('inv-card-filter');
+  if (cardFilterEl) cardFilterEl.addEventListener('input', applyFilters);
 
 
   if (body) body.addEventListener('click', async (e) => {
@@ -3379,7 +3519,7 @@
           <button class="scan-go-btn" id="scan-go-btn">Go</button>
         </div>
         <div class="scan-cam-row">
-          <button class="scan-cam-btn" id="scan-cam-btn">📷 Use Camera</button>
+          <button class="scan-cam-btn" id="scan-add-btn">＋ Add without Barcode</button>
         </div>
         <div class="scan-status-msg" id="scan-status-msg">Point a camera at a barcode, or type / scan with a physical scanner then press Enter.</div>
       </div>`;
@@ -3391,7 +3531,7 @@
     nmOv.innerHTML = `
       <div class="scan-modal">
         <div class="scan-modal-head">
-          <span>Barcode Not Recognized</span>
+          <span id="snm-title">Barcode Not Recognized</span>
           <button class="scan-close-btn" id="snm-close-btn">×</button>
         </div>
         <code class="snm-code" id="snm-code"></code>
@@ -3441,8 +3581,7 @@
       if (camZXing)  { try { camZXing.reset(); } catch (_) {} camZXing = null; }
       const v = document.getElementById('scan-video');
       if (v) { v.srcObject = null; v.style.display = 'none'; }
-      const cb = document.getElementById('scan-cam-btn');
-      if (cb) cb.classList.remove('active');
+      // no camera toggle button to update
     }
 
     function loadZXing() {
@@ -3458,10 +3597,8 @@
 
     async function startCamera() {
       const v  = document.getElementById('scan-video');
-      const cb = document.getElementById('scan-cam-btn');
       const sm = document.getElementById('scan-status-msg');
       v.style.display = 'block';
-      cb.classList.add('active');
       try {
         if ('BarcodeDetector' in window) {
           // Native API (Chrome on Android, some desktop builds)
@@ -3508,6 +3645,7 @@
       const inp = document.getElementById('scan-input');
       inp.value = '';
       inp.focus();
+      startCamera();
     }
     function closeScanner() {
       stopCamera();
@@ -3517,9 +3655,9 @@
     scanBtn.addEventListener('click', openScanner);
     document.getElementById('scan-close-btn').addEventListener('click', closeScanner);
     scanOv.addEventListener('click', (e) => { if (e.target === scanOv) closeScanner(); });
-    document.getElementById('scan-cam-btn').addEventListener('click', () => {
-      if (camStream) { stopCamera(); }
-      else { startCamera(); }
+    document.getElementById('scan-add-btn').addEventListener('click', () => {
+      closeScanner();
+      openNoMatch('', { startNew: true });
     });
     const scanInput = document.getElementById('scan-input');
     const scanGoBtn = document.getElementById('scan-go-btn');
@@ -3568,9 +3706,11 @@
 
     // ── no-match modal ──
     let _pendingBarcode = '';
-    function openNoMatch(raw) {
+    function openNoMatch(raw, { startNew = false } = {}) {
       _pendingBarcode = raw;
-      document.getElementById('snm-code').textContent = raw;
+      const codeEl = document.getElementById('snm-code');
+      codeEl.textContent = raw;
+      codeEl.style.display = raw ? '' : 'none';
       // Populate item select
       const sel = document.getElementById('snm-select');
       sel.innerHTML = '';
@@ -3583,13 +3723,31 @@
           opt.value = key; opt.textContent = item.name || key;
           sel.appendChild(opt);
         });
-      // Reset radio to "assign"
-      nmOv.querySelectorAll('input[name="snm-mode"]').forEach(r => { r.checked = r.value === 'assign'; });
-      document.getElementById('snm-new-fields').style.display = 'none';
-      document.getElementById('snm-confirm-btn').textContent = 'Assign';
+      const assignSection = document.getElementById('snm-assign-section');
+      if (startNew) {
+        document.getElementById('snm-title').textContent = 'Add New Item';
+        assignSection.style.display = 'none';
+        nmOv.querySelectorAll('input[name="snm-mode"]').forEach(r => { r.checked = r.value === 'new'; });
+        document.getElementById('snm-new-fields').style.display = 'block';
+        document.getElementById('snm-confirm-btn').textContent = 'Add Item';
+      } else {
+        document.getElementById('snm-title').textContent = 'Barcode Not Recognized';
+        assignSection.style.display = '';
+        nmOv.querySelectorAll('input[name="snm-mode"]').forEach(r => { r.checked = r.value === 'assign'; });
+        document.getElementById('snm-new-fields').style.display = 'none';
+        document.getElementById('snm-confirm-btn').textContent = 'Assign';
+      }
+      // Clear new-item fields
+      ['snm-name','snm-bottle','snm-dose','snm-annual','snm-offcycle','snm-anyday'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+      });
       nmOv.style.display = 'flex';
+      if (startNew) setTimeout(() => document.getElementById('snm-name')?.focus(), 50);
     }
-    function closeNoMatch() { nmOv.style.display = 'none'; }
+    function closeNoMatch() {
+      nmOv.style.display = 'none';
+      document.getElementById('snm-assign-section').style.display = '';
+    }
 
     document.getElementById('snm-close-btn').addEventListener('click', closeNoMatch);
     document.getElementById('snm-cancel-btn').addEventListener('click', closeNoMatch);
@@ -3645,10 +3803,9 @@
 })();
 </script>
 
-<!-- Mobile floating action bar — Inventory tab only -->
+<!-- Mobile scan FAB — Inventory tab only, bottom-right -->
 <div class="mob-inv-fab" id="mob-inv-fab">
-  <button class="mob-fab-btn mob-fab-soon" id="mob-soon-btn">⚠ Soon</button>
-  <button class="mob-fab-btn mob-fab-primary" id="mob-scan-btn"><svg width="18" height="18" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:4px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
+  <button class="mob-fab-primary" id="mob-scan-btn"><svg width="18" height="18" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:4px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
 </div>
 
 </body>
