@@ -919,9 +919,13 @@
       display: flex; align-items: center; justify-content: flex-start; gap: 4px;
     }
     /* ── Ghost (recurring) cards ── */
-    /* Tint of --accent (#70c4bb), so a projected item reads as recurring at a
-       glance rather than as an ordinary white card. */
-    #tab-board .card--ghost { background: #dbf0ee; border-left-color: #7cc8be; }
+    #tab-board .card--ghost { background: #edf0f0; border-left-color: #bdc5c7; }
+    /* The item actually carrying the recurrence (ev N mo). Tint of --accent
+       (#70c4bb) so it stands out from the grey projections it generates.
+       Background only — the left edge still carries the run-out status colour. */
+    #tab-board .card[data-recur]:not([data-recur=""]):not(.card--ghost) {
+      background: #dbf0ee;
+    }
     #tab-board .card--ghost .card-grip { pointer-events: none; cursor: default; opacity: 0.35; }
     #tab-board .board.layout-compact .card--ghost .card-grip { opacity: 0.35; }
     /* Recur control  ev [N] mo */
