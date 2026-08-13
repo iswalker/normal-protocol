@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -1349,7 +1349,7 @@
     const now = today();
     const base = `${MON[d.getMonth()]} ${d.getDate()}`;
     return d.getFullYear() !== now.getFullYear()
-      ? `${base}, ’${String(d.getFullYear()).slice(2)}` : base;
+      ? `${base}, '${String(d.getFullYear()).slice(2)}` : base;
   }
   function fmtDateShort(d) {
     const now = today();
@@ -1556,13 +1556,13 @@
     }
     const untracked = !!c.untracked;
     const isGhost = !!c.ghostOf;
-    const dis = isGhost ? ‘ disabled’ : ‘’;
+    const dis = isGhost ? ' disabled' : '';
     return `
-    <div class="card${isGhost ? ‘ card--ghost’ : ‘’}${untracked && !isGhost ? ‘ card--untracked’ : ‘’}" data-id="${id}" data-kind="card">
+    <div class="card${isGhost ? ' card--ghost' : ''}${untracked && !isGhost ? ' card--untracked' : ''}" data-id="${id}" data-kind="card">
       <div class="card-body">
         <div class="card-top">
           <span class="card-grip block-grip" aria-hidden="true"></span>
-          <div class="card-name" ${untracked && !isGhost ? ‘contenteditable="true" spellcheck="false"’ : ‘’} data-field="name">${esc(c.name)}</div>
+          <div class="card-name" ${untracked && !isGhost ? 'contenteditable="true" spellcheck="false"' : ''} data-field="name">${esc(c.name)}</div>
           <span class="badge loose-tag">Loose</span>
           <span class="badge status">OK</span>
         </div>
@@ -1597,9 +1597,9 @@
           <span class="ototal"><small>Order</small><span class="amt">$0.00</span></span>
         </div>
         <div class="card-end">
-          <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month’s Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
-          ${!isGhost ? `<span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${c.recur || ‘’}">mo</span>` : ‘’}
-          <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || ‘’)}</span>
+          <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month's Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
+          ${!isGhost ? `<span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${c.recur || ''}">mo</span>` : ''}
+          <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || '')}</span>
           <button class="del" data-act="del-card" title="Remove item" aria-label="Remove item">×</button>
         </div>
       </div>
