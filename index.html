@@ -3028,8 +3028,17 @@
   // auto-load Items on board load
   document.addEventListener('boardReady', () => { run().catch(() => {}); });
 
+  // Push already-fetched log rows to the board without a second network call
+  function syncBoard(invLogRows) {
+    const amountsMap  = computeOnHand(invLogRows);
+    const preOrderMap = buildPreOrderMapFromLog(invLogRows);
+    if (window.SupplementBoard?.applyInventory) {
+      window.SupplementBoard.applyInventory(mergeItemAndAmounts(window._INV_ITEM_MAP || {}, amountsMap), preOrderMap);
+    }
+  }
+
   // Exposed so the board's set-stage handler and Inventory tab can use these
-  window.InventoryWriter = { writeShipment, run, writeBarcodeToTurso, addItemToTurso };
+  window.InventoryWriter = { writeShipment, run, writeBarcodeToTurso, addItemToTurso, syncBoard };
 })();
 </script>
 
@@ -3216,6 +3225,8 @@
 
     attachEditHandlers(itemMap);
     applyFilters();
+    // Keep the board's run-out display in sync with any inventory changes
+    window.InventoryWriter?.syncBoard(invLogRows);
   }
 
   function attachEditHandlers(itemMap) {
