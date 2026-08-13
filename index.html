@@ -918,6 +918,24 @@
       position: static; grid-area: del;
       display: flex; align-items: center; justify-content: flex-start; gap: 4px;
     }
+    /* ── Ghost (recurring) cards ── */
+    #tab-board .card--ghost { background: #edf0f0; border-left-color: #bdc5c7; }
+    #tab-board .card--ghost .card-grip { pointer-events: none; cursor: default; opacity: 0.35; }
+    #tab-board .board.layout-compact .card--ghost .card-grip { opacity: 0.35; }
+    /* Recur control  ev [N] mo */
+    #tab-board .recur-ctl {
+      display: inline-flex; align-items: center; gap: 2px;
+      flex-shrink: 0; font-size: 10px; color: var(--ink-60); cursor: default; white-space: nowrap;
+    }
+    #tab-board .recur-ctl-n {
+      width: 22px; border: 1px solid var(--ink-12); border-radius: 3px;
+      padding: 0 2px; font-size: 10px; text-align: center; line-height: 1.6;
+      background: var(--cream, #f5f3ee); font-family: inherit; color: var(--ink);
+      appearance: textfield; -moz-appearance: textfield; cursor: text;
+    }
+    #tab-board .recur-ctl-n::-webkit-inner-spin-button,
+    #tab-board .recur-ctl-n::-webkit-outer-spin-button { display: none; }
+    #tab-board .recur-ctl-n:focus { outline: 1px solid var(--accent); border-color: transparent; outline-offset: 0; }
     /* card notes field — sits between toggle and × */
     #tab-board .card-notes {
       flex: 1 1 0; min-width: 80px; font-size: 12px; color: #222; padding-left: 10px;
@@ -1439,6 +1457,8 @@
         includeInMonthTotal: !!it.include_in_total,
         untracked: !!it.untracked,
         notes: it.notes || '',
+        recur: it.recur ? Number(it.recur) : null,
+        ghostOf: it.recur_source || null,
       };
     });
     orders.forEach((o) => {
@@ -1502,7 +1522,11 @@
     shipEl.querySelectorAll('.ship-body input[data-field="price"], .ship-body input[data-field="qty"]').forEach((inp) => {
       inp.disabled = locked;
     });
+    shipEl.querySelectorAll('.ship-body .recur-ctl-n').forEach((inp) => {
+      inp.disabled = locked;
+    });
     shipEl.querySelectorAll('.ship-body .incl-toggle').forEach((btn) => {
+      if (btn.closest('.card--ghost')) return; // ghost toggles always enabled
       btn.disabled = locked;
     });
   }
@@ -1531,12 +1555,14 @@
       </div>`;
     }
     const untracked = !!c.untracked;
+    const isGhost = !!c.ghostOf;
+    const dis = isGhost ? ‘ disabled’ : ‘’;
     return `
-    <div class="card${untracked ? ' card--untracked' : ''}" data-id="${id}" data-kind="card">
+    <div class="card${isGhost ? ‘ card--ghost’ : ‘’}${untracked && !isGhost ? ‘ card--untracked’ : ‘’}" data-id="${id}" data-kind="card">
       <div class="card-body">
         <div class="card-top">
           <span class="card-grip block-grip" aria-hidden="true"></span>
-          <div class="card-name" ${untracked ? 'contenteditable="true" spellcheck="false"' : ''} data-field="name">${esc(c.name)}</div>
+          <div class="card-name" ${untracked && !isGhost ? ‘contenteditable="true" spellcheck="false"’ : ‘’} data-field="name">${esc(c.name)}</div>
           <span class="badge loose-tag">Loose</span>
           <span class="badge status">OK</span>
         </div>
@@ -1559,11 +1585,11 @@
         <div class="order">
           <div class="field">
             <label>Price <span class="lbl-sub">/ bottle</span></label>
-            <div class="input-wrap"><span class="pfx">$</span><input type="number" step="0.01" min="0" inputmode="decimal" data-field="price" value="${c.price}"></div>
+            <div class="input-wrap"><span class="pfx">$</span><input type="number" step="0.01" min="0" inputmode="decimal" data-field="price" value="${c.price}"${dis}></div>
           </div>
           <div class="field">
             <label>Order <span class="lbl-sub">bottles</span></label>
-            <div class="input-wrap"><input type="number" step="1" min="0" inputmode="numeric" data-field="qty" value="${c.qty}"><span class="sfx">btl</span></div>
+            <div class="input-wrap"><input type="number" step="1" min="0" inputmode="numeric" data-field="qty" value="${c.qty}"${dis}><span class="sfx">btl</span></div>
           </div>
         </div>
         <div class="card-foot">
@@ -1572,7 +1598,8 @@
         </div>
         <div class="card-end">
           <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month’s Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
-          <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || '')}</span>
+          ${!isGhost ? `<span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${c.recur || ‘’}">mo</span>` : ‘’}
+          <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || ‘’)}</span>
           <button class="del" data-act="del-card" title="Remove item" aria-label="Remove item">×</button>
         </div>
       </div>
@@ -1849,6 +1876,173 @@
   }
   window.SBoard.recalc = recalcAll;
 
+  // ── Recurring ghost card helpers ──────────────────────────────────────────
+
+  // Find which month index and shipment a card lives in.
+  // Uses DOM when rendered (accurate after drags), falls back to structure.
+  function findCardLocation(cardId) {
+    if (board.querySelector('.month')) {
+      const cardEl = board.querySelector(`.card[data-id="${cardId}"]`);
+      if (cardEl) {
+        const monthEls = Array.from(board.querySelectorAll('.month'));
+        const monthEl  = cardEl.closest('.month');
+        const shipEl   = cardEl.closest('.shipment');
+        return { monthIdx: monthEls.indexOf(monthEl), shipId: shipEl ? shipEl.dataset.id : null };
+      }
+    }
+    for (let mi = 0; mi < structure.length; mi++) {
+      for (const b of structure[mi].blocks) {
+        if (b.type === 'card' && b.id === cardId) return { monthIdx: mi, shipId: null };
+        if (b.type === 'shipment' && b.cards.includes(cardId)) return { monthIdx: mi, shipId: b.id };
+      }
+    }
+    return { monthIdx: -1, shipId: null };
+  }
+
+  // Find the first shipment in a target month whose name matches (case-insensitive).
+  function findShipByName(targetMonthIdx, name) {
+    const lc = name.trim().toLowerCase();
+    // DOM first
+    const monthEls = board.querySelectorAll('.month');
+    if (monthEls[targetMonthIdx]) {
+      let found = null;
+      monthEls[targetMonthIdx].querySelectorAll('.month-list > .shipment').forEach(s => {
+        if (!found && (STATE.shipmentData[s.dataset.id]?.name || '').trim().toLowerCase() === lc) found = s.dataset.id;
+      });
+      if (found) return found;
+    }
+    // Fall back to structure
+    const m = structure[targetMonthIdx];
+    if (!m) return null;
+    for (const b of m.blocks) {
+      if (b.type === 'shipment' && (STATE.shipmentData[b.id]?.name || '').trim().toLowerCase() === lc) return b.id;
+    }
+    return null;
+  }
+
+  // Remove all ghost cards (and their structure refs) for a given source ID.
+  function cleanGhostsForSource(sourceId) {
+    const ghostIds = new Set(Object.keys(STATE.cardData).filter(id => STATE.cardData[id]?.ghostOf === sourceId));
+    if (!ghostIds.size) return;
+    ghostIds.forEach(id => {
+      board.querySelector(`.card[data-id="${id}"]`)?.remove();
+      delete STATE.cardData[id];
+    });
+    for (const m of structure) {
+      for (let bi = m.blocks.length - 1; bi >= 0; bi--) {
+        const b = m.blocks[bi];
+        if (b.type === 'card' && ghostIds.has(b.id)) { m.blocks.splice(bi, 1); }
+        else if (b.type === 'shipment') { b.cards = b.cards.filter(cid => !ghostIds.has(cid)); }
+      }
+    }
+  }
+
+  // Generate ghost cards/shipments for a recurring source card.
+  function syncGhosts(sourceId) {
+    cleanGhostsForSource(sourceId);
+    const src = STATE.cardData[sourceId];
+    if (!src || !src.recur || src.recur < 1) return;
+    const N = Math.max(1, Math.min(12, Math.round(Number(src.recur))));
+    const { monthIdx: srcMi, shipId: srcShipId } = findCardLocation(sourceId);
+    if (srcMi === -1) return;
+    const srcShipName = srcShipId ? (STATE.shipmentData[srcShipId]?.name || '').trim() : null;
+    const monthEls = Array.from(board.querySelectorAll('.month'));
+
+    for (let off = N; srcMi + off < structure.length; off += N) {
+      const tMi = srcMi + off;
+      const tMonth = structure[tMi];
+      const tMonthEl = monthEls[tMi] || null;
+      if (!tMonth) break;
+
+      // Find or create ghost shipment
+      let tShipId = srcShipName ? findShipByName(tMi, srcShipName) : null;
+      if (!tShipId && srcShipName) {
+        tShipId = uid('gs_');
+        STATE.shipmentData[tShipId] = { name: srcShipName, notes: '' };
+        tMonth.blocks.push({ type: 'shipment', id: tShipId, cards: [] });
+        if (tMonthEl) {
+          const sEl = el(shipmentHTML({ type: 'shipment', id: tShipId, cards: [] }));
+          tMonthEl.querySelector('.month-list').appendChild(sEl);
+          makeShipSortable(sEl.querySelector('.ship-body'));
+        }
+      }
+
+      // Create ghost card in STATE
+      const gId = uid('g_');
+      STATE.cardData[gId] = {
+        name: src.name, price: src.price, qty: src.qty,
+        includeInMonthTotal: src.includeInMonthTotal !== false,
+        notes: '', untracked: !!src.untracked,
+        dose: src.dose, amount: src.amount, bottleSize: src.bottleSize, loggedOn: src.loggedOn,
+        ghostOf: sourceId, recur: N,
+      };
+
+      // Add to structure + DOM
+      if (tShipId) {
+        const shipBlock = tMonth.blocks.find(b => b.id === tShipId && b.type === 'shipment');
+        if (shipBlock) shipBlock.cards.push(gId);
+        if (tMonthEl) {
+          const shipBody = tMonthEl.querySelector(`.shipment[data-id="${tShipId}"] .ship-body`);
+          if (shipBody) shipBody.appendChild(el(cardHTML(gId)));
+        }
+      } else {
+        tMonth.blocks.push({ type: 'card', id: gId });
+        if (tMonthEl) tMonthEl.querySelector('.month-list').appendChild(el(cardHTML(gId)));
+      }
+    }
+    recalcAll();
+    persistSoon();
+  }
+
+  // On initial load: auto-promote ghosts whose source is already in an ordered shipment.
+  function cleanupAndPromote() {
+    let pass = true;
+    while (pass) {
+      pass = false;
+      Object.keys(STATE.cardData).forEach(id => {
+        const c = STATE.cardData[id];
+        if (!c || c.ghostOf || !c.recur) return;
+        const { shipId } = findCardLocation(id);
+        if (!shipId || !STATE.shipmentData[shipId]?.stage) return;
+        const hasGhosts = Object.values(STATE.cardData).some(d => d.ghostOf === id);
+        if (hasGhosts) { promoteFirstGhost(id); pass = true; }
+      });
+    }
+  }
+
+  // When a source card's shipment is ordered, promote the earliest ghost to a source.
+  function promoteFirstGhost(sourceId) {
+    const src = STATE.cardData[sourceId];
+    if (!src || !src.recur) return;
+    let firstId = null, firstMi = Infinity;
+    Object.keys(STATE.cardData).forEach(id => {
+      const c = STATE.cardData[id];
+      if (c?.ghostOf !== sourceId) return;
+      const { monthIdx } = findCardLocation(id);
+      if (monthIdx >= 0 && monthIdx < firstMi) { firstMi = monthIdx; firstId = id; }
+    });
+    if (!firstId) return;
+
+    // Promote: clear ghostOf
+    delete STATE.cardData[firstId].ghostOf;
+
+    // Update DOM: un-ghost the promoted card
+    const promotedEl = board.querySelector(`.card[data-id="${firstId}"]`);
+    if (promotedEl) {
+      promotedEl.classList.remove('card--ghost');
+      promotedEl.querySelectorAll('input').forEach(inp => { if (!inp.closest('.ship-head')) inp.disabled = false; });
+      if (!promotedEl.querySelector('.recur-ctl')) {
+        const toggle = promotedEl.querySelector('.incl-toggle');
+        const recurSpan = el(`<span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${STATE.cardData[firstId].recur || ''}">mo</span>`);
+        if (toggle) toggle.after(recurSpan);
+      }
+    }
+
+    // Clean remaining ghosts of original source, then sync from promoted card
+    cleanGhostsForSource(sourceId);
+    syncGhosts(firstId);
+  }
+
   function updateMonthVisibility() {
     const now = SB.today();
     const curYear = now.getFullYear();
@@ -1878,6 +2072,8 @@
       include_in_total: c.includeInMonthTotal ? 1 : 0,
       untracked: c.untracked ? 1 : 0,
       notes: c.notes || '',
+      recur: c.recur || null,
+      recur_source: c.ghostOf || null,
     });
   }
   function toApi() {
@@ -1947,14 +2143,14 @@
   function makeMonthSortable(listEl) {
     new Sortable(listEl, Object.assign({}, COMMON, {
       group: { name: 'sb', pull: true, put: true },
-      draggable: '.card, .shipment',
+      draggable: '.card:not(.card--ghost), .shipment',
       handle: '.block-grip',
     }));
   }
   function makeShipSortable(bodyEl) {
     new Sortable(bodyEl, Object.assign({}, COMMON, {
-      group: { name: 'sb', pull: true, put: (to, from, drag) => drag.classList.contains('card') },
-      draggable: '.card',
+      group: { name: 'sb', pull: true, put: (to, from, drag) => drag.classList.contains('card') && !drag.classList.contains('card--ghost') },
+      draggable: '.card:not(.card--ghost)',
       handle: '.card-grip',
     }));
   }
@@ -1962,7 +2158,18 @@
   // ── editing ──
   board.addEventListener('input', (e) => {
     const t = e.target;
-    if (t.matches('input[data-field]')) {
+    if (t.matches('.recur-ctl-n')) {
+      const cardEl = t.closest('.card');
+      const id = cardEl.dataset.id;
+      const c = STATE.cardData[id];
+      const newVal = t.value.trim() ? Math.max(1, Math.min(12, Math.round(Number(t.value)))) : null;
+      if (newVal !== c.recur) {
+        c.recur = newVal;
+        cleanGhostsForSource(id);
+        if (newVal) syncGhosts(id);
+        else { recalcAll(); persistSoon(); }
+      }
+    } else if (t.matches('input[data-field]')) {
       const cardEl = t.closest('.card');
       const c = STATE.cardData[cardEl.dataset.id];
       c[t.dataset.field] = t.value === '' ? 0 : Number(t.value);
@@ -2058,6 +2265,14 @@
       recalcAll();
       persist();
 
+      // Promote first ghost for any recurring source cards in this shipment
+      if (newStage === 'ordered') {
+        shipEl.querySelectorAll('.ship-body > .card[data-id]').forEach(cEl => {
+          const cd = STATE.cardData[cEl.dataset.id];
+          if (cd && !cd.ghostOf && cd.recur) promoteFirstGhost(cEl.dataset.id);
+        });
+      }
+
       if (window.InventoryWriter && newStage != null) {
         const invCards = [...shipEl.querySelectorAll('.ship-body > .card')].map((c) => {
           const d = STATE.cardData[c.dataset.id] || {};
@@ -2080,6 +2295,14 @@
     }
     if (a === 'del-card') {
       const cardEl = act.closest('.card');
+      const id = cardEl.dataset.id;
+      const c = STATE.cardData[id];
+      if (c && !c.ghostOf && c.recur) {
+        const ghostCount = Object.values(STATE.cardData).filter(d => d.ghostOf === id).length;
+        if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
+        cleanGhostsForSource(id);
+      }
+      delete STATE.cardData[id];
       cardEl.remove();
       recalcAll(); persist();
       return;
@@ -2161,9 +2384,9 @@
   function showItemPicker(anchor, onSelect, fromFilter = null) {
     closeItemPicker();
 
-    // Names on the board right now — query the live DOM so deleted cards aren't included
+    // Names on the board right now — exclude ghost cards (they're projections, not real orders)
     const onBoard = new Set(
-      [...board.querySelectorAll('.card[data-id]')].map((el) => {
+      [...board.querySelectorAll('.card[data-id]:not(.card--ghost)')].map((el) => {
         const c = STATE.cardData[el.dataset.id];
         return c ? c.name.trim().toLowerCase() : '';
       }).filter(Boolean)
@@ -2560,6 +2783,8 @@
       if (booted) return;
       booted = true;
       await load();
+      // Promote any ghosts whose source is already in an ordered shipment (from DB reload)
+      cleanupAndPromote();
       render();
       const asof = document.getElementById('board-asof');
       if (asof) asof.textContent = SB.fmtDate(SB.today());

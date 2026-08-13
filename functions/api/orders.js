@@ -46,14 +46,26 @@ function rowsFrom(result) {
 }
 const num = (v) => (v == null ? null : Number(v));
 
+// Add recur columns if they don't exist yet (safe to call on every request)
+async function ensureSchema(env) {
+  for (const sql of [
+    "ALTER TABLE order_items ADD COLUMN recur INTEGER",
+    "ALTER TABLE order_items ADD COLUMN recur_source TEXT",
+  ]) {
+    try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
+  }
+}
+
 export async function onRequestGet({ env }) {
   try {
+    await ensureSchema(env);
     const results = await pipeline(env, [
       exec("SELECT month, year, position FROM order_months ORDER BY position"),
       exec("SELECT order_id, month, merchant, position, status, notes FROM orders ORDER BY position"),
       exec(
         `SELECT order_item_id, order_id, month, block_position, item_position, supplement,
-                price_per_bottle, order_qty_bottles, include_in_total, notes, untracked
+                price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
+                recur, recur_source
          FROM order_items ORDER BY block_position, item_position`
       ),
     ]);
@@ -71,6 +83,8 @@ export async function onRequestGet({ env }) {
       order_qty_bottles: num(it.order_qty_bottles) || 0,
       include_in_total: num(it.include_in_total) ? true : false, notes: it.notes,
       untracked: num(it.untracked) ? true : false,
+      recur: it.recur ? num(it.recur) : null,
+      recur_source: it.recur_source || null,
     }));
     return Response.json({ months, orders, items }, {
       headers: { "Access-Control-Allow-Origin": "*" },
@@ -86,6 +100,8 @@ export async function onRequestPut({ request, env }) {
   const months = Array.isArray(body.months) ? body.months : [];
   const orders = Array.isArray(body.orders) ? body.orders : [];
   const items = Array.isArray(body.items) ? body.items : [];
+
+  await ensureSchema(env);
 
   const reqs = [
     exec("BEGIN"),
@@ -108,10 +124,14 @@ export async function onRequestPut({ request, env }) {
   for (const it of items) {
     reqs.push(exec(
       `INSERT INTO order_items
-         (order_item_id, order_id, month, block_position, item_position, supplement, price_per_bottle, order_qty_bottles, include_in_total, notes, untracked)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (order_item_id, order_id, month, block_position, item_position, supplement,
+          price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
+          recur, recur_source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [T(it.order_item_id), T(it.order_id), T(it.month), I(it.block_position), I(it.item_position),
-       T(it.supplement), F(it.price_per_bottle), F(it.order_qty_bottles), I(it.include_in_total ? 1 : 0), T(it.notes), I(it.untracked ? 1 : 0)]
+       T(it.supplement), F(it.price_per_bottle), F(it.order_qty_bottles), I(it.include_in_total ? 1 : 0),
+       T(it.notes), I(it.untracked ? 1 : 0),
+       it.recur ? I(it.recur) : { type: "null" }, it.recur_source ? T(it.recur_source) : { type: "null" }]
     ));
   }
   reqs.push(exec("COMMIT"));
