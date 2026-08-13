@@ -267,8 +267,12 @@
     #inv-table .inv-runout { font-size: 12px; }
     .inv-bars { display: inline-flex; gap: 1px; align-items: center; vertical-align: middle; margin-left: 4px; }
     .inv-bar { display: block; flex-shrink: 0; width: 10px; height: 5px; border-radius: 1px; background: #3f8f87; opacity: 0.5; }
-    @keyframes inv-pulse { 0% { background-color: rgba(112,196,187,0.35); } 100% { background-color: transparent; } }
-    .inv-highlight { animation: inv-pulse 1.4s ease-out; }
+    @keyframes inv-pulse {
+      0%   { background-color: rgba(112,196,187,0.55); box-shadow: 0 0 0 3px rgba(112,196,187,0.5); }
+      60%  { background-color: rgba(112,196,187,0.2);  box-shadow: 0 0 0 6px rgba(112,196,187,0.1); }
+      100% { background-color: transparent;            box-shadow: 0 0 0 0   rgba(112,196,187,0); }
+    }
+    .inv-highlight { animation: inv-pulse 1.6s ease-out; border-radius: var(--radius, 8px); }
     #inv-table .inv-runout.inv-empty { color: #d6504a; font-weight: 600; }
     #inv-table .inv-runout.inv-soon { color: #e08a3c; }
     #inv-table .inv-no-data { color: var(--ink-60); }
@@ -360,14 +364,18 @@
     }
     .snm-select:focus { border-color: var(--teal); }
     .snm-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-    .snm-field { display: flex; flex-direction: column; gap: 3px; }
+    .snm-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
     .snm-field label { font-size: 11px; color: var(--ink-60); font-weight: 500; letter-spacing: .02em; }
     .snm-field input {
       border: 1.5px solid var(--ink-12); border-radius: 6px; padding: 6px 8px;
       font-size: 13px; font-family: inherit; background: #fff; color: var(--ink); outline: none;
+      width: 100%; box-sizing: border-box;
     }
     .snm-field input:focus { border-color: var(--teal); }
     .snm-field.full { grid-column: 1 / -1; }
+    @media (max-width: 480px) {
+      .snm-fields { grid-template-columns: 1fr; }
+    }
     .snm-footer {
       display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;
       padding-top: 14px; border-top: 1px solid var(--ink-12);
@@ -3692,11 +3700,11 @@
       const tr   = body?.querySelector('tr[data-key="' + key + '"]');
       const el   = card || tr;
       if (!el) return;
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       el.classList.remove('inv-highlight');
-      void el.offsetWidth; // force reflow so re-adding the class restarts the animation
+      void el.offsetWidth; // force reflow so re-adding restarts the animation
       el.classList.add('inv-highlight');
-      setTimeout(() => el.classList.remove('inv-highlight'), 1400);
+      setTimeout(() => el.classList.remove('inv-highlight'), 1600);
     }
 
     async function handleMatch(key, raw) {
