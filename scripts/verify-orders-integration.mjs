@@ -58,8 +58,7 @@ const consoleMsgs = []; page.on('console', m => consoleMsgs.push(m.type() + ': '
 
 try {
   await page.goto(base, { waitUntil: 'load' });
-  await page.click('.tab-btn[data-tab="board"]');
-  await page.waitForSelector('#tab-board.active #board .month', { timeout: 10000 }).catch(async (err) => {
+  await page.waitForSelector('#tab-board #board .month', { timeout: 10000 }).catch(async (err) => {
     console.error('Board did not render. Console:\n' + consoleMsgs.slice(-30).join('\n'));
     console.error('Board HTML:\n' + await page.$eval('#board', el => el.innerHTML.slice(0, 500)).catch(() => 'N/A'));
     throw err;

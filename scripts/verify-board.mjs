@@ -102,9 +102,8 @@ page.on('console', m => consoleLines.push(m.type() + ': ' + m.text()));
 try {
   await page.goto(base, { waitUntil: 'load' });
 
-  // open the board tab
-  await page.click('.tab-btn[data-tab="board"]');
-  await page.waitForSelector('#tab-board.active #board .month', { timeout: 10000 }).catch(async (err) => {
+  // the board is the page itself now — no tab to click
+  await page.waitForSelector('#tab-board #board .month', { timeout: 10000 }).catch(async (err) => {
     console.error('Board did not render. Console output:\n' + consoleLines.slice(-20).join('\n'));
     throw err;
   });
