@@ -182,7 +182,15 @@
       padding: 12px 18px; border-bottom: 1.5px solid var(--ink-12);
       background: var(--cream-dark); flex-shrink: 0;
     }
-    .inv-modal-title { font-size: 15px; font-weight: 600; margin-right: auto; }
+    .inv-modal-title { font-size: 15px; font-weight: 600; }
+    /* Matches the month/shipment count pills on the board. Their --font-num and
+       --ink-2 are scoped to #tab-board, so the values are repeated here. */
+    .inv-count-badge {
+      font-family: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+      font-size: 10px; color: #51606a; background: #dbe2e3;
+      padding: 1px 7px; border-radius: 20px;
+      margin-right: auto;
+    }
     .inv-modal-close {
       appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
       cursor: pointer; width: 28px; height: 28px; border-radius: 7px;
@@ -1222,7 +1230,7 @@
  <section id="tab-inventory" class="inv-modal" role="dialog" aria-modal="true" aria-label="Inventory">
   <div class="inv-modal-head">
     <span class="inv-modal-title">Inventory</span>
-    <span class="inv-item-count" id="inv-item-count"></span>
+    <span class="inv-count-badge" id="inv-item-count"></span>
     <button class="inv-modal-close" id="inv-modal-close" title="Close" aria-label="Close">&times;</button>
   </div>
   <div class="inv-modal-body">
@@ -3887,7 +3895,8 @@
     const fmt = (n) => n + ' item' + (n === 1 ? '' : 's');
     const deskCount = document.getElementById('inv-item-count');
     const mobCount  = document.getElementById('inv-item-count-mob');
-    if (deskCount) deskCount.textContent = fmt(visibleCount);
+    // Bare number in the modal header — it reads as a count pill, like the board's
+    if (deskCount) deskCount.textContent = String(visibleCount);
     if (mobCount)  mobCount.textContent  = fmt(visibleCardCount || visibleCount);
   }
 
