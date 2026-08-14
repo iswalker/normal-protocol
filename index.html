@@ -266,6 +266,24 @@
     .ship-ctx-item:hover { background: var(--cream); color: #3f8f87; }
     .ship-ctx-item.ctx-disabled { color: var(--ink-60); cursor: default; pointer-events: none; }
     .ship-ctx-divider { height: 1px; background: var(--ink-12); margin: 3px 4px; }
+    /* "Move/Copy to [month]" — the row is a label plus an inline month picker */
+    .ship-ctx-pick {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 11px; border-radius: 6px; color: var(--ink);
+    }
+    .ship-ctx-pick:hover { background: var(--cream); }
+    .ship-ctx-pick.ctx-disabled { color: var(--ink-60); pointer-events: none; opacity: 0.55; }
+    .ship-ctx-pick > span { white-space: nowrap; }
+    .ship-ctx-pick select {
+      margin-left: auto; appearance: none;
+      background: var(--cream) url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 8l3-3.5' fill='none' stroke='%2351606a' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 6px center;
+      background-size: 11px 11px;
+      border: 1.5px solid var(--ink-12); border-radius: 6px;
+      padding: 3px 21px 3px 8px; font-family: inherit; font-size: 12px;
+      color: var(--ink); cursor: pointer; min-width: 74px;
+    }
+    .ship-ctx-pick select:hover { border-color: var(--teal); }
+    .ship-ctx-pick select:focus { outline: none; border-color: var(--teal); }
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
@@ -2781,7 +2799,31 @@
     function ctxDivider() {
       const d = document.createElement('div'); d.className = 'ship-ctx-divider'; return d;
     }
-    buildFn(menu, ctxItem, ctxDivider);
+    // A label plus a month dropdown. Starts blank; choosing a month runs the
+    // action against that month straight away and closes the menu.
+    function ctxMonthPick(label, currentMonthEl, onPick) {
+      const months = [...board.querySelectorAll('.month')]
+        .filter((m) => m.style.display !== 'none' && m !== currentMonthEl);
+      const row = document.createElement('div');
+      row.className = 'ship-ctx-pick' + (months.length ? '' : ' ctx-disabled');
+      const cap = document.createElement('span');
+      cap.textContent = label;
+      const sel = document.createElement('select');
+      sel.innerHTML = '<option value=""></option>' + months.map((m, i) =>
+        `<option value="${i}">${m.querySelector('.mname')?.textContent.trim() || ''}</option>`).join('');
+      if (!months.length) sel.disabled = true;
+      // Keep the right-click menu from closing when the native dropdown is used
+      ['mousedown', 'click'].forEach((t) => sel.addEventListener(t, (ev) => ev.stopPropagation()));
+      sel.addEventListener('change', () => {
+        const target = months[Number(sel.value)];
+        if (!target) return;
+        closeCtxMenu();
+        onPick(target);
+      });
+      row.append(cap, sel);
+      return row;
+    }
+    buildFn(menu, ctxItem, ctxDivider, ctxMonthPick);
     menu.style.left = e.clientX + 'px';
     menu.style.top = e.clientY + 'px';
     document.body.appendChild(menu);
@@ -2832,31 +2874,30 @@
         return targetMonthEl.querySelector('.month-list');
       }
 
-      buildCtxMenu(e, (menu, ctxItem, ctxDivider) => {
+      // Shared by the Next/Previous items and the month picker, so a month several
+      // steps away behaves exactly like the one-step case.
+      function moveCardToMonth(targetMonthEl) {
+        cardDest(targetMonthEl).prepend(cardEl); recalcAll(); persist();
+      }
+      function copyCardToMonth(targetMonthEl) {
+        const newId = uid('c_');
+        STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
+        const newEl = el(cardHTML(newId));
+        cardDest(targetMonthEl).prepend(newEl);
+        recalcAll(); persist();
+      }
+
+      buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
         menu.appendChild(ctxItem('Move to Top', isFirst, () => { container.prepend(cardEl); recalcAll(); persist(); }));
         menu.appendChild(ctxItem('Move to End', isLast, () => { container.append(cardEl); recalcAll(); persist(); }));
         menu.appendChild(ctxDivider());
-        menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => {
-          cardDest(allMonths[monthIdx + 1]).prepend(cardEl); recalcAll(); persist();
-        }));
-        menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => {
-          cardDest(allMonths[monthIdx - 1]).prepend(cardEl); recalcAll(); persist();
-        }));
+        menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => moveCardToMonth(allMonths[monthIdx + 1])));
+        menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => moveCardToMonth(allMonths[monthIdx - 1])));
+        menu.appendChild(ctxMonthPick('Move to', monthEl, moveCardToMonth));
         menu.appendChild(ctxDivider());
-        menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => {
-          const newId = uid('c_');
-          STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
-          const newEl = el(cardHTML(newId));
-          cardDest(allMonths[monthIdx + 1]).prepend(newEl);
-          recalcAll(); persist();
-        }));
-        menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => {
-          const newId = uid('c_');
-          STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
-          const newEl = el(cardHTML(newId));
-          cardDest(allMonths[monthIdx - 1]).prepend(newEl);
-          recalcAll(); persist();
-        }));
+        menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => copyCardToMonth(allMonths[monthIdx + 1])));
+        menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => copyCardToMonth(allMonths[monthIdx - 1])));
+        menu.appendChild(ctxMonthPick('Copy to', monthEl, copyCardToMonth));
         menu.appendChild(ctxItem('Duplicate', false, () => {
           const newId = uid('c_');
           STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
@@ -2886,7 +2927,28 @@
     const hasPrev = monthIdx > 0;
     const hasNext = monthIdx < allMonths.length - 1;
 
-    buildCtxMenu(e, (menu, ctxItem, ctxDivider) => {
+    // Shared by the Next/Previous items and the month picker, so a month several
+    // steps away behaves exactly like the one-step case.
+    function moveShipToMonth(targetMonthEl) {
+      targetMonthEl.querySelector('.month-list').prepend(shipEl);
+      recalcAll(); persist();
+    }
+    function copyShipToMonth(targetMonthEl) {
+      const sid = uid('s_');
+      STATE.shipmentData[sid] = Object.assign({}, STATE.shipmentData[shipEl.dataset.id] || {});
+      const oldCardIds = [...shipEl.querySelectorAll(':scope .ship-body > .card[data-id]')].map(c => c.dataset.id);
+      const newCards = oldCardIds.map(oldId => {
+        const newId = uid('c_');
+        STATE.cardData[newId] = Object.assign({}, STATE.cardData[oldId] || {});
+        return newId;
+      });
+      const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
+      targetMonthEl.querySelector('.month-list').prepend(newEl);
+      makeShipSortable(newEl.querySelector('.ship-body'));
+      recalcAll(); persist();
+    }
+
+    buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
       menu.appendChild(ctxItem('Move to Top', isFirst, () => {
         list.prepend(shipEl); recalcAll(); persist();
       }));
@@ -2896,43 +2958,13 @@
         recalcAll(); persist();
       }));
       menu.appendChild(ctxDivider());
-      menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => {
-        allMonths[monthIdx + 1].querySelector('.month-list').prepend(shipEl);
-        recalcAll(); persist();
-      }));
-      menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => {
-        allMonths[monthIdx - 1].querySelector('.month-list').prepend(shipEl);
-        recalcAll(); persist();
-      }));
+      menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => moveShipToMonth(allMonths[monthIdx + 1])));
+      menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => moveShipToMonth(allMonths[monthIdx - 1])));
+      menu.appendChild(ctxMonthPick('Move to', monthEl, moveShipToMonth));
       menu.appendChild(ctxDivider());
-      menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => {
-        const sid = uid('s_');
-        STATE.shipmentData[sid] = Object.assign({}, STATE.shipmentData[shipEl.dataset.id] || {});
-        const oldCardIds = [...shipEl.querySelectorAll(':scope .ship-body > .card[data-id]')].map(c => c.dataset.id);
-        const newCards = oldCardIds.map(oldId => {
-          const newId = uid('c_');
-          STATE.cardData[newId] = Object.assign({}, STATE.cardData[oldId] || {});
-          return newId;
-        });
-        const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
-        allMonths[monthIdx + 1].querySelector('.month-list').prepend(newEl);
-        makeShipSortable(newEl.querySelector('.ship-body'));
-        recalcAll(); persist();
-      }));
-      menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => {
-        const sid = uid('s_');
-        STATE.shipmentData[sid] = Object.assign({}, STATE.shipmentData[shipEl.dataset.id] || {});
-        const oldCardIds = [...shipEl.querySelectorAll(':scope .ship-body > .card[data-id]')].map(c => c.dataset.id);
-        const newCards = oldCardIds.map(oldId => {
-          const newId = uid('c_');
-          STATE.cardData[newId] = Object.assign({}, STATE.cardData[oldId] || {});
-          return newId;
-        });
-        const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
-        allMonths[monthIdx - 1].querySelector('.month-list').prepend(newEl);
-        makeShipSortable(newEl.querySelector('.ship-body'));
-        recalcAll(); persist();
-      }));
+      menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => copyShipToMonth(allMonths[monthIdx + 1])));
+      menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => copyShipToMonth(allMonths[monthIdx - 1])));
+      menu.appendChild(ctxMonthPick('Copy to', monthEl, copyShipToMonth));
       menu.appendChild(ctxItem('Duplicate', false, () => {
         const sid = uid('s_');
         STATE.shipmentData[sid] = Object.assign({}, STATE.shipmentData[shipEl.dataset.id] || {});
