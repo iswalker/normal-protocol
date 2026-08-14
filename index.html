@@ -1797,7 +1797,20 @@
 
   function applyEffectiveMap() {
     const seen = new Map(); // supplement name (lowercase) → { daysLeft, runOut } after last order
-    board.querySelectorAll('.card[data-id]').forEach((cardEl) => {
+    // Walk the cards in the order the orders actually happen, which is not the order
+    // they are shown in: render() sinks locked shipments to the bottom of their month,
+    // but an order already placed precedes anything still staged in that same month.
+    // Following the DOM here let a staged card run before the locked one above it, so
+    // it restarted from raw on-hand and then had its own total overwritten.
+    const walk = [];
+    board.querySelectorAll('.month').forEach((monthEl) => {
+      const inMonth = [...monthEl.querySelectorAll('.card[data-id]')];
+      walk.push(
+        ...inMonth.filter((el) => el.closest('.shipment.is-locked')),
+        ...inMonth.filter((el) => !el.closest('.shipment.is-locked')),
+      );
+    });
+    walk.forEach((cardEl) => {
       const c = STATE.cardData[cardEl.dataset.id];
       if (!c) return;
       const hasInv = !c.untracked && !!c.dose && !!c.loggedOn;
