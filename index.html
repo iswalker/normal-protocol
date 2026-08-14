@@ -1316,7 +1316,13 @@
 (function () {
   const DAY = 86400000;
 
-  function today() { return new Date(); }
+  // Midnight, not "now". Every loggedOn is a bare date, so measuring elapsed time
+  // against a timestamped now charged the projection for the part of today that had
+  // already passed. calcForCard() re-bases each carry-forward hop to isoToday(), so
+  // that same partial day was charged again at every hop -- which is why a card
+  // handing 32d to the next one showed up there as 31d. Whole days also match the
+  // precision the log actually carries.
+  function today() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
   function parseDate(iso) { return new Date(iso + 'T00:00:00'); }
   function addDays(d, n) { return new Date(d.getTime() + n * DAY); }
   function daysBetween(a, b) { return (b - a) / DAY; }
