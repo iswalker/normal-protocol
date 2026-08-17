@@ -354,6 +354,18 @@
     #inv-table .inv-filters input[type=search]:focus { outline: none; border-color: var(--teal); }
     #inv-table .inv-filters input[type=search]::-webkit-search-cancel-button { cursor: pointer; }
 
+    /* "+ Add [item]" affordance appended while filtering the Item column, mirroring
+       the "+ Add" option in the board's "+ Item" and scan search pickers. */
+    #inv-table .inv-add-cell {
+      cursor: pointer; color: #3f8f87; font-style: italic; padding: 8px 16px;
+      white-space: nowrap; overflow: visible; max-width: none;
+    }
+    #inv-table tr.inv-add-row:hover .inv-add-cell { background: var(--cream); }
+    .inv-card.inv-add-card {
+      cursor: pointer; color: #3f8f87; font-style: italic;
+      display: flex; align-items: center; padding: 12px 14px;
+    }
+
     .inv-edit-input {
       width: 72px; padding: 3px 6px; border: 1.5px solid var(--teal);
       border-radius: 4px; font-size: 13px; font-family: inherit;
@@ -391,28 +403,23 @@
       width: 100%; border-radius: 8px; background: #111;
       aspect-ratio: 4/3; object-fit: cover; display: block; margin-bottom: 12px;
     }
-    .scan-input-row { display: flex; gap: 8px; }
-    .scan-input-row input {
-      flex: 1; border: 1.5px solid var(--ink-12); border-radius: 7px;
-      padding: 8px 10px; font-size: 13px; font-family: inherit;
-      background: #fff; color: var(--ink); outline: none;
-    }
-    .scan-input-row input:focus { border-color: var(--teal); }
-    .scan-go-btn, .snm-confirm {
+    .snm-confirm {
       appearance: none; border: 1.5px solid var(--teal); background: var(--teal);
       color: #fff; border-radius: 7px; padding: 8px 14px; font-size: 13px;
       font-family: inherit; cursor: pointer; font-weight: 500; white-space: nowrap;
     }
-    .scan-go-btn:hover, .snm-confirm:hover { filter: brightness(0.93); }
+    .snm-confirm:hover { filter: brightness(0.93); }
     .snm-confirm:disabled { opacity: 0.45; cursor: default; filter: none; }
-    .scan-cam-row { margin-top: 10px; }
-    .scan-cam-btn {
-      appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
-      color: var(--ink-60); border-radius: 7px; padding: 5px 12px; font-size: 12px;
-      font-family: inherit; cursor: pointer; transition: color .15s, border-color .15s;
-    }
-    .scan-cam-btn:hover, .scan-cam-btn.active { border-color: var(--teal); color: var(--teal); }
     .scan-status-msg { font-size: 12px; color: var(--ink-60); margin-top: 8px; min-height: 16px; }
+    /* Item-name search that replaced the old barcode text field — reuses the
+       board's "+ Item" picker classes (.inv-picker / .inv-picker-list / .inv-picker-opt
+       etc, defined further down) so the two look and behave identically, just
+       embedded in the modal's flow instead of floated as a portal popup. */
+    .scan-item-picker { width: 100%; box-sizing: border-box; }
+    .scan-item-picker .inv-picker-search { width: 100%; box-sizing: border-box; }
+    .scan-item-picker .inv-picker-list { max-height: 260px; overflow-y: auto; }
+    .scan-item-picker .ipm-meta.inv-soon  { color: #e08a3c; }
+    .scan-item-picker .ipm-meta.inv-empty { color: #d6504a; }
 
     /* No-match modal extras */
     .snm-code {
@@ -1353,7 +1360,15 @@
   document.getElementById('inv-modal-close')?.addEventListener('click', closeInventory);
   invOv?.addEventListener('click', (e) => { if (e.target === invOv) closeInventory(); });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && invOv?.classList.contains('open')) closeInventory();
+    if (e.key !== 'Escape' || !invOv?.classList.contains('open')) return;
+    // The scan search and its "Add New Item" dialog stack on top of this modal
+    // and register their own Escape handler further down. Since this listener
+    // was attached first, it would otherwise fire first on every Escape and
+    // close the modal out from under whichever of those is on top. Defer to it.
+    const scanOpen = document.getElementById('scan-overlay')?.style.display === 'flex';
+    const nmOpen = document.getElementById('snm-overlay')?.style.display === 'flex';
+    if (scanOpen || nmOpen) return;
+    closeInventory();
   });
 
   // Mobile FAB — proxy to the real header buttons
@@ -3896,6 +3911,11 @@
   });
 
   function applyFilters() {
+    // Drop any previous "+ Add [query]" affordance before filtering, so it isn't
+    // caught by the row/card loops below (re-added at the end if still wanted).
+    document.getElementById('inv-add-row')?.remove();
+    document.getElementById('inv-add-card')?.remove();
+
     // Desktop table rows
     const active = FILTER_COLS.map(f => ({ q: f.el.value.trim().toLowerCase(), colIdx: f.colIdx }));
     let visibleCount = 0;
@@ -3911,6 +3931,23 @@
       if (show) visibleCount++;
     });
 
+    // "+ Add [query]" when the Item filter doesn't exactly match an existing
+    // item — the same affordance as the "+ Item" and scan search pickers, so a
+    // supplement that isn't in Inventory yet is one click from the New Item
+    // dialog, pre-filled with whatever was typed.
+    const existingNames = new Set(Object.keys(window._INV_ITEM_MAP || {}));
+    const itemQRaw = document.getElementById('inv-filter-item')?.value.trim() || '';
+    if (itemQRaw && !existingNames.has(itemQRaw.toLowerCase())) {
+      const tr = document.createElement('tr');
+      tr.id = 'inv-add-row'; tr.className = 'inv-add-row';
+      const td = document.createElement('td');
+      td.colSpan = 12; td.className = 'inv-add-cell';
+      td.textContent = `+ Add "${itemQRaw}"`;
+      td.addEventListener('click', () => openNewItemDialog?.(itemQRaw));
+      tr.appendChild(td);
+      body.appendChild(tr);
+    }
+
     // Mobile cards
     const cardQ = (document.getElementById('inv-card-filter')?.value || '').trim().toLowerCase();
     let visibleCardCount = 0;
@@ -3922,6 +3959,14 @@
       card.style.display = show ? '' : 'none';
       if (show) visibleCardCount++;
     });
+    const cardQRaw = (document.getElementById('inv-card-filter')?.value || '').trim();
+    if (cardQRaw && !existingNames.has(cardQRaw.toLowerCase())) {
+      const card = document.createElement('div');
+      card.id = 'inv-add-card'; card.className = 'inv-card inv-add-card';
+      card.textContent = `+ Add "${cardQRaw}"`;
+      card.addEventListener('click', () => openNewItemDialog?.(cardQRaw));
+      document.getElementById('inv-cards')?.appendChild(card);
+    }
 
     // Update count badges — desktop reads table rows, mobile reads cards
     const fmt = (n) => n + ' item' + (n === 1 ? '' : 's');
@@ -3964,12 +4009,19 @@
   // Render when the Inventory tab is activated (click or programmatic restore)
   document.addEventListener('inventoryActivated', () => renderInventory());
 
-  // Re-render after boardReady finishes run() so _INV_ITEM_MAP is populated
+  // Re-render after boardReady finishes run() so _INV_ITEM_MAP is populated.
+  // (Inventory is a modal now, not a tab — "active" was the pre-modal check and
+  // never matched post-refactor, so this silently stopped firing; check .open.)
   document.addEventListener('inventoryDataReady', () => {
-    if (document.getElementById('tab-inventory')?.classList.contains('active')) {
+    if (document.getElementById('inv-modal-ov')?.classList.contains('open')) {
       renderInventory();
     }
   });
+
+  // Filled in by the scanner IIFE below — opens the "Add New Item" dialog with
+  // the given name pre-filled. Declared here so applyFilters() (defined above,
+  // but only ever called at runtime after the whole script has parsed) can reach it.
+  let openNewItemDialog = null;
 
   // ── Barcode Scanner ──────────────────────────────────────────────────────
   (function () {
@@ -3986,14 +4038,11 @@
           <button class="scan-close-btn" id="scan-close-btn">×</button>
         </div>
         <video id="scan-video" class="scan-video" playsinline autoplay muted style="display:none"></video>
-        <div class="scan-input-row">
-          <input type="text" id="scan-input" placeholder="Barcode number…" autocomplete="off" spellcheck="false">
-          <button class="scan-go-btn" id="scan-go-btn">Go</button>
+        <div class="inv-picker scan-item-picker" id="scan-picker">
+          <input class="inv-picker-search" type="text" id="scan-input" placeholder="Item name…" autocomplete="off" spellcheck="false">
+          <ul class="inv-picker-list" id="scan-picker-list"></ul>
         </div>
-        <div class="scan-cam-row">
-          <button class="scan-cam-btn" id="scan-add-btn">＋ Add without Barcode</button>
-        </div>
-        <div class="scan-status-msg" id="scan-status-msg">Point a camera at a barcode, or type / scan with a physical scanner then press Enter.</div>
+        <div class="scan-status-msg" id="scan-status-msg"></div>
       </div>`;
     document.body.appendChild(scanOv);
 
@@ -4101,7 +4150,6 @@
           camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
           if (_camAborted) { camStream.getTracks().forEach(t => t.stop()); camStream = null; return; }
           v.srcObject = camStream;
-          sm.textContent = 'Point camera at barcode…';
           const detect = async () => {
             if (!camStream) return;
             if (v.readyState >= 2) {
@@ -4119,7 +4167,7 @@
           sm.textContent = 'Loading scanner library…';
           await loadZXing();
           if (_camAborted) return;  // user dismissed while library was loading
-          sm.textContent = 'Point camera at barcode…';
+          sm.textContent = '';
           camZXing = new window.ZXing.BrowserMultiFormatReader();
           const reader = camZXing;
           // decodeFromVideoDevice(null, videoEl, callback) — null = default camera
@@ -4148,6 +4196,7 @@
       scanOv.style.display = 'flex';
       const inp = document.getElementById('scan-input');
       inp.value = '';
+      renderScanList('');
       inp.focus();
       startCamera();
     }
@@ -4159,19 +4208,103 @@
     scanBtn.addEventListener('click', openScanner);
     document.getElementById('scan-close-btn').addEventListener('click', closeScanner);
     scanOv.addEventListener('click', (e) => { if (e.target === scanOv) closeScanner(); });
-    document.getElementById('scan-add-btn').addEventListener('click', () => {
-      stopCamera();  // stop immediately on click, before any overlay transition
-      scanOv.style.display = 'none';
-      openNoMatch('', { startNew: true });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (nmOv.style.display === 'flex') { closeNoMatch(); return; }
+      if (scanOv.style.display === 'flex') closeScanner();
     });
+
+    // ── item-name search — replaces manual barcode entry. Mirrors the board's
+    // "+ Item" picker exactly: search-as-you-type, a "+ Add" option first
+    // whenever the query doesn't exactly match an existing item, Enter commits
+    // the first option in the list. Picking a real item logs a Received of one
+    // bottle straight away; picking "+ Add" jumps to the new-item dialog with
+    // the typed name pre-filled. Camera-based scanning (below) is unaffected —
+    // it still resolves a detected barcode through processBarcode/handleMatch.
     const scanInput = document.getElementById('scan-input');
-    const scanGoBtn = document.getElementById('scan-go-btn');
-    const doSubmit = () => {
-      const v = scanInput.value.trim();
-      if (v) { closeScanner(); processBarcode(v); }
-    };
-    scanGoBtn.addEventListener('click', doSubmit);
-    scanInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doSubmit(); } });
+    const scanList  = document.getElementById('scan-picker-list');
+
+    function scanRows() {
+      const itemMap = window._INV_ITEM_MAP || {};
+      const onHand  = computeOnHand(window._INV_LOG_ROWS || []);
+      return Object.entries(itemMap).map(([key, item]) => {
+        const amt = onHand[key] || {};
+        const ro  = estimateRunOut(amt.amount, item.dose, amt.loggedOn);
+        return { key, name: item.name || key, meta: ro ? ro.text : null, cls: ro ? ro.cls : '' };
+      }).sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    function renderScanList(q) {
+      const lq = q.trim().toLowerCase();
+      const rows = scanRows();
+      const names = rows.map((r) => r.name.toLowerCase());
+      const matches = lq ? rows.filter((r) => r.name.toLowerCase().includes(lq)) : rows;
+      scanList.innerHTML = '';
+      if (q.trim() && !names.includes(lq)) {
+        const li = document.createElement('li');
+        li.className = 'inv-picker-opt inv-picker-free';
+        li.tabIndex = 0;
+        li.textContent = `+ Add "${q.trim()}"`;
+        li.dataset.action = 'new';
+        li.dataset.name = q.trim();
+        scanList.appendChild(li);
+      }
+      matches.slice(0, 50).forEach(({ key, name, meta, cls }) => {
+        const li = document.createElement('li');
+        li.className = 'inv-picker-opt';
+        li.tabIndex = 0;
+        li.dataset.key = key;
+        const left = document.createElement('span');
+        left.className = 'ipm-left';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'ipm-name';
+        nameSpan.textContent = name;
+        left.appendChild(nameSpan);
+        li.appendChild(left);
+        if (meta) {
+          const metaSpan = document.createElement('span');
+          metaSpan.className = 'ipm-meta' + (cls ? ' ' + cls : '');
+          metaSpan.textContent = meta;
+          li.appendChild(metaSpan);
+        }
+        scanList.appendChild(li);
+      });
+      if (!rows.length) {
+        const li = document.createElement('li');
+        li.className = 'inv-picker-empty';
+        li.textContent = 'No items yet — type a name to add one';
+        scanList.appendChild(li);
+      }
+    }
+
+    function commitScanOption(li) {
+      if (!li) return;
+      if (li.dataset.action === 'new') {
+        stopCamera();  // stop immediately, before any overlay transition
+        scanOv.style.display = 'none';
+        openNoMatch('', { startNew: true, prefillName: li.dataset.name });
+      } else if (li.dataset.key) {
+        closeScanner();
+        handleMatch(li.dataset.key);
+      }
+    }
+
+    scanInput.addEventListener('input', () => renderScanList(scanInput.value));
+    scanInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const first = scanList.querySelector('.inv-picker-opt');
+        if (first) commitScanOption(first);
+        else if (scanInput.value.trim()) commitScanOption({ dataset: { action: 'new', name: scanInput.value.trim() } });
+      }
+      if (e.key === 'ArrowDown') { e.preventDefault(); scanList.querySelector('.inv-picker-opt')?.focus(); }
+    });
+    scanList.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); commitScanOption(e.target.closest('.inv-picker-opt')); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); e.target.nextElementSibling?.focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); const p = e.target.previousElementSibling; if (p) p.focus(); else scanInput.focus(); }
+    });
+    scanList.addEventListener('click', (e) => commitScanOption(e.target.closest('.inv-picker-opt')));
 
     // ── core barcode processing ──
     function processBarcode(raw) {
@@ -4224,7 +4357,7 @@
 
     // ── no-match modal ──
     let _pendingBarcode = '';
-    function openNoMatch(raw, { startNew = false } = {}) {
+    function openNoMatch(raw, { startNew = false, prefillName = null } = {}) {
       _pendingBarcode = raw;
       const codeEl = document.getElementById('snm-code');
       codeEl.textContent = raw;
@@ -4259,8 +4392,13 @@
       ['snm-name','snm-bottle','snm-dose','snm-annual','snm-offcycle','snm-anyday'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
+      if (prefillName) document.getElementById('snm-name').value = prefillName;
       nmOv.style.display = 'flex';
-      if (startNew) setTimeout(() => document.getElementById('snm-name')?.focus(), 50);
+      if (startNew) setTimeout(() => {
+        const nameInp = document.getElementById('snm-name');
+        nameInp?.focus();
+        nameInp?.select(); // pre-filled name stays ready to accept or refine
+      }, 50);
     }
     function closeNoMatch() {
       nmOv.style.display = 'none';
@@ -4317,6 +4455,10 @@
         btn.disabled = false;
       }
     });
+
+    // Let the Inventory table's "+ Add [query]" affordance (applyFilters, above)
+    // reach this modal without needing to know its internals.
+    openNewItemDialog = (name) => openNoMatch('', { startNew: true, prefillName: name });
   })();
 })();
 </script>
