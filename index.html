@@ -421,6 +421,35 @@
     .scan-item-picker .ipm-meta.inv-soon  { color: #e08a3c; }
     .scan-item-picker .ipm-meta.inv-empty { color: #d6504a; }
 
+    /* "Confirm Receive" gate — before/after On Hand, shown before a shipment
+       marked Received is allowed to touch the inventory log. */
+    .recv-confirm-modal { width: 440px; }
+    .recv-confirm-warn {
+      background: #fdf3e8; border: 1px solid #e08a3c; color: #92590f;
+      border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 12px;
+      line-height: 1.4;
+    }
+    .recv-confirm-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
+    .recv-confirm-table th {
+      text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--ink-60); font-weight: 600; padding-bottom: 6px; border-bottom: 1px solid var(--ink-12);
+    }
+    .recv-confirm-table td { padding: 7px 0; border-bottom: 1px solid var(--ink-12); font-variant-numeric: tabular-nums; }
+    .recv-confirm-table tr:last-child td { border-bottom: none; }
+    .recv-confirm-table .rc-name { font-weight: 500; color: var(--ink); }
+    .recv-confirm-table .rc-before { text-align: right; color: var(--ink-60); white-space: nowrap; }
+    .recv-confirm-table .rc-arrow { text-align: center; color: var(--ink-60); width: 20px; }
+    .recv-confirm-table .rc-after { text-align: right; font-weight: 600; color: var(--ink); white-space: nowrap; }
+    .recv-confirm-table .rc-delta { font-weight: 400; font-size: 11px; color: #3f8f87; margin-left: 3px; }
+    .recv-confirm-loading { padding: 10px 0; font-size: 13px; color: var(--ink-60); }
+    .recv-confirm-footer { display: flex; justify-content: flex-end; gap: 8px; }
+    .recv-confirm-cancel {
+      appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
+      color: var(--ink-60); border-radius: 7px; padding: 8px 14px; font-size: 13px;
+      font-family: inherit; cursor: pointer;
+    }
+    .recv-confirm-cancel:hover { border-color: var(--ink-60); color: var(--ink); }
+
     /* No-match modal extras */
     .snm-code {
       font-size: 12px; font-family: monospace; background: var(--cream-dark);
@@ -2458,38 +2487,53 @@
       const clicked = act.dataset.stage;
       const newStage = clicked === oldStage ? null : clicked;
       const monthEl = shipEl.closest('.month');
+      const invCards = [...shipEl.querySelectorAll('.ship-body > .card')].map((c) => {
+        const d = STATE.cardData[c.dataset.id] || {};
+        return { name: d.name || '', bottleSize: d.bottleSize || 0, qty: Number(d.qty) || 0 };
+      });
 
-      if (newStage == null) delete sd.stage; else sd.stage = newStage;
+      // Nothing below runs — no stage flip, no persist, no inventory write — until
+      // this resolves. Kept as a function so the "Received" gate below can defer
+      // it behind a confirmation instead of skipping straight to it.
+      function commitStageChange() {
+        if (newStage == null) delete sd.stage; else sd.stage = newStage;
 
-      if (newStage != null) {
-        const list = monthEl.querySelector('.month-list');
-        const myPri = STAGE_PRI[newStage] ?? 0;
-        // Find first locked sibling whose stage is later than ours and insert before it
-        const anchor = [...list.querySelectorAll(':scope > .shipment.is-locked')]
-          .filter((el) => el !== shipEl)
-          .find((el) => (STAGE_PRI[(STATE.shipmentData[el.dataset.id] || {}).stage] ?? 0) > myPri);
-        if (anchor) list.insertBefore(shipEl, anchor);
-        else list.appendChild(shipEl);
+        if (newStage != null) {
+          const list = monthEl.querySelector('.month-list');
+          const myPri = STAGE_PRI[newStage] ?? 0;
+          // Find first locked sibling whose stage is later than ours and insert before it
+          const anchor = [...list.querySelectorAll(':scope > .shipment.is-locked')]
+            .filter((el) => el !== shipEl)
+            .find((el) => (STAGE_PRI[(STATE.shipmentData[el.dataset.id] || {}).stage] ?? 0) > myPri);
+          if (anchor) list.insertBefore(shipEl, anchor);
+          else list.appendChild(shipEl);
+        }
+
+        applyShipmentStage(shipEl, newStage);
+        recalcAll();
+        persist();
+
+        // Promote first ghost for any recurring source cards in this shipment
+        if (newStage === 'ordered') {
+          shipEl.querySelectorAll('.ship-body > .card[data-id]').forEach(cEl => {
+            const cd = STATE.cardData[cEl.dataset.id];
+            if (cd && !cd.ghostOf && cd.recur) promoteFirstGhost(cEl.dataset.id);
+          });
+        }
+
+        if (window.InventoryWriter && newStage != null) {
+          window.InventoryWriter.writeShipment({ orderId: id, merchantName: sd.name || '', cards: invCards, newStage, oldStage });
+        }
       }
 
-      applyShipmentStage(shipEl, newStage);
-      recalcAll();
-      persist();
-
-      // Promote first ghost for any recurring source cards in this shipment
-      if (newStage === 'ordered') {
-        shipEl.querySelectorAll('.ship-body > .card[data-id]').forEach(cEl => {
-          const cd = STATE.cardData[cEl.dataset.id];
-          if (cd && !cd.ghostOf && cd.recur) promoteFirstGhost(cEl.dataset.id);
-        });
-      }
-
-      if (window.InventoryWriter && newStage != null) {
-        const invCards = [...shipEl.querySelectorAll('.ship-body > .card')].map((c) => {
-          const d = STATE.cardData[c.dataset.id] || {};
-          return { name: d.name || '', bottleSize: d.bottleSize || 0, qty: Number(d.qty) || 0 };
-        });
-        window.InventoryWriter.writeShipment({ orderId: id, merchantName: sd.name || '', cards: invCards, newStage, oldStage });
+      // Marking Received is the one transition that bulk-bumps On Hand, so it's
+      // gated behind a before/after review. Every other transition (including
+      // un-marking Received) is unaffected and commits immediately as before.
+      if (newStage === 'received' && window.InventoryWriter?.confirmReceive) {
+        window.InventoryWriter.confirmReceive({ orderId: id, merchantName: sd.name || '', cards: invCards })
+          .then((approved) => { if (approved) commitStageChange(); });
+      } else {
+        commitStageChange();
       }
       return;
     }
@@ -3497,8 +3541,151 @@
     }
   }
 
+  // ── "Confirm Receive" gate ──────────────────────────────────────────────
+  // Marking a shipment Received is the one board action that bumps On Hand in
+  // bulk (writeShipment's 'received' branch, above), and it's the prime suspect
+  // for on-hand drifting a bottle high: if this order's log rows are already
+  // type 'received' (already confirmed once) rather than 'ordered', there's no
+  // row left to flip, so writeShipment POSTs a brand-new 'received' row and the
+  // bump happens a second time. Surface the before/after numbers — and flag
+  // that specific case — before any write happens, so it's caught, not
+  // discovered later as an unexplained +1.
+  const recvOv = document.createElement('div');
+  recvOv.id = 'recv-confirm-overlay'; recvOv.className = 'scan-overlay'; recvOv.style.display = 'none';
+  recvOv.innerHTML = `
+    <div class="scan-modal recv-confirm-modal">
+      <div class="scan-modal-head">
+        <span>Confirm Receive — <span id="recv-confirm-merchant"></span></span>
+        <button class="scan-close-btn" id="recv-confirm-close-btn">×</button>
+      </div>
+      <div class="recv-confirm-warn" id="recv-confirm-warn" style="display:none"></div>
+      <table class="recv-confirm-table">
+        <thead><tr><th>Item</th><th colspan="3">On Hand</th></tr></thead>
+        <tbody id="recv-confirm-body"></tbody>
+      </table>
+      <div class="recv-confirm-footer">
+        <button class="recv-confirm-cancel" id="recv-confirm-cancel-btn">Cancel</button>
+        <button class="snm-confirm" id="recv-confirm-approve-btn">Approve</button>
+      </div>
+    </div>`;
+  document.body.appendChild(recvOv);
+
+  function rcRow(name, beforeTxt, afterTxt, deltaTxt) {
+    const tr = document.createElement('tr');
+    const tdName = document.createElement('td'); tdName.className = 'rc-name'; tdName.textContent = name;
+    const tdBefore = document.createElement('td'); tdBefore.className = 'rc-before'; tdBefore.textContent = beforeTxt;
+    const tdArrow = document.createElement('td'); tdArrow.className = 'rc-arrow'; tdArrow.textContent = '→';
+    const tdAfter = document.createElement('td'); tdAfter.className = 'rc-after'; tdAfter.textContent = afterTxt;
+    if (deltaTxt) {
+      const delta = document.createElement('span'); delta.className = 'rc-delta'; delta.textContent = deltaTxt;
+      tdAfter.appendChild(delta);
+    }
+    tr.append(tdName, tdBefore, tdArrow, tdAfter);
+    return tr;
+  }
+
+  // Resolves true (Approve) or false (Cancel / backdrop / Escape / ×).
+  function confirmReceive({ orderId, merchantName, cards }) {
+    return new Promise((resolve) => {
+      const eligible = (cards || []).filter((c) => c.name && c.qty > 0);
+      const merchantEl = document.getElementById('recv-confirm-merchant');
+      const body = document.getElementById('recv-confirm-body');
+      const warn = document.getElementById('recv-confirm-warn');
+      const approveBtn = document.getElementById('recv-confirm-approve-btn');
+      const cancelBtn  = document.getElementById('recv-confirm-cancel-btn');
+      const closeBtn   = document.getElementById('recv-confirm-close-btn');
+
+      merchantEl.textContent = merchantName || 'Shipment';
+      warn.style.display = 'none';
+      body.innerHTML = '';
+      if (!eligible.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4; td.className = 'recv-confirm-loading';
+        td.textContent = 'No items with a quantity greater than 0 in this shipment — nothing will be added to On Hand.';
+        tr.appendChild(td); body.appendChild(tr);
+      } else {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4; td.className = 'recv-confirm-loading';
+        td.textContent = 'Loading current on-hand…';
+        tr.appendChild(td); body.appendChild(tr);
+      }
+      recvOv.style.display = 'flex';
+
+      function cleanup(result) {
+        recvOv.style.display = 'none';
+        approveBtn.removeEventListener('click', onApprove);
+        cancelBtn.removeEventListener('click', onCancel);
+        closeBtn.removeEventListener('click', onCancel);
+        recvOv.removeEventListener('click', onBackdrop);
+        document.removeEventListener('keydown', onKeydown);
+        resolve(result);
+      }
+      const onApprove = () => cleanup(true);
+      const onCancel  = () => cleanup(false);
+      const onBackdrop = (e) => { if (e.target === recvOv) cleanup(false); };
+      const onKeydown = (e) => { if (e.key === 'Escape') cleanup(false); };
+      approveBtn.addEventListener('click', onApprove);
+      cancelBtn.addEventListener('click', onCancel);
+      closeBtn.addEventListener('click', onCancel);
+      recvOv.addEventListener('click', onBackdrop);
+      document.addEventListener('keydown', onKeydown);
+
+      if (!eligible.length) return;
+
+      (async () => {
+        let logRows = [];
+        let alreadyReceived = false;
+        try {
+          const [allRows, orderRows] = await Promise.all([
+            fetch('/api/inventory').then((r) => (r.ok ? r.json() : [])),
+            orderId
+              ? fetch('/api/inventory?order_id=' + encodeURIComponent(orderId)).then((r) => (r.ok ? r.json() : []))
+              : Promise.resolve([]),
+          ]);
+          logRows = allRows;
+          alreadyReceived = orderRows.some((row) => (row.type || '').toLowerCase() === 'received');
+        } catch (e) {
+          body.innerHTML = '';
+          const tr = document.createElement('tr');
+          const td = document.createElement('td');
+          td.colSpan = 4; td.className = 'recv-confirm-loading';
+          td.textContent = 'Could not load current inventory — ' + e.message;
+          tr.appendChild(td); body.appendChild(tr);
+          return;
+        }
+
+        const onHandMap = computeOnHand(logRows);
+        const itemMap = window._INV_ITEM_MAP || {};
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const today = new Date(todayStr + 'T00:00:00');
+
+        body.innerHTML = '';
+        eligible.forEach((c) => {
+          const key = c.name.trim().toLowerCase();
+          const amt = onHandMap[key] || {};
+          const dose = (itemMap[key] || {}).dose || 0;
+          const raw = amt.amount || 0;
+          const elapsed = (amt.loggedOn && dose > 0)
+            ? Math.max(0, Math.floor((today - new Date(amt.loggedOn + 'T00:00:00')) / 86400000))
+            : 0;
+          const before = dose > 0 ? Math.max(0, raw - dose * elapsed) : raw;
+          const add = (c.bottleSize || 0) * (c.qty || 0);
+          const after = before + add;
+          body.appendChild(rcRow(c.name, Math.round(before), Math.round(after), '(+' + Math.round(add) + ')'));
+        });
+
+        if (alreadyReceived) {
+          warn.style.display = 'block';
+          warn.textContent = '⚠ This shipment already has a Received entry logged. Approving will add these quantities again on top of it.';
+        }
+      })();
+    });
+  }
+
   // Exposed so the board's set-stage handler and Inventory tab can use these
-  window.InventoryWriter = { writeShipment, run, writeBarcodeToTurso, addItemToTurso, syncBoard };
+  window.InventoryWriter = { writeShipment, run, writeBarcodeToTurso, addItemToTurso, syncBoard, confirmReceive };
 })();
 </script>
 
