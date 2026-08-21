@@ -4622,6 +4622,15 @@
     document.getElementById('snm-cancel-btn').addEventListener('click', closeNoMatch);
     nmOv.addEventListener('click', (e) => { if (e.target === nmOv) closeNoMatch(); });
 
+    // Enter submits from any text/number field (Item Name, Bottle Size, etc.) —
+    // skip <select>, where Enter is how the browser confirms picking an option.
+    nmOv.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.target.tagName === 'SELECT') return;
+      e.preventDefault();
+      const btn = document.getElementById('snm-confirm-btn');
+      if (!btn.disabled) btn.click();
+    });
+
     nmOv.querySelectorAll('input[name="snm-mode"]').forEach(radio => {
       radio.addEventListener('change', () => {
         const isNew = radio.value === 'new' && radio.checked;
