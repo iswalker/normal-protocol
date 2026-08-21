@@ -429,6 +429,10 @@
       border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 12px;
       line-height: 1.4;
     }
+    /* Already-received but the duplicate write is now skipped — informational, not a warning. */
+    .recv-confirm-warn.recv-confirm-info {
+      background: #eaf6f4; border-color: var(--teal); color: #2d6a63;
+    }
     .recv-confirm-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
     .recv-confirm-table th {
       text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
@@ -3304,8 +3308,17 @@
         const r = await fetch('/api/inventory?order_id=' + encodeURIComponent(orderId));
         const existing = r.ok ? await r.json() : [];
         const orderedRows = existing.filter((row) => (row.type || '').toLowerCase() === 'ordered');
+        const alreadyReceived = existing.some((row) => (row.type || '').toLowerCase() === 'received');
         if (orderedRows.length) {
           await Promise.all(orderedRows.map((row) => patchTurso(row.id, { type: 'Received' })));
+        } else if (alreadyReceived) {
+          // Nothing left to flip and this order already has a Received row: the
+          // shipment was marked Received before. Posting again here is exactly
+          // the bug the Confirm Receive gate exists to catch — it used to fall
+          // through to the branch below and post a second bump every time.
+          // Marking Received again is now a no-op for On Hand (the board still
+          // records the stage change; only the duplicate log write is skipped).
+          console.log('[Inventory] orderId=' + orderId + ' already has a Received row — skipping duplicate write.');
         } else {
           const eligible = cards.filter((c) => c.name && c.qty > 0);
           await Promise.all(eligible.map((c) => postToTurso({
@@ -3597,6 +3610,7 @@
 
       merchantEl.textContent = merchantName || 'Shipment';
       warn.style.display = 'none';
+      warn.classList.remove('recv-confirm-info');
       body.innerHTML = '';
       if (!eligible.length) {
         const tr = document.createElement('tr');
@@ -3636,6 +3650,7 @@
 
       (async () => {
         let logRows = [];
+        let orderedRows = [];
         let alreadyReceived = false;
         try {
           const [allRows, orderRows] = await Promise.all([
@@ -3645,6 +3660,7 @@
               : Promise.resolve([]),
           ]);
           logRows = allRows;
+          orderedRows = orderRows.filter((row) => (row.type || '').toLowerCase() === 'ordered');
           alreadyReceived = orderRows.some((row) => (row.type || '').toLowerCase() === 'received');
         } catch (e) {
           body.innerHTML = '';
@@ -3655,6 +3671,13 @@
           tr.appendChild(td); body.appendChild(tr);
           return;
         }
+
+        // Mirrors writeShipment's own branching exactly, so the preview never
+        // promises a number the real write wouldn't produce: with no Ordered
+        // rows left to flip and a Received row already on this order, the write
+        // is now a deliberate no-op (see writeShipment) rather than a duplicate
+        // post, so On Hand doesn't move a second time.
+        const willWrite = orderedRows.length > 0 || !alreadyReceived;
 
         const onHandMap = computeOnHand(logRows);
         const itemMap = window._INV_ITEM_MAP || {};
@@ -3671,14 +3694,17 @@
             ? Math.max(0, Math.floor((today - new Date(amt.loggedOn + 'T00:00:00')) / 86400000))
             : 0;
           const before = dose > 0 ? Math.max(0, raw - dose * elapsed) : raw;
-          const add = (c.bottleSize || 0) * (c.qty || 0);
+          const add = willWrite ? (c.bottleSize || 0) * (c.qty || 0) : 0;
           const after = before + add;
-          body.appendChild(rcRow(c.name, Math.round(before), Math.round(after), '(+' + Math.round(add) + ')'));
+          body.appendChild(rcRow(c.name, Math.round(before), Math.round(after), willWrite ? '(+' + Math.round(add) + ')' : null));
         });
 
         if (alreadyReceived) {
           warn.style.display = 'block';
-          warn.textContent = '⚠ This shipment already has a Received entry logged. Approving will add these quantities again on top of it.';
+          warn.classList.toggle('recv-confirm-info', !willWrite);
+          warn.textContent = willWrite
+            ? '⚠ This shipment already has a Received entry logged, and there are still Ordered rows to flip — approving will add these quantities on top of what was already received.'
+            : 'ℹ This shipment already has a Received entry logged and nothing is left to flip. Approving will mark the stage as Received but On Hand will not change again.';
         }
       })();
     });
