@@ -316,6 +316,8 @@
     #inv-table td { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
     #inv-table th { white-space: normal; }
     #inv-table .inv-name { font-weight: 500; }
+    #inv-table td.inv-name-edit { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
+    #inv-table td.inv-name-edit:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table .inv-onhand {
       font-variant-numeric: tabular-nums; cursor: pointer;
       border-radius: 4px; transition: background 0.12s;
@@ -1182,7 +1184,9 @@
         font-size: 14px;
         display: inline;
         margin-right: 5px;
+        cursor: pointer;
       }
+      .inv-card-name .inv-edit-input { font-size: 14px; font-weight: 600; }
       .inv-card-runout {
         font-size: 12px;
         font-weight: 500;
@@ -3121,6 +3125,28 @@
       recalcAll();
       return matched;
     },
+    // Follows an Inventory item rename onto every board card currently showing
+    // the old name — including recurring ghosts, which copy their source's
+    // name at creation and would otherwise go stale. Not a filter/lookup
+    // rebuild: cards keep the SAME id, just a new .name, so shipments/months
+    // are untouched. Persists if anything changed.
+    renameItem(oldName, newName) {
+      if (!STATE || !STATE.cardData || !board) return 0;
+      const oldKey = String(oldName || '').trim().toLowerCase();
+      const trimmedNew = String(newName || '').trim();
+      if (!oldKey || !trimmedNew) return 0;
+      let matched = 0;
+      board.querySelectorAll('.card[data-id]').forEach((cardEl) => {
+        const c = STATE.cardData[cardEl.dataset.id];
+        if (!c || String(c.name || '').trim().toLowerCase() !== oldKey) return;
+        c.name = trimmedNew;
+        const nameEl = cardEl.querySelector('.card-name');
+        if (nameEl) nameEl.textContent = trimmedNew;
+        matched++;
+      });
+      if (matched) { recalcAll(); persist(); }
+      return matched;
+    },
   };
 
   const resetBtn = document.getElementById('board-reset');
@@ -3720,6 +3746,10 @@
 (function () {
   const body  = document.getElementById('inv-body');
 
+  // Item names are user-editable free text (see startNameEdit) that gets
+  // concatenated straight into row/card HTML below, so it needs escaping.
+  function escHtml(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
   function isoToday() {
     return new Date().toISOString().slice(0, 10);
   }
@@ -3851,7 +3881,7 @@
       tr.dataset.key = key;
       if (meta._id) tr.dataset.id = meta._id;
       tr.innerHTML =
-        '<td class="inv-name">'     + name + '</td>' +
+        '<td class="inv-name inv-name-edit" data-key="' + key + '" title="Click to rename">' + escHtml(name) + '</td>' +
         '<td class="inv-runout'     + (ro ? (' ' + ro.cls) : ' inv-no-data') + '">' + (ro ? ro.text : '—') + roBars + '</td>' +
         '<td class="inv-bottles" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit bottles">' + bottles + bottleBars + '</td>' +
         '<td class="inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit caps">' + Math.round(currentAmount) + '</td>' +
@@ -3874,7 +3904,7 @@
         card.innerHTML =
           '<div class="inv-card-header">' +
             '<div class="inv-card-name-group">' +
-              '<span class="inv-card-name">' + name + '</span>' +
+              '<span class="inv-card-name inv-name-edit" data-key="' + key + '" title="Tap to rename">' + escHtml(name) + '</span>' +
               '<span class="inv-card-runout ' + (ro ? ro.cls : 'inv-no-data') + '">' + (ro ? ro.text + roBars : 'No data') + '</span>' +
             '</div>' +
             (suppliers ? '<div class="inv-card-suppliers">' + suppliers + '</div>' : '') +
@@ -3910,6 +3940,7 @@
       el.querySelectorAll('.inv-bs').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'bottle_size'); });
       el.querySelectorAll('.inv-dose').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'daily_dose'); });
       el.querySelectorAll('.inv-supplier-edit').forEach((cell) => { cell.onclick = () => startSupplierEdit(cell, itemMap); });
+      el.querySelectorAll('.inv-name-edit').forEach((cell) => { cell.onclick = () => startNameEdit(cell, itemMap); });
     };
     wireContainer(body);
     wireContainer(document.getElementById('inv-cards'));
@@ -3993,7 +4024,10 @@
 
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter')  { e.preventDefault(); save(); }
-      if (e.key === 'Escape') { committed = true; renderInventory(); }
+      // Escape here means "cancel this cell edit" -- without stopping it from
+      // bubbling, the Inventory modal's own Escape handler (bound on document)
+      // sees the same keypress and closes the whole modal underneath the edit.
+      if (e.key === 'Escape') { e.stopPropagation(); committed = true; renderInventory(); }
     });
     inp.addEventListener('blur', () => setTimeout(save, 80));
   }
@@ -4061,7 +4095,10 @@
     };
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter')  { e.preventDefault(); save(); }
-      if (e.key === 'Escape') { committed = true; cell.textContent = curVal || '—'; }
+      // Stop Escape from also reaching the Inventory modal's own Escape
+      // handler (bound on document), which would otherwise close the whole
+      // modal on top of canceling just this cell's edit.
+      if (e.key === 'Escape') { e.stopPropagation(); committed = true; cell.textContent = curVal || '—'; }
     });
     inp.addEventListener('blur', () => setTimeout(save, 80));
   }
@@ -4103,7 +4140,77 @@
     };
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter')  { e.preventDefault(); save(); }
-      if (e.key === 'Escape') { committed = true; cell.textContent = curVal || '—'; }
+      // Stop Escape from also reaching the Inventory modal's own Escape
+      // handler (bound on document), which would otherwise close the whole
+      // modal on top of canceling just this cell's edit.
+      if (e.key === 'Escape') { e.stopPropagation(); committed = true; cell.textContent = curVal || '—'; }
+    });
+    inp.addEventListener('blur', () => setTimeout(save, 80));
+  }
+
+  // Rename the catalog item. The server does this atomically (BEGIN/COMMIT
+  // across inventory_items.name and every inventory_log row under the old
+  // name — see functions/api/inventory-items.js), so on-hand history follows
+  // the new name instead of orphaning under the old one. Board cards showing
+  // the old name (incl. recurring ghosts) are then swept via
+  // SupplementBoard.renameItem, and window._INV_ITEM_MAP is rebuilt from
+  // Turso rather than patched in place, since the item's key IS its name.
+  function startNameEdit(cell, itemMap) {
+    if (cell.querySelector('input')) return;
+    const key  = cell.dataset.key;
+    const meta = itemMap[key] || {};
+    if (!meta._id) return; // item not yet in Turso (log-only orphan) — nothing to rename
+    const curVal = meta.name || key;
+
+    cell.textContent = '';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.value = curVal; inp.className = 'inv-edit-input';
+    inp.style.width = '100%';
+    cell.appendChild(inp);
+    inp.focus(); inp.select();
+
+    let committed = false;
+    const save = async () => {
+      if (committed) return;
+      const newName = inp.value.trim();
+      if (!newName || newName === curVal) { committed = true; cell.textContent = curVal; return; }
+
+      // The name is unique per catalog item — check locally first so a typo'd
+      // duplicate fails fast with a clear message instead of a raw 409.
+      const collision = Object.entries(itemMap).find(([k, m]) =>
+        k !== key && (m.name || k).trim().toLowerCase() === newName.toLowerCase());
+      if (collision) {
+        // Set before alert(): alert() blocks, and the input's pending blur (from
+        // Enter submitting) fires save() again the instant it's dismissed —
+        // without this the same alert would pop up a second time.
+        committed = true;
+        alert('An item named "' + (collision[1].name || collision[0]) + '" already exists. Choose a different name, or edit that item instead.');
+        cell.textContent = curVal;
+        return;
+      }
+      committed = true;
+      cell.textContent = newName;
+
+      try {
+        const r = await fetch('/api/inventory-items?id=' + meta._id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
+        });
+        if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || ('HTTP ' + r.status));
+
+        window.SupplementBoard?.renameItem(curVal, newName);
+        await window.InventoryWriter?.run(); // rebuilds window._INV_ITEM_MAP under the new key
+        renderInventory();
+      } catch (e) {
+        console.error('Rename failed:', e);
+        alert('Renaming "' + curVal + '" to "' + newName + '" failed: ' + e.message);
+        renderInventory();
+      }
+    };
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { e.stopPropagation(); committed = true; cell.textContent = curVal; }
     });
     inp.addEventListener('blur', () => setTimeout(save, 80));
   }

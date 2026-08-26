@@ -8,7 +8,16 @@ async function pipeline(env, requests) {
     body: JSON.stringify({ requests }),
   });
   if (!res.ok) throw new Error(`Turso ${res.status}: ${await res.text()}`);
-  return res.json();
+  const data = await res.json();
+  // The pipeline endpoint returns HTTP 200 even when an individual statement
+  // inside it fails (e.g. a UNIQUE violation on inventory_items.name) -- the
+  // failure only shows up per-result. Without this check, onRequestPatch's
+  // rename transaction would report success (and its BEGIN would never
+  // ROLLBACK) even when the UPDATE it depends on silently did nothing.
+  for (const r of data.results) {
+    if (r.type !== 'ok') throw new Error('Statement failed: ' + JSON.stringify(r.error || r));
+  }
+  return data;
 }
 
 const T = v => ({ type: 'text',    value: v == null ? '' : String(v) });
@@ -93,10 +102,50 @@ export async function onRequestPatch({ request, env }) {
     ),
     I(id),
   ];
-  await pipeline(env, [
-    { type: 'execute', stmt: { sql: `UPDATE inventory_items SET ${setCols} WHERE id = ?`, args } },
-    { type: 'close' },
-  ]);
+
+  const newName = entries.find(([k]) => k === 'name')?.[1];
+  try {
+    if (newName != null && String(newName).trim()) {
+      const trimmedNew = String(newName).trim();
+      // Renaming the catalog row and re-pointing its historical inventory_log
+      // rows (matched by name, not id) to the new name must succeed or fail
+      // together -- otherwise on-hand history silently orphans under whichever
+      // name didn't make it through. A UNIQUE violation on inventory_items.name
+      // is the one failure this needs to guard against, and per SQLite's
+      // default ABORT conflict behavior that only discards the failing
+      // statement's own change, not the whole transaction -- a later COMMIT in
+      // the same pipeline call still commits whatever DID succeed, so a
+      // collision detected only after the fact can't be rolled back reliably.
+      // Check for it up front instead, before either table is touched.
+      const cur = await pipeline(env, [
+        { type: 'execute', stmt: { sql: 'SELECT name FROM inventory_items WHERE id = ?', args: [I(id)] } },
+        { type: 'execute', stmt: { sql: 'SELECT name FROM inventory_items WHERE lower(name) = lower(?) AND id != ?', args: [T(trimmedNew), I(id)] } },
+        { type: 'close' },
+      ]);
+      const oldName = cell(cur.results[0]?.response?.result?.rows?.[0]?.[0]);
+      const collisionRow = cur.results[1]?.response?.result?.rows?.[0]?.[0];
+      if (collisionRow) {
+        return Response.json({ error: `An item named "${cell(collisionRow)}" already exists` }, { status: 409 });
+      }
+      await pipeline(env, [
+        { type: 'execute', stmt: { sql: 'BEGIN' } },
+        { type: 'execute', stmt: { sql: `UPDATE inventory_items SET ${setCols} WHERE id = ?`, args } },
+        ...(oldName ? [{ type: 'execute', stmt: {
+            sql: 'UPDATE inventory_log SET item = ? WHERE lower(item) = lower(?)',
+            args: [T(trimmedNew), T(oldName)],
+          } }] : []),
+        { type: 'execute', stmt: { sql: 'COMMIT' } },
+        { type: 'close' },
+      ]);
+    } else {
+      await pipeline(env, [
+        { type: 'execute', stmt: { sql: `UPDATE inventory_items SET ${setCols} WHERE id = ?`, args } },
+        { type: 'close' },
+      ]);
+    }
+  } catch (e) {
+    return Response.json({ error: String(e && e.message || e) }, { status: 409 });
+  }
   return Response.json({ ok: true });
 }
 
