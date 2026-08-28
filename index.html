@@ -1774,7 +1774,6 @@
           <span class="scount">0</span>
         </div>
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
-        <button class="add-btn ship-add" data-act="add-divider-ship">${ICON.plus} Divider</button>
         <span class="ship-min-date"></span>
         <div class="ship-total"><span class="amt">$0.00</span></div>
         <div class="ship-stage">${stageBtns}</div>
@@ -1801,7 +1800,6 @@
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
         <button class="add-btn month-add" data-act="add-card-month">${ICON.plus} Item</button>
-        <button class="add-btn month-add" data-act="add-divider-month">${ICON.plus} Divider</button>
         <div class="month-metrics">
           <div class="metric spent">
             <span class="mk">Spent</span>
@@ -2686,29 +2684,10 @@
       showItemPicker(act, (id) => { const c = el(cardHTML(id)); body.prepend(c); finishAdd(c); }, shipName || null);
       return;
     }
-    if (a === 'add-divider-ship') {
-      if (act.closest('.shipment').classList.contains('is-locked')) return;
-      const body = act.closest('.shipment').querySelector('.ship-body');
-      const did = uid('c_');
-      STATE.cardData[did] = { name: '__divider__' };
-      const node = el(cardHTML(did));
-      body.prepend(node);
-      recalcAll(); persist();
-      return;
-    }
     if (a === 'add-card-month') {
       if (activePicker) { closeItemPicker(); return; }
       const list = act.closest('.month').querySelector('.month-list');
       showItemPicker(act, (id) => { const c = el(cardHTML(id)); list.prepend(c); finishAdd(c); });
-      return;
-    }
-    if (a === 'add-divider-month') {
-      const list = act.closest('.month').querySelector('.month-list');
-      const did = uid('c_');
-      STATE.cardData[did] = { name: '__divider__' };
-      const node = el(cardHTML(did));
-      list.prepend(node);
-      recalcAll(); persist();
       return;
     }
     if (a === 'add-ship') {
@@ -3034,6 +3013,11 @@
       const isLast = myIdx === siblings.length - 1;
       const hasPrev = monthIdx > 0;
       const hasNext = monthIdx < allMonths.length - 1;
+      // Dividers reorder a shipment's contents, so — same as the "+ Item"
+      // button already refuses to add into a locked shipment — this is a
+      // no-op once the shipment is Ordered/Entered/Received. Loose cards in
+      // a month have no lock concept.
+      const shipLocked = container.closest('.shipment')?.classList.contains('is-locked') || false;
 
       function cardDest(targetMonthEl) {
         if (container.classList.contains('ship-body')) {
@@ -3073,6 +3057,19 @@
           STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
           const newEl = el(cardHTML(newId));
           cardEl.after(newEl);
+          recalcAll(); persist();
+        }));
+        menu.appendChild(ctxDivider());
+        menu.appendChild(ctxItem('Add Divider Above', shipLocked, () => {
+          const did = uid('c_');
+          STATE.cardData[did] = { name: '__divider__' };
+          cardEl.before(el(cardHTML(did)));
+          recalcAll(); persist();
+        }));
+        menu.appendChild(ctxItem('Add Divider Below', shipLocked, () => {
+          const did = uid('c_');
+          STATE.cardData[did] = { name: '__divider__' };
+          cardEl.after(el(cardHTML(did)));
           recalcAll(); persist();
         }));
       });
