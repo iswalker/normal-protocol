@@ -3146,6 +3146,19 @@
         makeShipSortable(newEl.querySelector('.ship-body'));
         recalcAll(); persist();
       }));
+      menu.appendChild(ctxDivider());
+      menu.appendChild(ctxItem('Add Divider Above', shipEl.classList.contains('is-locked'), () => {
+        const did = uid('c_');
+        STATE.cardData[did] = { name: '__divider__' };
+        shipEl.before(el(cardHTML(did)));
+        recalcAll(); persist();
+      }));
+      menu.appendChild(ctxItem('Add Divider Below', shipEl.classList.contains('is-locked'), () => {
+        const did = uid('c_');
+        STATE.cardData[did] = { name: '__divider__' };
+        shipEl.after(el(cardHTML(did)));
+        recalcAll(); persist();
+      }));
     });
   });
 
