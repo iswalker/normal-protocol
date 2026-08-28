@@ -661,11 +661,14 @@
       border: 1px solid #c4cdd0; border-radius: 8px; background: rgba(255, 255, 255, .7);
       font-size: 11.5px; color: var(--ink-2);
     }
-    /* push the $ total to the far right; min-date sits between + Item and total */
+    /* Inline in the header's natural flex order (see shipmentHTML): sits right
+       after "+ Item", so it moves with the row instead of needing a pixel
+       offset that only lined up for one particular header width. */
     #tab-board .ship-min-date {
       font-family: var(--font-num); font-size: 12px; color: var(--accent-deep);
-      white-space: nowrap; flex: 0 0 auto; margin-left: auto;
+      white-space: nowrap; flex: 0 0 auto;
     }
+    /* Sits right after the Ordered/Entered/Received stage buttons. */
     #tab-board .ship-head .ship-total { margin-left: 12px; }
     #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
@@ -904,28 +907,14 @@
          MAX right edge      ≈ 14px (month-head right padding, flush with content right)
          PLANNED right edge  ≈ 14 + 88 = 102px from .month inner right ← alignment column
 
-       ship-total right: 90px  (= 102 − 12 where 12 = month-list 11 + ship border 1)
-
-       Dates: proj right is at 18(card)+22(del)+9+84+9+82+9=233px from .shipment right.
-       Runout cell (right half of proj, 68px) centered at 282px from .shipment left.
-       ship-min-date is 68px wide centered over the runout cell: right:248px.
-         (right:248 → element at 564−248−68=248 to 316px left → center 282px ✓)
-
        Loose cards lack ship-border(1)+ship-body-padding(6)=7px per side;
        margin:0 7px gives them the same card content width and alignment.             */
-    #tab-board .board.layout-compact .ship-head { position: relative; }
-    #tab-board .board.layout-compact .ship-head .ship-total {
-      position: absolute; right: 334px; width: 84px;
-      text-align: right; margin: 0;
-      top: 56%; transform: translateY(-50%);
-    }
-    /* ship-min-date: 68px centered over the runout cell (right half of proj) */
-    #tab-board .board.layout-compact .ship-min-date {
-      position: absolute; right: 528px; width: 68px;
-      text-align: right; margin: 0;
-      top: 56%; transform: translateY(-50%);
-    }
-    /* ship-notes: freeform text between ship-total and del × */
+    /* ship-min-date, ship-stage, ship-total and ship-notes are no longer pixel-
+       positioned to line up with a card column below — that broke (floated,
+       sometimes overlapping the stage buttons) whenever the header's actual
+       content width didn't match the one width this math was tuned for.
+       They now just sit in the header's normal flex order, per shipmentHTML:
+       min-date right after "+ Item", total right after the stage buttons. */
     #tab-board .ship-notes {
       font-size: 12px; color: #222; flex: 1 1 0; min-width: 0;
       outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -933,16 +922,8 @@
     }
     #tab-board .ship-notes:empty::before { content: attr(placeholder); opacity: .4; pointer-events: none; }
     #tab-board .ship-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
-    #tab-board .board.layout-compact .ship-notes {
-      position: absolute; right: 37px; width: 248px;
-      text-align: left; margin: 0;
-      top: 56%; transform: translateY(-50%);
-    }
-    /* del stays at far-right of the flex row now that ship-total is absolute */
-    #tab-board .board.layout-compact .ship-head > .del { margin-left: auto; }
     /* month metrics: fixed-width columns so the alignment column is stable.
        PLANNED right edge = 14px (month-head pad) + 96px (MAX box) = 110px from month inner right.
-       ship-total right = 110 − 12 (month-list 11 + shipment border 1) = 98px.
        SPENT and SHIPMENTS get min-width only (auto-size for short values, grow for large). */
     #tab-board .board.layout-compact .metric { width: 96px; }
     #tab-board .board.layout-compact .metric:last-child { padding-right: 9px; }
@@ -1775,8 +1756,8 @@
         </div>
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <span class="ship-min-date"></span>
-        <div class="ship-total"><span class="amt">$0.00</span></div>
         <div class="ship-stage">${stageBtns}</div>
+        <div class="ship-total"><span class="amt">$0.00</span></div>
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
         <button class="del" data-act="del-ship" title="Remove shipment">×</button>
       </div>
