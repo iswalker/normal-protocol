@@ -2525,10 +2525,15 @@
       (STATE.shipmentData[ship.dataset.id] || (STATE.shipmentData[ship.dataset.id] = {})).name = t.textContent;
       persistSoon();
     } else if (t.matches('.ship-notes')) {
+      // Backspacing out the last character often leaves a stray <br> behind
+      // instead of a truly empty element, which defeats the :empty::before
+      // placeholder CSS -- force it empty so "notes..." reappears.
+      if (!t.textContent.trim()) t.innerHTML = '';
       const ship = t.closest('.shipment');
       (STATE.shipmentData[ship.dataset.id] || (STATE.shipmentData[ship.dataset.id] = {})).notes = t.textContent;
       persistSoon();
     } else if (t.matches('.card-notes')) {
+      if (!t.textContent.trim()) t.innerHTML = '';
       STATE.cardData[t.closest('.card').dataset.id].notes = t.textContent;
       persistSoon();
     }
