@@ -670,6 +670,10 @@
     }
     /* Sits right after the Ordered/Entered/Received stage buttons. */
     #tab-board .ship-head .ship-total { margin-left: 12px; }
+    /* Forces a flex line-break right after the stage buttons on narrow
+       screens (see the max-width:680px block below) — a no-op on desktop,
+       where .ship-head never wraps. */
+    #tab-board .ship-row-break { display: none; }
     #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     }
@@ -963,6 +967,10 @@
     #tab-board .board.layout-compact .proj .pk,
     #tab-board .board.layout-compact .meta,
     #tab-board .board.layout-compact .input-wrap .sfx { display: none; }
+    /* Forces a flex line-break right after the run-out projection on narrow
+       screens (see the max-width:680px block below) — a no-op on desktop,
+       where .card-body stays a single-row grid. */
+    #tab-board .card-row-break { display: none; }
     #tab-board .board.layout-compact .month-list > .card .badge.loose-tag { display: none; }
     #tab-board .board.layout-compact .card-top { grid-area: top; min-width: 0; gap: 5px; align-items: center; }
     #tab-board .board.layout-compact .card-name {
@@ -1121,6 +1129,35 @@
         gap: 12px !important;
       }
       .month { min-width: unset !important; width: 100% !important; max-width: 100% !important; }
+
+      /* Month header: same clipping problem — 4 fixed-96px metric boxes don't
+         fit next to the title/buttons on a phone. Wrap them onto their own
+         full-width row instead of letting them run off the right edge. */
+      #tab-board .month-head { flex-wrap: wrap; row-gap: 4px; }
+      #tab-board .month-metrics { flex: 1 1 100%; margin-left: 0; margin-right: 0; justify-content: flex-end; }
+      #tab-board .board.layout-compact .metric { width: auto; min-width: 0; }
+
+      /* Shipment header: wrap onto a 2nd row after the Ordered/Entered/Received
+         toggle instead of clipping the total/notes/× off the right edge — the
+         fixed-width flex row was tuned for desktop and never shrinks. */
+      #tab-board .ship-head { flex-wrap: wrap; row-gap: 6px; }
+      #tab-board .ship-row-break { display: block; flex-basis: 100%; height: 0; }
+      #tab-board .ship-head .ship-total { margin-left: 0; }
+
+      /* Card row: same problem — the compact grid's fixed pixel columns
+         (143/155/94/81px) add up to more than a phone screen and everything
+         past the run-out dates gets clipped. Switch to a 2-row flex wrap:
+         name+run-out on row 1, price/qty/$/notes/× on row 2. */
+      #tab-board .board.layout-compact .card-body {
+        display: flex; flex-wrap: wrap; align-items: center;
+        column-gap: 8px; row-gap: 5px;
+      }
+      #tab-board .board.layout-compact .card-top { flex: 1 1 auto; min-width: 0; }
+      #tab-board .board.layout-compact .proj { flex: 0 0 auto; margin-left: auto; }
+      #tab-board .card-row-break { display: block; flex-basis: 100%; height: 0; }
+      #tab-board .board.layout-compact .order { flex: 0 0 auto; }
+      #tab-board .board.layout-compact .card-foot { flex: 0 0 auto; }
+      #tab-board .board.layout-compact .card-end { flex: 1 1 auto; min-width: 0; }
 
       /* Inventory tab: hide table, show cards */
       #tab-inventory .table-wrap { display: none; }
@@ -1714,6 +1751,7 @@
             </span>
           </div>
         </div>
+        <span class="card-row-break" aria-hidden="true"></span>
         <div class="order">
           <div class="field">
             <label>Price <span class="lbl-sub">/ bottle</span></label>
@@ -1757,6 +1795,7 @@
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <span class="ship-min-date"></span>
         <div class="ship-stage">${stageBtns}</div>
+        <span class="ship-row-break" aria-hidden="true"></span>
         <div class="ship-total"><span class="amt">$0.00</span></div>
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
         <button class="del" data-act="del-ship" title="Remove shipment">×</button>
