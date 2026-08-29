@@ -2197,6 +2197,20 @@
       STATE.cardData[id]?.ghostOf === sourceId && !isCardLocked(id));
   }
 
+  // Push a field edited on a recurring root out to its still-unlocked ghost
+  // projections, so e.g. changing the price or notes on the source is
+  // reflected in every future month it hasn't actually been ordered in yet.
+  // A locked ghost is a real placed order with its own history and is
+  // deliberately left alone (see unlockedGhostsOf).
+  function propagateFieldToGhosts(sourceId, field, value) {
+    unlockedGhostsOf(sourceId).forEach((gid) => {
+      const g = STATE.cardData[gid];
+      if (!g) return;
+      g[field] = value;
+      refreshCardDom(gid);
+    });
+  }
+
   function cleanGhostsForSource(sourceId) {
     removeCards(unlockedGhostsOf(sourceId));
   }
@@ -2513,8 +2527,11 @@
       }
     } else if (t.matches('input[data-field]')) {
       const cardEl = t.closest('.card');
-      const c = STATE.cardData[cardEl.dataset.id];
-      c[t.dataset.field] = t.value === '' ? 0 : Number(t.value);
+      const id = cardEl.dataset.id;
+      const c = STATE.cardData[id];
+      const field = t.dataset.field;
+      c[field] = t.value === '' ? 0 : Number(t.value);
+      if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, field, c[field]);
       recalcAll();
       persistSoon();
     } else if (t.matches('.card-name')) {
@@ -2534,7 +2551,10 @@
       persistSoon();
     } else if (t.matches('.card-notes')) {
       if (!t.textContent.trim()) t.innerHTML = '';
-      STATE.cardData[t.closest('.card').dataset.id].notes = t.textContent;
+      const id = t.closest('.card').dataset.id;
+      const c = STATE.cardData[id];
+      c.notes = t.textContent;
+      if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, 'notes', c.notes);
       persistSoon();
     }
   });
