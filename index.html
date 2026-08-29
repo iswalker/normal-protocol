@@ -1780,7 +1780,6 @@
           <span class="mcount">0</span>
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
-        <button class="add-btn month-add" data-act="add-card-month">${ICON.plus} Item</button>
         <div class="month-metrics">
           <div class="metric spent">
             <span class="mk">Spent</span>
@@ -2665,22 +2664,10 @@
       showItemPicker(act, (id) => { const c = el(cardHTML(id)); body.prepend(c); finishAdd(c); }, shipName || null);
       return;
     }
-    if (a === 'add-card-month') {
-      if (activePicker) { closeItemPicker(); return; }
-      const list = act.closest('.month').querySelector('.month-list');
-      showItemPicker(act, (id) => { const c = el(cardHTML(id)); list.prepend(c); finishAdd(c); });
-      return;
-    }
     if (a === 'add-ship') {
-      const list = act.closest('.month').querySelector('.month-list');
-      const sid = uid('s_');
-      STATE.shipmentData[sid] = { name: 'New merchant', notes: '' };
-      const node = el(shipmentHTML({ type: 'shipment', id: sid, cards: [] }));
-      list.prepend(node);
-      makeShipSortable(node.querySelector('.ship-body'));
-      recalcAll(); persist();
-      const nm = node.querySelector('.ship-name');
-      nm.focus(); selectAll(nm);
+      if (activePicker) { closeItemPicker(); return; }
+      const monthEl = act.closest('.month');
+      showMerchantPicker(act, monthEl);
       return;
     }
   });
@@ -2886,6 +2873,143 @@
     activePicker.remove();
     activePicker = null;
   }
+
+  function createShipment(monthEl, name) {
+    const list = monthEl.querySelector('.month-list');
+    const sid = uid('s_');
+    STATE.shipmentData[sid] = { name: name || 'New merchant', notes: '' };
+    const node = el(shipmentHTML({ type: 'shipment', id: sid, cards: [] }));
+    list.prepend(node);
+    makeShipSortable(node.querySelector('.ship-body'));
+    recalcAll(); persist();
+    if (!name) {
+      const nm = node.querySelector('.ship-name');
+      nm.focus(); selectAll(nm);
+    }
+    return node;
+  }
+
+  // ── Merchant picklist shown when "+ Order" is clicked ──────────────────
+  // Same look/behavior as the "+ Item" picker above, but the list comes from
+  // the distinct Annual Sale / Off-Cycle / Anyday values across Inventory
+  // rather than item names, and "already in list" is scoped to this month's
+  // shipments (not the whole board) since a merchant can reasonably recur
+  // across different months.
+  function showMerchantPicker(anchor, monthEl) {
+    closeItemPicker();
+
+    const inMonth = new Set(
+      [...monthEl.querySelectorAll('.shipment .ship-name')].map((n) => n.textContent.trim().toLowerCase()).filter(Boolean)
+    );
+
+    const seen = new Set();
+    const names = [];
+    Object.values(INV_MAP).forEach((inv) => {
+      (inv.froms || []).forEach((f) => {
+        const key = f.trim().toLowerCase();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        names.push(f.trim());
+      });
+    });
+    names.sort((a, b) => a.localeCompare(b));
+
+    const picker = document.createElement('div');
+    picker.className = 'inv-picker';
+    picker.innerHTML = `
+      <input class="inv-picker-search" type="text" placeholder="Search or type a merchant…" autocomplete="off" />
+      <ul class="inv-picker-list"></ul>`;
+
+    const input = picker.querySelector('.inv-picker-search');
+    const list = picker.querySelector('.inv-picker-list');
+
+    function renderList(q) {
+      const lq = q.toLowerCase();
+      const matches = q ? names.filter((n) => n.toLowerCase().includes(lq)) : names;
+      list.innerHTML = '';
+      if (q && !names.some((n) => n.toLowerCase() === lq)) {
+        const li = document.createElement('li');
+        li.className = 'inv-picker-opt inv-picker-free';
+        li.tabIndex = 0;
+        li.textContent = `+ Add "${q}"`;
+        li.dataset.name = q;
+        list.appendChild(li);
+      }
+      matches.slice(0, 50).forEach((name) => {
+        const inList = inMonth.has(name.toLowerCase());
+        const li = document.createElement('li');
+        li.className = 'inv-picker-opt' + (inList ? ' is-inlist' : '');
+        li.tabIndex = 0;
+        li.dataset.name = name;
+        const left = document.createElement('span');
+        left.className = 'ipm-left';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'ipm-name';
+        nameSpan.textContent = name;
+        left.appendChild(nameSpan);
+        if (inList) {
+          const tag = document.createElement('em');
+          tag.className = 'ipm-inlist';
+          tag.textContent = 'In List';
+          left.appendChild(tag);
+        }
+        li.appendChild(left);
+        list.appendChild(li);
+      });
+      if (!matches.length && !q) {
+        const li = document.createElement('li');
+        li.className = 'inv-picker-empty';
+        li.textContent = 'No merchants found — type a name';
+        list.appendChild(li);
+      }
+    }
+
+    function commit(name) {
+      closeItemPicker();
+      createShipment(monthEl, name);
+    }
+
+    input.addEventListener('input', () => renderList(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeItemPicker(); return; }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const first = list.querySelector('.inv-picker-opt');
+        if (first) commit(first.dataset.name);
+        else if (input.value.trim()) commit(input.value.trim());
+      }
+      if (e.key === 'ArrowDown') { e.preventDefault(); list.querySelector('.inv-picker-opt')?.focus(); }
+    });
+    list.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.target.closest('.inv-picker-opt')?.click(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); e.target.nextElementSibling?.focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); const p = e.target.previousElementSibling; if (p) p.focus(); else input.focus(); }
+      if (e.key === 'Escape') closeItemPicker();
+    });
+    list.addEventListener('click', (e) => {
+      const opt = e.target.closest('.inv-picker-opt');
+      if (opt) commit(opt.dataset.name);
+    });
+
+    const rect = anchor.getBoundingClientRect();
+    picker.style.position = 'absolute';
+    picker.style.left = (rect.left + window.scrollX) + 'px';
+    picker.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    picker.style.width = Math.max(350, rect.width) + 'px';
+    document.body.appendChild(picker);
+    activePicker = picker;
+    renderList('');
+    input.focus();
+
+    setTimeout(() => {
+      document.addEventListener('click', outsideClick, true);
+    }, 0);
+    function outsideClick(e) {
+      if (!picker.contains(e.target) && e.target !== anchor) closeItemPicker();
+    }
+    picker._outsideClick = outsideClick;
+  }
+
   function selectAll(node) {
     const r = document.createRange();
     r.selectNodeContents(node);
