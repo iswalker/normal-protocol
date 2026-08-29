@@ -2482,6 +2482,20 @@
   }
 
   // ── drag and drop (SortableJS, nested) ──
+  // Dragging a recurring root (or a shipment containing one) to a different
+  // month changes which months it should be projecting into -- re-run
+  // syncGhosts so the ghost set is rebuilt around the card's new position
+  // instead of leaving a stale ghost sitting right where the root just
+  // landed (or a gap where a ghost used to cover).
+  function reconcileMovedRecurring(item) {
+    if (!item) return;
+    const cards = item.classList.contains('card') ? [item] : [...item.querySelectorAll('.card[data-id]')];
+    cards.forEach((cardEl) => {
+      if (cardEl.classList.contains('card--ghost')) return;
+      const c = STATE.cardData[cardEl.dataset.id];
+      if (c && !c.ghostOf && c.recur) syncGhosts(cardEl.dataset.id);
+    });
+  }
   const COMMON = {
     animation: 160, easing: 'cubic-bezier(.2,.7,.3,1)',
     filter: 'input,[contenteditable],button',
@@ -2494,7 +2508,11 @@
     // we additionally toggle .sb-dragging on body during drag to un-clip if needed.
     forceFallback: true, fallbackOnBody: false, swapThreshold: 0.65,
     onStart: () => document.body.classList.add('sb-dragging'),
-    onEnd: () => { document.body.classList.remove('sb-dragging'); recalcAll(); persist(); },
+    onEnd: (evt) => {
+      document.body.classList.remove('sb-dragging');
+      reconcileMovedRecurring(evt.item);
+      recalcAll(); persist();
+    },
   };
   function makeMonthSortable(listEl) {
     new Sortable(listEl, Object.assign({}, COMMON, {
