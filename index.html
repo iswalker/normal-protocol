@@ -3324,6 +3324,14 @@
       // Promote any ghosts whose source is already in an ordered shipment (from DB reload)
       cleanupAndPromote();
       render();
+      // Backfill every recurring series into any newly-visible months (e.g.
+      // after extending the rolling window) -- syncGhosts is otherwise only
+      // re-run when a card's "ev N mo" value is edited, so a plain page load
+      // never reached the newest month(s) on its own.
+      Object.keys(STATE.cardData).forEach((id) => {
+        const c = STATE.cardData[id];
+        if (c && !c.ghostOf && c.recur) syncGhosts(id);
+      });
       const asof = document.getElementById('board-asof');
       if (asof) asof.textContent = SB.fmtDate(SB.today());
 
