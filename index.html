@@ -4164,9 +4164,12 @@
     wireContainer(document.getElementById('inv-cards'));
   }
 
+  // Updates both the desktop table row AND the mobile card for `key` in place.
+  // Editing either one used to only refresh the desktop <tr> — the mobile
+  // card's cell was left holding the (now-committed) <input>, which never
+  // reverted to display text, making a successful blur-commit look like it
+  // hadn't saved on mobile.
   function refreshRow(key, newCaps, loggedOn, itemMap) {
-    const tr = body.querySelector(`tr[data-key="${key}"]`);
-    if (!tr) return;
     const meta = itemMap[key] || {};
     const bs   = meta.bottleSize || 0;
     const dose = meta.dose || 0;
@@ -4177,23 +4180,41 @@
     const roMonths    = ro && ro.date ? countCoveredMonths(ro.date) : 0;
     const roBars      = ro ? barsHtml(roMonths, 0) : '';
 
-    const capsCell     = tr.querySelector('.inv-onhand');
-    const bottlesCell  = tr.querySelector('.inv-bottles');
-    const runoutCell   = tr.querySelector('td:nth-child(2)');
-    const resetCell    = tr.querySelector('td:nth-child(8)');
+    const tr = body.querySelector(`tr[data-key="${key}"]`);
+    if (tr) {
+      const capsCell     = tr.querySelector('.inv-onhand');
+      const bottlesCell  = tr.querySelector('.inv-bottles');
+      const runoutCell   = tr.querySelector('td:nth-child(2)');
+      const resetCell    = tr.querySelector('td:nth-child(8)');
 
-    if (capsCell)    { capsCell.dataset.amount = newCaps;    capsCell.textContent = Math.round(newCaps); }
-    if (bottlesCell) { bottlesCell.dataset.amount = newCaps; bottlesCell.innerHTML = bottles + bottleBars; }
-    if (runoutCell)  {
-      runoutCell.className = 'inv-runout' + (ro ? (' ' + ro.cls) : ' inv-no-data');
-      runoutCell.innerHTML = (ro ? ro.text : '—') + roBars;
+      if (capsCell)    { capsCell.dataset.amount = newCaps;    capsCell.textContent = Math.round(newCaps); }
+      if (bottlesCell) { bottlesCell.dataset.amount = newCaps; bottlesCell.innerHTML = bottles + bottleBars; }
+      if (runoutCell)  {
+        runoutCell.className = 'inv-runout' + (ro ? (' ' + ro.cls) : ' inv-no-data');
+        runoutCell.innerHTML = (ro ? ro.text : '—') + roBars;
+      }
+      if (resetCell && loggedOn) {
+        const d = new Date(loggedOn + 'T00:00:00');
+        resetCell.textContent = (d.getMonth() + 1) + '/' + d.getDate();
+      }
+      // Re-wire onclick (innerHTML reset detaches nothing; textContent on capsCell is fine)
+      if (bottlesCell) bottlesCell.onclick = () => startEdit(bottlesCell, itemMap, 'bottles');
     }
-    if (resetCell && loggedOn) {
-      const d = new Date(loggedOn + 'T00:00:00');
-      resetCell.textContent = (d.getMonth() + 1) + '/' + d.getDate();
+
+    const card = [...document.getElementById('inv-cards')?.querySelectorAll('.inv-card') || []]
+      .find((c) => c.querySelector(`.inv-onhand[data-key="${key}"]`));
+    if (card) {
+      const capsCell    = card.querySelector('.inv-onhand');
+      const bottlesCell = card.querySelector('.inv-bottles');
+      const runoutBadge = card.querySelector('.inv-card-runout');
+
+      if (capsCell)    { capsCell.dataset.amount = newCaps;    capsCell.textContent = Math.round(newCaps); capsCell.onclick = () => startEdit(capsCell, itemMap, 'caps'); }
+      if (bottlesCell) { bottlesCell.dataset.amount = newCaps; bottlesCell.textContent = bottles; bottlesCell.onclick = () => startEdit(bottlesCell, itemMap, 'bottles'); }
+      if (runoutBadge) {
+        runoutBadge.className = 'inv-card-runout ' + (ro ? ro.cls : 'inv-no-data');
+        runoutBadge.textContent = ro ? ro.text : 'No data';
+      }
     }
-    // Re-wire onclick (innerHTML reset detaches nothing; textContent on capsCell is fine)
-    if (bottlesCell) bottlesCell.onclick = () => startEdit(bottlesCell, itemMap, 'bottles');
   }
 
   function evalExpr(s) {
