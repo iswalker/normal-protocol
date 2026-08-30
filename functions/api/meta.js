@@ -30,7 +30,7 @@ export async function onRequestGet({ env }) {
     const data = await pipeline(env, [CREATE, { type: 'execute', stmt: { sql: 'SELECT updated_at FROM sync_meta WHERE id = 1' } }]);
     const row = data.results[1]?.response?.result?.rows?.[0]?.[0];
     const updated_at = row && row.type !== 'null' ? row.value : null;
-    return Response.json({ updated_at }, { headers: { 'Access-Control-Allow-Origin': '*' } });
+    return Response.json({ updated_at }, { headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
   }

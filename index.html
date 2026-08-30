@@ -1535,7 +1535,7 @@
     };
 
     async function fetchUpdatedAt() {
-      const r = await fetch('/api/meta');
+      const r = await fetch('/api/meta', { cache: 'no-store' });
       const data = await r.json();
       return data.updated_at || null;
     }
