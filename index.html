@@ -691,21 +691,16 @@
     #tab-board .month-search-btn:hover, #tab-board .month-search-btn.active {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     }
-    #tab-board .month-search-row {
-      display: flex; align-items: center; gap: 8px; padding: 0 14px 9px;
-    }
+    /* Inline in the header itself, between the search toggle and the metrics
+       -- fills whatever room is left before .month-metrics (which has its
+       own margin-left:auto) instead of opening a whole extra row. */
     #tab-board .month-search-input {
-      flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 10px;
+      flex: 1 1 auto; min-width: 60px; height: 26px; margin-left: 2px; padding: 0 10px;
       border: 1.5px solid var(--line); border-radius: 7px; background: #f7f9f9;
       font-family: inherit; font-size: 12.5px; color: var(--b-ink); outline: none;
       transition: border-color .12s, background .12s;
     }
     #tab-board .month-search-input:focus { border-color: var(--accent); background: #fff; }
-    #tab-board .month-search-clear {
-      flex: none; width: 22px; height: 22px; border: none; background: transparent;
-      color: var(--ink-3); font-size: 15px; cursor: pointer; border-radius: 6px;
-    }
-    #tab-board .month-search-clear:hover { color: var(--ink); background: var(--accent-tint); }
     /* Cards/shipments hidden by an active month search */
     #tab-board .month-list > .search-hide,
     #tab-board .ship-body > .search-hide { display: none !important; }
@@ -1516,16 +1511,26 @@
       return data.updated_at || null;
     }
     async function checkStale() {
-      if (banner.style.display !== 'none') return; // already showing
+      if (banner.style.display !== 'none') return; // already showing -- wait for dismiss/refresh
       if (Date.now() - lastLocalWriteAt < 10000) return; // likely our own recent write settling
       try {
         const updated_at = await fetchUpdatedAt();
-        if (baseline && updated_at && updated_at !== baseline) banner.style.display = 'flex';
+        if (!updated_at) return;
+        if (baseline && updated_at !== baseline) banner.style.display = 'flex';
+        // Always resync to the latest value we've now seen -- otherwise the
+        // SAME change keeps re-triggering the banner on every later poll
+        // (e.g. after it's dismissed) instead of only flagging it once.
+        baseline = updated_at;
       } catch { /* offline or API hiccup -- just try again next tick */ }
     }
 
     document.getElementById('sync-banner-refresh')?.addEventListener('click', () => location.reload());
-    document.getElementById('sync-banner-dismiss')?.addEventListener('click', () => { banner.style.display = 'none'; });
+    document.getElementById('sync-banner-dismiss')?.addEventListener('click', () => {
+      banner.style.display = 'none';
+      // Re-sync baseline on dismiss too, so the poll that runs a moment
+      // later doesn't immediately re-flag the exact change just dismissed.
+      fetchUpdatedAt().then((v) => { if (v) baseline = v; }).catch(() => {});
+    });
 
     fetchUpdatedAt().then((v) => { baseline = v; }).catch(() => {});
     setInterval(checkStale, 25000);
@@ -1928,6 +1933,7 @@
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
         <button class="month-search-btn" data-act="toggle-month-search" title="Search this month">${ICON.search}</button>
+        <input type="text" class="month-search-input" style="display:none" placeholder="Search orders & items…" autocomplete="off" />
         <div class="month-metrics">
           <div class="metric spent">
             <span class="mk">Spent</span>
@@ -1946,10 +1952,6 @@
             <span class="mv maxv">$0.00</span>
           </div>
         </div>
-      </div>
-      <div class="month-search-row" style="display:none">
-        <input type="text" class="month-search-input" placeholder="Search orders & items in ${esc(m.name)}…" autocomplete="off" />
-        <button class="month-search-clear" data-act="clear-month-search" title="Close search">×</button>
       </div>
       <div class="month-list" data-list="month">${m.blocks.map(blockHTML).join('')}</div>
     </div>`;
@@ -2204,7 +2206,21 @@
     const cell = e.target.closest('.month-strip-cell');
     if (!cell) return;
     const monthEl = board.querySelector(`.month[data-id="${cell.dataset.monthId}"]`);
-    monthEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+    if (!monthEl) return;
+    // scrollIntoView pins the month flush against the viewport edge with no
+    // breathing room -- compute the scroll target by hand instead, offset by
+    // the same gap the board already uses between months, so a jumped-to
+    // month sits with the same left/top buffer as one you scrolled to by hand.
+    const scroller = document.getElementById('tab-board');
+    if (!scroller) return;
+    const gap = parseFloat(getComputedStyle(board).columnGap) || 16;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const monthRect = monthEl.getBoundingClientRect();
+    scroller.scrollTo({
+      left: Math.max(0, scroller.scrollLeft + (monthRect.left - scrollerRect.left) - gap),
+      top: Math.max(0, scroller.scrollTop + (monthRect.top - scrollerRect.top) - gap),
+      behavior: 'smooth',
+    });
   });
   window.SBoard.recalc = recalcAll;
 
@@ -2879,26 +2895,18 @@
     }
     if (a === 'toggle-month-search') {
       const monthEl = act.closest('.month');
-      const row = monthEl.querySelector('.month-search-row');
-      const showing = row.style.display !== 'none';
+      const input = monthEl.querySelector('.month-search-input');
+      const showing = input.style.display !== 'none';
       if (showing) {
-        row.style.display = 'none';
+        input.style.display = 'none';
+        input.value = '';
         act.classList.remove('active');
         applyMonthSearch(monthEl, '');
       } else {
-        row.style.display = 'flex';
+        input.style.display = 'block';
         act.classList.add('active');
-        row.querySelector('.month-search-input').focus();
+        input.focus();
       }
-      return;
-    }
-    if (a === 'clear-month-search') {
-      const monthEl = act.closest('.month');
-      const row = monthEl.querySelector('.month-search-row');
-      row.querySelector('.month-search-input').value = '';
-      row.style.display = 'none';
-      monthEl.querySelector('.month-search-btn').classList.remove('active');
-      applyMonthSearch(monthEl, '');
       return;
     }
   });
@@ -3297,7 +3305,7 @@
     if (e.key === 'Escape' && e.target.matches('.month-search-input')) {
       const monthEl = e.target.closest('.month');
       e.target.value = '';
-      monthEl.querySelector('.month-search-row').style.display = 'none';
+      e.target.style.display = 'none';
       monthEl.querySelector('.month-search-btn').classList.remove('active');
       applyMonthSearch(monthEl, '');
     }
