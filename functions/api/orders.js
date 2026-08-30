@@ -7,6 +7,8 @@
            This matches the board's existing serialize()-and-save model: the
            client sends the whole board, the server rewrites it in one txn. */
 
+import { touchSyncMeta } from "./meta.js";
+
 function httpUrl(env) {
   // the pipeline endpoint is https://, even when TURSO_URL is given as libsql://
   return env.TURSO_URL.replace(/^libsql:\/\//, "https://").replace(/\/$/, "");
@@ -138,7 +140,8 @@ export async function onRequestPut({ request, env }) {
 
   try {
     await pipeline(env, reqs);
-    return Response.json({ ok: true });
+    const updated_at = await touchSyncMeta(env);
+    return Response.json({ ok: true, updated_at });
   } catch (e) {
     try { await pipeline(env, [exec("ROLLBACK")]); } catch {}
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });

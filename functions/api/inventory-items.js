@@ -1,3 +1,5 @@
+import { touchSyncMeta } from './meta.js';
+
 function httpUrl(env) {
   return env.TURSO_URL.replace(/^libsql:\/\//, 'https://').replace(/\/$/, '');
 }
@@ -73,7 +75,8 @@ export async function onRequestPost({ request, env }) {
       },
     }));
     await pipeline(env, [...stmts, { type: 'close' }]);
-    return Response.json({ ok: true, count: items.length });
+    const updated_at = await touchSyncMeta(env);
+    return Response.json({ ok: true, count: items.length, updated_at });
   }
 
   const { name, bottle_size, daily_dose, annual_sale, off_cycle_sale, anyday, barcode, sort_order } = body;
@@ -81,7 +84,8 @@ export async function onRequestPost({ request, env }) {
     { type: 'execute', stmt: { sql: UPSERT, args: [T(name), F(bottle_size), F(daily_dose), T(annual_sale), T(off_cycle_sale), T(anyday), T(barcode), I(sort_order ?? 0)] } },
     { type: 'close' },
   ]);
-  return Response.json({ ok: true });
+  const updated_at = await touchSyncMeta(env);
+  return Response.json({ ok: true, updated_at });
 }
 
 export async function onRequestPatch({ request, env }) {
@@ -146,7 +150,8 @@ export async function onRequestPatch({ request, env }) {
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 409 });
   }
-  return Response.json({ ok: true });
+  const updated_at = await touchSyncMeta(env);
+  return Response.json({ ok: true, updated_at });
 }
 
 export async function onRequestDelete({ request, env }) {
@@ -157,5 +162,6 @@ export async function onRequestDelete({ request, env }) {
     { type: 'execute', stmt: { sql: 'DELETE FROM inventory_items WHERE id = ?', args: [I(id)] } },
     { type: 'close' },
   ]);
-  return Response.json({ ok: true });
+  const updated_at = await touchSyncMeta(env);
+  return Response.json({ ok: true, updated_at });
 }

@@ -152,7 +152,9 @@
     .month-strip-cell {
       display: flex; flex-direction: column; align-items: center;
       padding: 0 14px; line-height: 1.15; white-space: nowrap;
+      cursor: pointer; border-radius: 6px; transition: background .12s;
     }
+    .month-strip-cell:hover { background: rgba(121,189,177,0.12); }
     .month-strip-cell + .month-strip-cell { border-left: 1px solid var(--ink-12); }
     .month-strip-amt {
       font-size: 14px; font-weight: 600; color: var(--ink);
@@ -522,8 +524,10 @@
 
       /* The per-month Planned strip needs room the phone doesn't have */
       .month-strip { display: none; }
-      .inv-search-link { padding: 4px 6px; font-size: 12px; }
-      .inv-search-link .inv-search-label { display: none; }
+      /* Keep the "Search Inventory" label on mobile too -- an icon-only button
+         here was a tiny tap target, and the title next to it is already
+         hidden at this width so there's room. */
+      .inv-search-link { padding: 8px 10px; font-size: 13px; min-height: 36px; }
 
       /* Hide action buttons from header — they move to the mobile FAB */
       .inv-controls { display: none !important; }
@@ -677,6 +681,34 @@
     #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     }
+    /* Per-month search toggle, sits right after "+ Order" */
+    #tab-board .month-search-btn {
+      flex: 0 0 auto; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid #c4cdd0; border-radius: 8px; background: rgba(255, 255, 255, .7);
+      color: var(--ink-2); cursor: pointer; padding: 0; transition: all .12s;
+    }
+    #tab-board .month-search-btn svg { width: 12px; height: 12px; display: block; }
+    #tab-board .month-search-btn:hover, #tab-board .month-search-btn.active {
+      border-color: var(--accent); color: var(--accent-deep); background: #fff;
+    }
+    #tab-board .month-search-row {
+      display: flex; align-items: center; gap: 8px; padding: 0 14px 9px;
+    }
+    #tab-board .month-search-input {
+      flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 10px;
+      border: 1.5px solid var(--line); border-radius: 7px; background: #f7f9f9;
+      font-family: inherit; font-size: 12.5px; color: var(--b-ink); outline: none;
+      transition: border-color .12s, background .12s;
+    }
+    #tab-board .month-search-input:focus { border-color: var(--accent); background: #fff; }
+    #tab-board .month-search-clear {
+      flex: none; width: 22px; height: 22px; border: none; background: transparent;
+      color: var(--ink-3); font-size: 15px; cursor: pointer; border-radius: 6px;
+    }
+    #tab-board .month-search-clear:hover { color: var(--ink); background: var(--accent-tint); }
+    /* Cards/shipments hidden by an active month search */
+    #tab-board .month-list > .search-hide,
+    #tab-board .ship-body > .search-hide { display: none !important; }
 
     /* ── shipment block ── */
     #tab-board .shipment {
@@ -1120,6 +1152,29 @@
     }
     .ynab-warning-link:hover { color: #5a3f00; }
 
+    /* Cross-device "data changed elsewhere" notice — fixed so it stays on top
+       of the Inventory modal (z-index 300) instead of being covered by it. */
+    .sync-banner {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 600;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px;
+      background: #eaf4fb; border-bottom: 1.5px solid #a9d3ec;
+      color: #1f5f85; font-size: 13px;
+    }
+    .sync-banner svg { flex-shrink: 0; color: #2f7fb0; }
+    .sync-banner-msg { flex: 1 1 auto; }
+    .sync-banner-refresh {
+      appearance: none; border: none; background: #2f7fb0; color: #fff;
+      padding: 6px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 600;
+      font-family: inherit; cursor: pointer; white-space: nowrap;
+    }
+    .sync-banner-refresh:hover { background: #24597e; }
+    .sync-banner-dismiss {
+      appearance: none; border: none; background: none; color: #1f5f85;
+      font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; flex: none;
+    }
+    .sync-banner-dismiss:hover { color: #0f3350; }
+
     /* ── Mobile layout (≤ 680px) ── */
     @media (max-width: 680px) {
       /* Board tab: stack months vertically */
@@ -1271,6 +1326,13 @@
   </style>
 </head>
 <body>
+
+<div id="sync-banner" class="sync-banner" style="display:none">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <span class="sync-banner-msg">Data changed on another device — refresh to see the latest.</span>
+  <button class="sync-banner-refresh" id="sync-banner-refresh">Refresh</button>
+  <button class="sync-banner-dismiss" id="sync-banner-dismiss" title="Dismiss" aria-label="Dismiss">×</button>
+</div>
 
 <header>
   <div class="brand">
@@ -1426,6 +1488,51 @@
     closeInventory();
   });
 
+  // ── cross-device staleness banner ──────────────────────────────────────
+  // No live sync between tabs/devices here -- instead of merging concurrent
+  // edits (risky given the board's whole persistence model is "walk the DOM,
+  // PUT the full state"), poll a cheap "when did anything last change"
+  // timestamp (see /api/meta, touched by every board/inventory write) and
+  // prompt a refresh if it moved since this tab loaded.
+  (function initSyncBanner() {
+    const banner = document.getElementById('sync-banner');
+    if (!banner) return;
+    let baseline = null;
+    let lastLocalWriteAt = 0;
+
+    // Mark any outgoing write to our own API so a poll landing right after
+    // our own save doesn't mistake our own change for one from elsewhere.
+    const origFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const method = ((init && init.method) || 'GET').toUpperCase();
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (method !== 'GET' && url.startsWith('/api/')) lastLocalWriteAt = Date.now();
+      return origFetch(input, init);
+    };
+
+    async function fetchUpdatedAt() {
+      const r = await fetch('/api/meta');
+      const data = await r.json();
+      return data.updated_at || null;
+    }
+    async function checkStale() {
+      if (banner.style.display !== 'none') return; // already showing
+      if (Date.now() - lastLocalWriteAt < 10000) return; // likely our own recent write settling
+      try {
+        const updated_at = await fetchUpdatedAt();
+        if (baseline && updated_at && updated_at !== baseline) banner.style.display = 'flex';
+      } catch { /* offline or API hiccup -- just try again next tick */ }
+    }
+
+    document.getElementById('sync-banner-refresh')?.addEventListener('click', () => location.reload());
+    document.getElementById('sync-banner-dismiss')?.addEventListener('click', () => { banner.style.display = 'none'; });
+
+    fetchUpdatedAt().then((v) => { baseline = v; }).catch(() => {});
+    setInterval(checkStale, 25000);
+    // debug/test hook only -- not used by the app itself
+    window.__syncBanner = { checkStale, getBaseline: () => baseline };
+  })();
+
   // Mobile FAB — proxy to the real header buttons
   // Must run after DOMContentLoaded because mob-inv-fab is defined after all scripts in the HTML
   document.addEventListener('DOMContentLoaded', function () {
@@ -1571,6 +1678,7 @@
     grip: `<svg viewBox="0 0 8 16" width="11" height="16" fill="currentColor"><circle cx="2" cy="3" r="1.3"/><circle cx="6" cy="3" r="1.3"/><circle cx="2" cy="8" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="2" cy="13" r="1.3"/><circle cx="6" cy="13" r="1.3"/></svg>`,
     truck: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h11v9H1z"/><path d="M12 8h4l3 3v3h-7z"/><circle cx="5" cy="16.5" r="1.6"/><circle cx="16" cy="16.5" r="1.6"/></svg>`,
     plus: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>`,
+    search: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>`,
   };
 
   let STATE; // { cardData, shipmentData }
@@ -1819,6 +1927,7 @@
           <span class="mcount">0</span>
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
+        <button class="month-search-btn" data-act="toggle-month-search" title="Search this month">${ICON.search}</button>
         <div class="month-metrics">
           <div class="metric spent">
             <span class="mk">Spent</span>
@@ -1837,6 +1946,10 @@
             <span class="mv maxv">$0.00</span>
           </div>
         </div>
+      </div>
+      <div class="month-search-row" style="display:none">
+        <input type="text" class="month-search-input" placeholder="Search orders & items in ${esc(m.name)}…" autocomplete="off" />
+        <button class="month-search-clear" data-act="clear-month-search" title="Close search">×</button>
       </div>
       <div class="month-list" data-list="month">${m.blocks.map(blockHTML).join('')}</div>
     </div>`;
@@ -2078,13 +2191,21 @@
       if (!name || !amt) return;
       const isCur = (name + '_' + year) === curKey;
       cells.push(
-        `<div class="month-strip-cell${isCur ? ' is-current' : ''}">` +
+        `<div class="month-strip-cell${isCur ? ' is-current' : ''}" data-month-id="${esc(monthEl.dataset.id)}" title="Jump to ${esc(name)}">` +
         `<span class="month-strip-amt">${amt}</span>` +
         `<span class="month-strip-mon">${name}</span></div>`
       );
     });
     strip.innerHTML = cells.join('');
   }
+  // Clicking a month-strip cell scrolls the board horizontally to that month,
+  // instead of requiring a manual scroll left/right to find it.
+  document.getElementById('month-strip')?.addEventListener('click', (e) => {
+    const cell = e.target.closest('.month-strip-cell');
+    if (!cell) return;
+    const monthEl = board.querySelector(`.month[data-id="${cell.dataset.monthId}"]`);
+    monthEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+  });
   window.SBoard.recalc = recalcAll;
 
   // ── Recurring ghost card helpers ──────────────────────────────────────────
@@ -2532,6 +2653,10 @@
   // ── editing ──
   board.addEventListener('input', (e) => {
     const t = e.target;
+    if (t.matches('.month-search-input')) {
+      applyMonthSearch(t.closest('.month'), t.value);
+      return;
+    }
     if (t.matches('.recur-ctl-n')) {
       const cardEl = t.closest('.card');
       const id = cardEl.dataset.id;
@@ -2752,7 +2877,63 @@
       showMerchantPicker(act, monthEl);
       return;
     }
+    if (a === 'toggle-month-search') {
+      const monthEl = act.closest('.month');
+      const row = monthEl.querySelector('.month-search-row');
+      const showing = row.style.display !== 'none';
+      if (showing) {
+        row.style.display = 'none';
+        act.classList.remove('active');
+        applyMonthSearch(monthEl, '');
+      } else {
+        row.style.display = 'flex';
+        act.classList.add('active');
+        row.querySelector('.month-search-input').focus();
+      }
+      return;
+    }
+    if (a === 'clear-month-search') {
+      const monthEl = act.closest('.month');
+      const row = monthEl.querySelector('.month-search-row');
+      row.querySelector('.month-search-input').value = '';
+      row.style.display = 'none';
+      monthEl.querySelector('.month-search-btn').classList.remove('active');
+      applyMonthSearch(monthEl, '');
+      return;
+    }
   });
+
+  // Filters one month's shipments/loose cards to `q` (case-insensitive). A
+  // shipment whose own name matches keeps every item visible; otherwise only
+  // its individually-matching items show (with the shipment itself staying
+  // visible to hold them). Dividers hide during an active search since
+  // they're not real content to match against.
+  function applyMonthSearch(monthEl, q) {
+    const lq = q.trim().toLowerCase();
+    const list = monthEl.querySelector('.month-list');
+    if (!list) return;
+    [...list.children].forEach((node) => {
+      if (node.classList.contains('shipment')) {
+        const shipName = (node.querySelector('.ship-name')?.textContent || '').toLowerCase();
+        const shipMatches = !lq || shipName.includes(lq);
+        let anyItemMatches = false;
+        node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
+          const itemName = (cardEl.querySelector('.card-name')?.textContent || '').toLowerCase();
+          const itemMatches = !lq || shipMatches || itemName.includes(lq);
+          cardEl.classList.toggle('search-hide', !itemMatches);
+          if (itemMatches) anyItemMatches = true;
+        });
+        node.classList.toggle('search-hide', !!lq && !shipMatches && !anyItemMatches);
+      } else if (node.classList.contains('card')) {
+        if (node.classList.contains('card--divider')) {
+          node.classList.toggle('search-hide', !!lq);
+          return;
+        }
+        const itemName = (node.querySelector('.card-name')?.textContent || '').toLowerCase();
+        node.classList.toggle('search-hide', !!lq && !itemName.includes(lq));
+      }
+    });
+  }
 
   function newCard(name) {
     const id = uid('c_');
@@ -3112,6 +3293,13 @@
   board.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.matches('[contenteditable]')) {
       e.preventDefault(); e.target.blur();
+    }
+    if (e.key === 'Escape' && e.target.matches('.month-search-input')) {
+      const monthEl = e.target.closest('.month');
+      e.target.value = '';
+      monthEl.querySelector('.month-search-row').style.display = 'none';
+      monthEl.querySelector('.month-search-btn').classList.remove('active');
+      applyMonthSearch(monthEl, '');
     }
   });
 

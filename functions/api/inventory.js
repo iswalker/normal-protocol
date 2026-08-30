@@ -1,4 +1,6 @@
 /* GET ?order_id= filter, POST insert, PATCH ?id=N update type, DELETE ?item= remove all rows */
+import { touchSyncMeta } from './meta.js';
+
 function httpUrl(env) {
   return env.TURSO_URL.replace(/^libsql:\/\//, 'https://').replace(/\/$/, '');
 }
@@ -48,7 +50,8 @@ export async function onRequestPost({ request, env }) {
     exec('SELECT last_insert_rowid() as id'),
   ]);
   const id = data.results[2]?.response?.result?.rows?.[0]?.[0]?.value;
-  return Response.json({ ok: true, id });
+  const updated_at = await touchSyncMeta(env);
+  return Response.json({ ok: true, id, updated_at });
 }
 
 export async function onRequestDelete({ request, env }) {
@@ -71,5 +74,6 @@ export async function onRequestPatch({ request, env }) {
   if (!fields.length) return Response.json({ error: 'nothing to update' }, { status: 400 });
   args.push(T(id));
   await pipeline(env, [CREATE, exec(`UPDATE inventory_log SET ${fields.join(', ')} WHERE id = ?`, args)]);
-  return Response.json({ ok: true });
+  const updated_at = await touchSyncMeta(env);
+  return Response.json({ ok: true, updated_at });
 }

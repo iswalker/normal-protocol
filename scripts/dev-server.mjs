@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import * as orders from '../functions/api/orders.js';
 import * as inventory from '../functions/api/inventory.js';
 import * as inventoryItems from '../functions/api/inventory-items.js';
+import * as meta from '../functions/api/meta.js';
 
 const ROOT = normalize(join(fileURLToPath(import.meta.url), '..', '..'));
 const PORT = Number(process.env.PORT) || 8788;
@@ -27,6 +28,7 @@ const ROUTES = {
   '/api/orders':          { GET: orders.onRequestGet, PUT: orders.onRequestPut },
   '/api/inventory':       { GET: inventory.onRequestGet, POST: inventory.onRequestPost, PATCH: inventory.onRequestPatch, DELETE: inventory.onRequestDelete },
   '/api/inventory-items': { GET: inventoryItems.onRequestGet, POST: inventoryItems.onRequestPost, PATCH: inventoryItems.onRequestPatch, DELETE: inventoryItems.onRequestDelete },
+  '/api/meta':            { GET: meta.onRequestGet },
 };
 
 async function readBody(req) {
