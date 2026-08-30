@@ -3646,6 +3646,13 @@
       location.reload();
     },
     // apply YNAB-derived "Spent" values per month name (e.g. { Jun: 480.50 })
+    // Display-only: SPENT_BY_MONTH/.spentv are never part of toApi()'s payload
+    // (YNAB is re-fetched live on every load, not stored in Turso), so there
+    // was never anything here for persist() to actually save -- it was just
+    // rewriting the entire board on every automatic YNAB sync (i.e. on every
+    // page load with a token cached) for no reason tied to what changed. That
+    // spurious write was also what made the "data changed elsewhere" banner
+    // reliably fire ~25-30s after a refresh even with zero real edits.
     applyYnabSpent(spentByMonth) {
       if (!board) return;
       Object.assign(SPENT_BY_MONTH, spentByMonth);
@@ -3656,7 +3663,6 @@
         if (el) el.textContent = SB.fmtMoney(spentByMonth[name]);
       });
       recalcAll();
-      persist();
     },
     // merge Inventory (by supplement name) into the cards so run-out computes.
     // invMap: { "<name lowercased>": { amount, bottleSize, dose, loggedOn(ISO) } }
