@@ -619,6 +619,18 @@
       padding: 18px;
       min-height: 100%;
     }
+    /* Shown until the first render() call overwrites #board's innerHTML --
+       replaces what used to be a blank page while /api/orders loads. */
+    #tab-board .board-loading {
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      width: 100%; padding: 80px 0; color: var(--ink-3); font-size: 13px;
+    }
+    #tab-board .board-spinner {
+      width: 30px; height: 30px; border-radius: 50%;
+      border: 3px solid var(--line); border-top-color: var(--accent);
+      animation: board-spin .7s linear infinite;
+    }
+    @keyframes board-spin { to { transform: rotate(360deg); } }
 
     /* ── month column ── */
     #tab-board .month {
@@ -1372,7 +1384,12 @@
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     YNAB not connected — <button class="ynab-warning-link" id="ynab-warning-btn">add API key in Settings</button>
   </div>
-  <div id="board" class="board layout-compact"></div>
+  <div id="board" class="board layout-compact">
+    <div class="board-loading" id="board-loading">
+      <div class="board-spinner"></div>
+      <span>Loading orders…</span>
+    </div>
+  </div>
 </section>
 
 <div class="inv-modal-ov" id="inv-modal-ov">

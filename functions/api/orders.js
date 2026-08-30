@@ -48,14 +48,22 @@ function rowsFrom(result) {
 }
 const num = (v) => (v == null ? null : Number(v));
 
-// Add recur columns if they don't exist yet (safe to call on every request)
+// Add recur columns if they don't exist yet. This used to run two ALTER
+// TABLE round-trips to Turso on EVERY GET and PUT -- after the first-ever
+// call they always fail (column already exists) and get swallowed, but
+// still cost the full network latency every time. Cache success for the
+// life of this isolate so a warm isolate skips both calls entirely; a cold
+// start still self-heals on its first request.
+let schemaEnsured = false;
 async function ensureSchema(env) {
+  if (schemaEnsured) return;
   for (const sql of [
     "ALTER TABLE order_items ADD COLUMN recur INTEGER",
     "ALTER TABLE order_items ADD COLUMN recur_source TEXT",
   ]) {
     try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
   }
+  schemaEnsured = true;
 }
 
 export async function onRequestGet({ env }) {
