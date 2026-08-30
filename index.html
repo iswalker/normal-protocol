@@ -385,6 +385,15 @@
     }
     .inv-scan-btn:hover { color: var(--teal); border-color: var(--teal); }
 
+    /* Shown only while at least one month's search box has text in it */
+    .clear-filters-btn {
+      appearance: none; border: 1.5px solid #e08a3c; background: transparent;
+      cursor: pointer; padding: 5px 10px; border-radius: 7px; font-family: inherit;
+      font-size: 12px; color: #e08a3c; white-space: nowrap; font-weight: 500;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .clear-filters-btn:hover { color: #fff; background: #e08a3c; }
+
     .scan-overlay {
       position: fixed; inset: 0; background: rgba(23,26,28,0.55); z-index: 300;
       display: flex; align-items: center; justify-content: center;
@@ -681,26 +690,28 @@
     #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     }
-    /* Per-month search toggle, sits right after "+ Order" */
-    #tab-board .month-search-btn {
-      flex: 0 0 auto; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
-      border: 1px solid #c4cdd0; border-radius: 8px; background: rgba(255, 255, 255, .7);
-      color: var(--ink-2); cursor: pointer; padding: 0; transition: all .12s;
+    /* One combined search box, sits right after "+ Order" and fills whatever
+       room is left before .month-metrics (which has its own margin-left:auto)
+       -- the icon is just a leading decoration inside it, not a separate
+       toggle button, so you click straight into the text like the Notes
+       field instead of needing to reveal an input first. */
+    #tab-board .month-search-box {
+      flex: 1 1 auto; min-width: 60px; height: 26px; display: flex; align-items: center; gap: 6px;
+      padding: 0 8px; border: 1.5px solid var(--line); border-radius: 7px; background: #f7f9f9;
+      cursor: text; transition: border-color .12s, background .12s;
     }
-    #tab-board .month-search-btn svg { width: 12px; height: 12px; display: block; }
-    #tab-board .month-search-btn:hover, #tab-board .month-search-btn.active {
-      border-color: var(--accent); color: var(--accent-deep); background: #fff;
-    }
-    /* Inline in the header itself, between the search toggle and the metrics
-       -- fills whatever room is left before .month-metrics (which has its
-       own margin-left:auto) instead of opening a whole extra row. */
+    #tab-board .month-search-box:hover { border-color: #c4cdd0; }
+    #tab-board .month-search-box:focus-within { border-color: var(--accent); background: #fff; }
+    #tab-board .month-search-box svg { width: 12px; height: 12px; display: block; flex: none; color: var(--ink-3); }
     #tab-board .month-search-input {
-      flex: 1 1 auto; min-width: 60px; height: 26px; margin-left: 2px; padding: 0 10px;
-      border: 1.5px solid var(--line); border-radius: 7px; background: #f7f9f9;
+      flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
       font-family: inherit; font-size: 12.5px; color: var(--b-ink); outline: none;
-      transition: border-color .12s, background .12s;
     }
-    #tab-board .month-search-input:focus { border-color: var(--accent); background: #fff; }
+    #tab-board .month-search-clear {
+      flex: none; width: 16px; height: 16px; border: none; background: transparent;
+      color: var(--ink-3); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
+    }
+    #tab-board .month-search-clear:hover { color: var(--ink); background: var(--accent-tint); }
     /* Cards/shipments hidden by an active month search */
     #tab-board .month-list > .search-hide,
     #tab-board .ship-body > .search-hide { display: none !important; }
@@ -1341,6 +1352,7 @@
   <div class="month-strip" id="month-strip"></div>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
+      <button class="clear-filters-btn" id="clear-filters-btn" style="display:none" title="Clear all active month searches">Clear Filters</button>
       <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
       <div class="settings-wrap">
         <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
@@ -1932,8 +1944,11 @@
           <span class="mcount">0</span>
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
-        <button class="month-search-btn" data-act="toggle-month-search" title="Search this month">${ICON.search}</button>
-        <input type="text" class="month-search-input" style="display:none" placeholder="Search orders & items…" autocomplete="off" />
+        <div class="month-search-box" data-act="focus-month-search" title="Search this month">
+          ${ICON.search}
+          <input type="text" class="month-search-input" placeholder="Search…" autocomplete="off" />
+          <button class="month-search-clear" data-act="clear-month-search" title="Clear search" style="display:none">×</button>
+        </div>
         <div class="month-metrics">
           <div class="metric spent">
             <span class="mk">Spent</span>
@@ -2671,6 +2686,8 @@
     const t = e.target;
     if (t.matches('.month-search-input')) {
       applyMonthSearch(t.closest('.month'), t.value);
+      const clearBtn = t.closest('.month-search-box')?.querySelector('.month-search-clear');
+      if (clearBtn) clearBtn.style.display = t.value ? 'block' : 'none';
       return;
     }
     if (t.matches('.recur-ctl-n')) {
@@ -2900,20 +2917,20 @@
       showMerchantPicker(act, monthEl);
       return;
     }
-    if (a === 'toggle-month-search') {
+    if (a === 'focus-month-search') {
+      // Clicking anywhere in the box (not just the input itself) focuses it,
+      // same as clicking a Notes field -- no separate toggle/reveal step.
+      if (e.target.closest('.month-search-clear')) return;
+      act.querySelector('.month-search-input')?.focus();
+      return;
+    }
+    if (a === 'clear-month-search') {
       const monthEl = act.closest('.month');
       const input = monthEl.querySelector('.month-search-input');
-      const showing = input.style.display !== 'none';
-      if (showing) {
-        input.style.display = 'none';
-        input.value = '';
-        act.classList.remove('active');
-        applyMonthSearch(monthEl, '');
-      } else {
-        input.style.display = 'block';
-        act.classList.add('active');
-        input.focus();
-      }
+      input.value = '';
+      act.style.display = 'none';
+      applyMonthSearch(monthEl, '');
+      input.focus();
       return;
     }
   });
@@ -2948,7 +2965,29 @@
         node.classList.toggle('search-hide', !!lq && !itemName.includes(lq));
       }
     });
+    updateClearFiltersBtn();
   }
+
+  // Shows/hides the header's "Clear Filters" button based on whether ANY
+  // month currently has an active search -- applyMonthSearch is the one
+  // place every search mutation (typing, the × button, Escape) already
+  // passes through, so this stays in sync without repeating the check at
+  // each call site.
+  function updateClearFiltersBtn() {
+    const btn = document.getElementById('clear-filters-btn');
+    if (!btn) return;
+    const active = [...board.querySelectorAll('.month-search-input')].some((i) => i.value.trim());
+    btn.style.display = active ? 'inline-block' : 'none';
+  }
+  document.getElementById('clear-filters-btn')?.addEventListener('click', () => {
+    board.querySelectorAll('.month-search-input').forEach((input) => {
+      if (!input.value) return;
+      input.value = '';
+      const clearBtn = input.closest('.month-search-box')?.querySelector('.month-search-clear');
+      if (clearBtn) clearBtn.style.display = 'none';
+      applyMonthSearch(input.closest('.month'), '');
+    });
+  });
 
   function newCard(name) {
     const id = uid('c_');
@@ -3312,9 +3351,10 @@
     if (e.key === 'Escape' && e.target.matches('.month-search-input')) {
       const monthEl = e.target.closest('.month');
       e.target.value = '';
-      e.target.style.display = 'none';
-      monthEl.querySelector('.month-search-btn').classList.remove('active');
+      const clearBtn = e.target.closest('.month-search-box')?.querySelector('.month-search-clear');
+      if (clearBtn) clearBtn.style.display = 'none';
       applyMonthSearch(monthEl, '');
+      e.target.blur();
     }
   });
 
