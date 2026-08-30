@@ -2774,10 +2774,17 @@
       const clicked = act.dataset.stage;
       const newStage = clicked === oldStage ? null : clicked;
       const monthEl = shipEl.closest('.month');
-      const invCards = [...shipEl.querySelectorAll('.ship-body > .card')].map((c) => {
-        const d = STATE.cardData[c.dataset.id] || {};
-        return { name: d.name || '', bottleSize: d.bottleSize || 0, qty: Number(d.qty) || 0 };
-      });
+      // Untracked cards (free-text items typed via "+ Add" that don't match an
+      // existing Inventory catalog entry, e.g. a "Coupon" line item) are
+      // deliberately excluded here -- writing them to inventory_log is what
+      // used to make them show up as phantom rows in the Inventory tab even
+      // though they were never added there. Only the explicit "Add to
+      // Inventory" flow should ever create a catalog entry; ordering an
+      // untracked item should never do that as a side effect.
+      const invCards = [...shipEl.querySelectorAll('.ship-body > .card')]
+        .map((c) => STATE.cardData[c.dataset.id] || {})
+        .filter((d) => !d.untracked)
+        .map((d) => ({ name: d.name || '', bottleSize: d.bottleSize || 0, qty: Number(d.qty) || 0 }));
 
       // Nothing below runs — no stage flip, no persist, no inventory write — until
       // this resolves. Kept as a function so the "Received" gate below can defer
