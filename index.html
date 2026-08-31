@@ -628,7 +628,7 @@
     #tab-board .board-spinner {
       width: 30px; height: 30px; border-radius: 50%;
       border: 3px solid var(--line); border-top-color: var(--accent);
-      animation: board-spin .7s linear infinite;
+      animation: board-spin .5s linear infinite;
     }
     @keyframes board-spin { to { transform: rotate(360deg); } }
 
@@ -2393,17 +2393,23 @@
   // leaves, the empty shell goes too. Shipments the user made are left alone even
   // when empty — there an empty shipment is a deliberate placeholder — and so is
   // any shipment that has been staged.
+  // Reads the live DOM, not `structure` -- structure is only a snapshot from
+  // the initial load (and ghost-creation's own bookkeeping writes into it),
+  // never kept in sync with the many DOM-only moves elsewhere (drag-drop,
+  // context-menu Move/Copy to, etc.). Checking structure's stale `b.cards`
+  // here previously meant a ghost-shipment that had since gained real cards
+  // in the DOM could still read as empty in structure and get deleted --
+  // taking those actually-present cards down with it. See the "Clarkia"
+  // report: moving a card into a shipment removed 2 cards, not 1, because
+  // an unrelated gs_ shipment elsewhere got wiped by this stale check.
   function dropEmptyGhostShipments() {
-    for (const m of structure) {
-      for (let bi = m.blocks.length - 1; bi >= 0; bi--) {
-        const b = m.blocks[bi];
-        if (b.type !== 'shipment' || !String(b.id).startsWith('gs_')) continue;
-        if (b.cards.length || STATE.shipmentData[b.id]?.stage) continue;
-        board.querySelector(`.shipment[data-id="${b.id}"]`)?.remove();
-        delete STATE.shipmentData[b.id];
-        m.blocks.splice(bi, 1);
-      }
-    }
+    board.querySelectorAll('.shipment[data-id^="gs_"]').forEach((shipEl) => {
+      const sid = shipEl.dataset.id;
+      if (STATE.shipmentData[sid]?.stage) return; // locked = a real placed order, never auto-remove
+      if (shipEl.querySelector('.ship-body > .card[data-id]')) return;
+      shipEl.remove();
+      delete STATE.shipmentData[sid];
+    });
   }
 
   // Ghosts of sourceId that are still pure projections. A locked one is a real
@@ -3418,15 +3424,28 @@
     s.removeAllRanges(); s.addRange(r);
   }
 
+  // Value a contenteditable held when it was last focused -- so a blur that
+  // didn't actually change anything (see the month-notes case below) can
+  // skip persist() instead of writing the exact same board state again.
+  const focusValues = new WeakMap();
+  board.addEventListener('focus', (e) => {
+    if (e.target.matches('[contenteditable]')) focusValues.set(e.target, e.target.textContent);
+  }, true);
+
   board.addEventListener('blur', (e) => {
     if (e.target.matches('[contenteditable]')) {
+      const t = e.target;
+      const before = focusValues.get(t);
+      const changed = before === undefined || before !== t.textContent;
       // The sync-banner diagnostics traced the repeated spurious writes to
       // THIS handler (an HTMLDivElement blurring -- the only contenteditable
       // <div> on the board is .card-name, so it's an untracked item's name
-      // field losing focus with nobody having touched it). Log exactly which
-      // element every single time, so the next occurrence shows the specific
-      // card/shipment/month instead of just "a blur happened somewhere."
-      const t = e.target;
+      // field losing focus with nobody having touched it) -- and then to a
+      // brand new, never-typed-into .month-notes span blurring with empty
+      // text. Something is focusing these elements without any user input;
+      // until that's found, this at least stops the no-op write it causes:
+      // if the text is identical to what it was when focus started, skip
+      // persist() entirely rather than re-saving the unchanged board.
       console.log(
         '[blur-persist]', new Date().toISOString(),
         'tag=' + t.tagName, 'class=' + t.className,
@@ -3434,9 +3453,11 @@
         'shipId=' + (t.closest('.shipment')?.dataset.id || '—'),
         'monthId=' + (t.closest('.month')?.dataset.id || '—'),
         'text=' + JSON.stringify((t.textContent || '').slice(0, 40)),
+        'changed=' + changed,
         'stillConnected=' + t.isConnected,
       );
-      persist();
+      focusValues.delete(t);
+      if (changed) persist();
     }
     if (e.target.matches('input[data-field="price"], input[data-field="qty"]')) {
       const t = e.target;
@@ -3592,13 +3613,20 @@
       // Shared by the Next/Previous items and the month picker, so a month several
       // steps away behaves exactly like the one-step case.
       function moveCardToMonth(targetMonthEl) {
-        cardDest(targetMonthEl).prepend(cardEl); recalcAll(); persist();
+        cardDest(targetMonthEl).prepend(cardEl);
+        // Same reconciliation the drag-and-drop path already does: a
+        // recurring root's ghost set is anchored to whatever month it's
+        // actually in, so moving it here (not via drag) needs the same fixup
+        // or the old month's ghost is left stranded/duplicated.
+        reconcileMovedRecurring(cardEl);
+        recalcAll(); persist();
       }
       function copyCardToMonth(targetMonthEl) {
         const newId = uid('c_');
         STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
         const newEl = el(cardHTML(newId));
         cardDest(targetMonthEl).prepend(newEl);
+        reconcileMovedRecurring(newEl);
         recalcAll(); persist();
       }
 
@@ -3659,6 +3687,7 @@
     // steps away behaves exactly like the one-step case.
     function moveShipToMonth(targetMonthEl) {
       targetMonthEl.querySelector('.month-list').prepend(shipEl);
+      reconcileMovedRecurring(shipEl);
       recalcAll(); persist();
     }
     function copyShipToMonth(targetMonthEl) {
@@ -3673,6 +3702,7 @@
       const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
       targetMonthEl.querySelector('.month-list').prepend(newEl);
       makeShipSortable(newEl.querySelector('.ship-body'));
+      reconcileMovedRecurring(newEl);
       recalcAll(); persist();
     }
 
