@@ -1537,7 +1537,12 @@
       const method = ((init && init.method) || 'GET').toUpperCase();
       const url = typeof input === 'string' ? input : (input && input.url) || '';
       if (method !== 'GET' && url.startsWith('/api/')) {
-        lastLocalWrite = { at: Date.now(), method, url };
+        // Trim the Error() boilerplate + this wrapper's own frame so what's
+        // left starts at whatever function actually issued the write --
+        // e.g. "at persist (index.html:2650)" -- which is the one piece of
+        // information the earlier version of this log couldn't provide.
+        const stack = (new Error().stack || '').split('\n').slice(2).join('\n');
+        lastLocalWrite = { at: Date.now(), method, url, stack };
         writeLog.push(lastLocalWrite);
         if (writeLog.length > 20) writeLog.shift();
       }
@@ -1566,6 +1571,7 @@
             '\n  this tab loaded:   ', new Date(pageLoadedAt).toISOString(), '(' + Math.round((Date.now() - pageLoadedAt) / 1000) + 's ago)',
             '\n  last local write:  ', lastLocalWrite ? `${lastLocalWrite.method} ${lastLocalWrite.url} (${ageSec(sinceWrite)})` : 'none this tab has made',
             '\n  all writes this tab has made:', writeLog.map(w => `${w.method} ${w.url} @ +${Math.round((w.at - pageLoadedAt) / 1000)}s`),
+            '\n  stack of last write (what actually called it):\n', lastLocalWrite ? lastLocalWrite.stack : '(none)',
           );
           banner.style.display = 'flex';
         }
