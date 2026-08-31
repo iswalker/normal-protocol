@@ -1843,6 +1843,14 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // Same math-expression evaluator the Inventory tab's On Hand field uses,
+  // so typing "12*3" into Price or Qty works the same way there too.
+  function evalExpr(s) {
+    const clean = String(s).replace(/[^0-9+\-*/().\s]/g, '').trim();
+    if (!clean) return NaN;
+    try { return Number(Function('"use strict"; return (' + clean + ')')()); } catch { return NaN; }
+  }
+
   function applyShipmentStage(shipEl, stage) {
     const locked = stage != null;
     shipEl.classList.toggle('is-locked', locked);
@@ -1922,11 +1930,11 @@
         <div class="order">
           <div class="field">
             <label>Price <span class="lbl-sub">/ bottle</span></label>
-            <div class="input-wrap"><span class="pfx">$</span><input type="number" step="0.01" min="0" inputmode="decimal" data-field="price" value="${c.price}"${dis}></div>
+            <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="decimal" data-field="price" value="${c.price}"${dis}></div>
           </div>
           <div class="field">
             <label>Order <span class="lbl-sub">bottles</span></label>
-            <div class="input-wrap"><input type="number" step="1" min="0" inputmode="numeric" data-field="qty" value="${c.qty}"${dis}><span class="sfx">btl</span></div>
+            <div class="input-wrap"><input type="text" inputmode="numeric" data-field="qty" value="${c.qty}"${dis}><span class="sfx">btl</span></div>
           </div>
         </div>
         <div class="card-foot">
@@ -2748,7 +2756,17 @@
       const id = cardEl.dataset.id;
       const c = STATE.cardData[id];
       const field = t.dataset.field;
-      c[field] = t.value === '' ? 0 : Number(t.value);
+      // Live totals while typing: only commit a value once the expression
+      // parses cleanly (e.g. skip the moment mid-typing "12*" is invalid) --
+      // the field itself gets finalized/replaced with the plain number on
+      // blur, below, same as the Inventory On Hand field.
+      if (t.value.trim() === '') {
+        c[field] = 0;
+      } else {
+        const val = evalExpr(t.value);
+        if (isNaN(val) || !isFinite(val) || val < 0) return;
+        c[field] = val;
+      }
       if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, field, c[field]);
       recalcAll();
       persistSoon();
@@ -3378,6 +3396,24 @@
 
   board.addEventListener('blur', (e) => {
     if (e.target.matches('[contenteditable]')) persist();
+    if (e.target.matches('input[data-field="price"], input[data-field="qty"]')) {
+      const t = e.target;
+      const cardEl = t.closest('.card');
+      const id = cardEl.dataset.id;
+      const c = STATE.cardData[id];
+      const field = t.dataset.field;
+      const raw = t.value.trim();
+      let val = raw === '' ? 0 : evalExpr(raw);
+      // Invalid expression (e.g. left mid-typing, like "12*") -- fall back to
+      // whatever was last successfully committed rather than zeroing it out.
+      if (isNaN(val) || !isFinite(val) || val < 0) val = c[field] || 0;
+      val = field === 'price' ? Math.round(val * 100) / 100 : Math.round(val);
+      c[field] = val;
+      t.value = String(val);
+      if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, field, val);
+      recalcAll();
+      persist();
+    }
   }, true);
   board.addEventListener('paste', (e) => {
     if (e.target.matches('[contenteditable]')) {
