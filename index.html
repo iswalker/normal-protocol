@@ -2770,7 +2770,11 @@
         c[field] = 0;
       } else {
         const val = evalExpr(t.value);
-        if (isNaN(val) || !isFinite(val) || val < 0) return;
+        // Negative is intentionally allowed for Price -- credit/discount/
+        // coupon lines use a negative amount (existing pattern on the
+        // board) -- but not for Qty, where it means nothing. Matches the
+        // same rule applied again on blur, below.
+        if (isNaN(val) || !isFinite(val) || (field === 'qty' && val < 0)) return;
         c[field] = val;
       }
       if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, field, c[field]);
@@ -3412,7 +3416,10 @@
       let val = raw === '' ? 0 : evalExpr(raw);
       // Invalid expression (e.g. left mid-typing, like "12*") -- fall back to
       // whatever was last successfully committed rather than zeroing it out.
-      if (isNaN(val) || !isFinite(val) || val < 0) val = c[field] || 0;
+      // Negative is only rejected for Qty (ordering a negative number of
+      // bottles doesn't mean anything) -- Price allows it intentionally, for
+      // credit/discount/coupon lines with a negative amount.
+      if (isNaN(val) || !isFinite(val) || (field === 'qty' && val < 0)) val = c[field] || 0;
       val = field === 'price' ? Math.round(val * 100) / 100 : Math.round(val);
       c[field] = val;
       t.value = String(val);
