@@ -60,6 +60,7 @@ async function ensureSchema(env) {
   for (const sql of [
     "ALTER TABLE order_items ADD COLUMN recur INTEGER",
     "ALTER TABLE order_items ADD COLUMN recur_source TEXT",
+    "ALTER TABLE order_months ADD COLUMN notes TEXT",
   ]) {
     try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
   }
@@ -70,7 +71,7 @@ export async function onRequestGet({ env }) {
   try {
     await ensureSchema(env);
     const results = await pipeline(env, [
-      exec("SELECT month, year, position FROM order_months ORDER BY position"),
+      exec("SELECT month, year, position, notes FROM order_months ORDER BY position"),
       exec("SELECT order_id, month, merchant, position, status, notes FROM orders ORDER BY position"),
       exec(
         `SELECT order_item_id, order_id, month, block_position, item_position, supplement,
@@ -80,7 +81,7 @@ export async function onRequestGet({ env }) {
       ),
     ]);
     const months = rowsFrom(results[0]).map((m) => ({
-      month: m.month, year: num(m.year), position: num(m.position),
+      month: m.month, year: num(m.year), position: num(m.position), notes: m.notes || "",
     }));
     const orders = rowsFrom(results[1]).map((o) => ({
       order_id: o.order_id, month: o.month, merchant: o.merchant,
@@ -121,8 +122,8 @@ export async function onRequestPut({ request, env }) {
   ];
   for (const m of months) {
     reqs.push(exec(
-      "INSERT INTO order_months (month, year, position) VALUES (?, ?, ?)",
-      [T(m.month), I(m.year), I(m.position)]
+      "INSERT INTO order_months (month, year, position, notes) VALUES (?, ?, ?, ?)",
+      [T(m.month), I(m.year), I(m.position), T(m.notes)]
     ));
   }
   for (const o of orders) {

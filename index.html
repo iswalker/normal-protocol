@@ -702,13 +702,15 @@
     #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     }
-    /* One combined search box, sits right after "+ Order" and fills whatever
-       room is left before .month-metrics (which has its own margin-left:auto)
-       -- the icon is just a leading decoration inside it, not a separate
-       toggle button, so you click straight into the text like the Notes
-       field instead of needing to reveal an input first. */
+    /* One combined search box, sits right after "+ Order"; a Notes field
+       (same pattern as ship-notes/card-notes) takes the other half of the
+       room that used to all go to the search box -- both share the space
+       left before .month-metrics (which has its own margin-left:auto). The
+       search icon is just a leading decoration inside its box, not a
+       separate toggle button, so you click straight into the text like the
+       Notes field instead of needing to reveal an input first. */
     #tab-board .month-search-box {
-      flex: 1 1 auto; min-width: 60px; height: 26px; display: flex; align-items: center; gap: 6px;
+      flex: 1 1 0; min-width: 60px; height: 26px; display: flex; align-items: center; gap: 6px;
       padding: 0 8px; border: 1.5px solid var(--line); border-radius: 7px; background: #f7f9f9;
       cursor: text; transition: border-color .12s, background .12s;
     }
@@ -724,6 +726,13 @@
       color: var(--ink-3); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
     }
     #tab-board .month-search-clear:hover { color: var(--ink); background: var(--accent-tint); }
+    #tab-board .month-notes {
+      flex: 1 1 0; min-width: 60px; font-size: 12px; color: #222; padding-left: 4px;
+      outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      cursor: text;
+    }
+    #tab-board .month-notes:empty::before { content: attr(placeholder); opacity: .35; pointer-events: none; }
+    #tab-board .month-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
     /* Cards/shipments hidden by an active month search */
     #tab-board .month-list > .search-hide,
     #tab-board .ship-body > .search-hide { display: none !important; }
@@ -1815,7 +1824,7 @@
         .forEach((it) => blocks.push({ _pos: it.block_position, type: 'card', id: it.order_item_id }));
       blocks.sort((a, b) => (a._pos || 0) - (b._pos || 0));
       blocks.forEach((b) => delete b._pos);
-      return { id: m.month, name: m.month, sub: String(m.year || ''), blocks };
+      return { id: m.month, name: m.month, sub: String(m.year || ''), notes: m.notes || '', blocks };
     });
     STATE = { cardData, shipmentData };
     padMonths(7);
@@ -1833,7 +1842,7 @@
       const year = d.getFullYear();
       const key = name + '_' + year;
       if (!existing.has(key)) {
-        structure.push({ id: key, name, sub: String(year), blocks: [] });
+        structure.push({ id: key, name, sub: String(year), notes: '', blocks: [] });
         existing.add(key);
       }
     }
@@ -2005,6 +2014,7 @@
           <input type="text" class="month-search-input" placeholder="Search…" autocomplete="off" />
           <button class="month-search-clear" data-act="clear-month-search" title="Clear search" style="display:none">×</button>
         </div>
+        <span class="month-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
         <div class="month-metrics">
           <div class="metric spent">
             <span class="mk">Spent</span>
@@ -2648,6 +2658,7 @@
         month,
         year: parseInt(m.querySelector('.msub').textContent.trim(), 10) || null,
         position: mi + 1,
+        notes: m.querySelector('.month-notes')?.textContent || '',
       });
       const blocks = [...m.querySelector('.month-list').children]
         .filter((n) => n.classList.contains('shipment') || n.classList.contains('card'));
@@ -2801,6 +2812,9 @@
       const c = STATE.cardData[id];
       c.notes = t.textContent;
       if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, 'notes', c.notes);
+      persistSoon();
+    } else if (t.matches('.month-notes')) {
+      if (!t.textContent.trim()) t.innerHTML = '';
       persistSoon();
     }
   });
@@ -3405,7 +3419,25 @@
   }
 
   board.addEventListener('blur', (e) => {
-    if (e.target.matches('[contenteditable]')) persist();
+    if (e.target.matches('[contenteditable]')) {
+      // The sync-banner diagnostics traced the repeated spurious writes to
+      // THIS handler (an HTMLDivElement blurring -- the only contenteditable
+      // <div> on the board is .card-name, so it's an untracked item's name
+      // field losing focus with nobody having touched it). Log exactly which
+      // element every single time, so the next occurrence shows the specific
+      // card/shipment/month instead of just "a blur happened somewhere."
+      const t = e.target;
+      console.log(
+        '[blur-persist]', new Date().toISOString(),
+        'tag=' + t.tagName, 'class=' + t.className,
+        'cardId=' + (t.closest('.card')?.dataset.id || '—'),
+        'shipId=' + (t.closest('.shipment')?.dataset.id || '—'),
+        'monthId=' + (t.closest('.month')?.dataset.id || '—'),
+        'text=' + JSON.stringify((t.textContent || '').slice(0, 40)),
+        'stillConnected=' + t.isConnected,
+      );
+      persist();
+    }
     if (e.target.matches('input[data-field="price"], input[data-field="qty"]')) {
       const t = e.target;
       const cardEl = t.closest('.card');
@@ -3472,8 +3504,13 @@
     // A label plus a month dropdown. Starts blank; choosing a month runs the
     // action against that month straight away and closes the menu.
     function ctxMonthPick(label, currentMonthEl, onPick) {
-      const months = [...board.querySelectorAll('.month')]
-        .filter((m) => m.style.display !== 'none' && m !== currentMonthEl);
+      const visible = [...board.querySelectorAll('.month')].filter((m) => m.style.display !== 'none');
+      // The item's own current month is a valid target too (most useful for
+      // "Copy to" -- duplicating within the same month) -- kept in, just
+      // moved to the top of the list instead of being excluded.
+      const months = visible.includes(currentMonthEl)
+        ? [currentMonthEl, ...visible.filter((m) => m !== currentMonthEl)]
+        : visible;
       const row = document.createElement('div');
       row.className = 'ship-ctx-pick' + (months.length ? '' : ' ctx-disabled');
       const cap = document.createElement('span');
