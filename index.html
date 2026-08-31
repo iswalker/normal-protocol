@@ -1531,31 +1531,40 @@
     const banner = document.getElementById('sync-banner');
     if (!banner) return;
     const pageLoadedAt = Date.now();
+    // The single source of truth for "the latest updated_at this tab knows
+    // to be true" -- monotonically increasing. Fed by two inputs: whatever
+    // /api/meta polling observes, AND (authoritatively) the updated_at each
+    // of this tab's own writes echoes back in its own response. Comparing
+    // against a max like this, instead of guessing from timing/DOM state
+    // whether a write was "ours", means own-write false positives are
+    // structurally impossible: the moment our write's response lands, this
+    // tab already knows the new value, so no later poll can look newer.
     let baseline = null;
-    let lastLocalWrite = null; // { at, method, url }
-    // Ring buffer of every write this tab has made, for the console dump
-    // below -- cheap to keep, and it's exactly what you need to tell "my own
-    // write, just outside the suppression window" apart from "a real change
-    // from elsewhere" without having to reproduce it live.
+    function bump(updated_at) {
+      if (updated_at && (!baseline || updated_at > baseline)) baseline = updated_at;
+    }
+    // Ring buffer of every write this tab has made, purely for the console
+    // dump below when something genuinely foreign does show up.
     const writeLog = [];
 
-    // Mark any outgoing write to our own API so a poll landing right after
-    // our own save doesn't mistake our own change for one from elsewhere.
     const origFetch = window.fetch.bind(window);
     window.fetch = (input, init) => {
       const method = ((init && init.method) || 'GET').toUpperCase();
       const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const promise = origFetch(input, init);
       if (method !== 'GET' && url.startsWith('/api/')) {
-        // Trim the Error() boilerplate + this wrapper's own frame so what's
-        // left starts at whatever function actually issued the write --
-        // e.g. "at persist (index.html:2650)" -- which is the one piece of
-        // information the earlier version of this log couldn't provide.
         const stack = (new Error().stack || '').split('\n').slice(2).join('\n');
-        lastLocalWrite = { at: Date.now(), method, url, stack };
-        writeLog.push(lastLocalWrite);
+        const entry = { at: Date.now(), method, url, stack, updated_at: null };
+        writeLog.push(entry);
         if (writeLog.length > 20) writeLog.shift();
+        // Read the write's own response for the updated_at it produced --
+        // authoritative, not inferred -- and fold it into baseline the
+        // moment it's known. Cloned so the caller can still read the body.
+        promise.then((res) => res.clone().json()).then((data) => {
+          if (data && data.updated_at) { entry.updated_at = data.updated_at; bump(data.updated_at); }
+        }).catch(() => {});
       }
-      return origFetch(input, init);
+      return promise;
     };
 
     async function fetchUpdatedAt() {
@@ -1565,46 +1574,41 @@
     }
     async function checkStale() {
       if (banner.style.display !== 'none') return; // already showing -- wait for dismiss/refresh
-      const sinceWrite = lastLocalWrite ? Date.now() - lastLocalWrite.at : Infinity;
-      if (sinceWrite < 10000) return; // likely our own recent write settling
       try {
         const updated_at = await fetchUpdatedAt();
         if (!updated_at) return;
-        if (baseline && updated_at !== baseline) {
-          const ageSec = (n) => n === Infinity ? 'never' : Math.round(n / 1000) + 's ago';
+        // Only genuinely newer than anything this tab already knows (polled
+        // OR confirmed via one of its own writes) counts as "changed
+        // elsewhere". A poll response describing an older state than a
+        // write we've since confirmed is just late, not new -- ignored
+        // rather than regressing baseline backward.
+        if (baseline && updated_at > baseline) {
           console.log(
             '%c[sync-banner] showing — data changed elsewhere',
             'color:#2f7fb0;font-weight:bold',
             '\n  old baseline:      ', baseline,
             '\n  new updated_at:    ', updated_at,
             '\n  this tab loaded:   ', new Date(pageLoadedAt).toISOString(), '(' + Math.round((Date.now() - pageLoadedAt) / 1000) + 's ago)',
-            '\n  last local write:  ', lastLocalWrite ? `${lastLocalWrite.method} ${lastLocalWrite.url} (${ageSec(sinceWrite)})` : 'none this tab has made',
-            '\n  all writes this tab has made:', writeLog.map(w => `${w.method} ${w.url} @ +${Math.round((w.at - pageLoadedAt) / 1000)}s`),
-            '\n  stack of last write (what actually called it):\n', lastLocalWrite ? lastLocalWrite.stack : '(none)',
+            '\n  all writes this tab has made:', writeLog.map(w => `${w.method} ${w.url} @ +${Math.round((w.at - pageLoadedAt) / 1000)}s -> confirmed ${w.updated_at || '(pending/failed)'}`),
           );
           banner.style.display = 'flex';
         }
-        // Always resync to the latest value we've now seen -- otherwise the
-        // SAME change keeps re-triggering the banner on every later poll
-        // (e.g. after it's dismissed) instead of only flagging it once.
-        baseline = updated_at;
+        bump(updated_at);
       } catch (e) { console.log('[sync-banner] poll failed (offline or API hiccup), will retry next tick:', e.message); }
     }
 
     document.getElementById('sync-banner-refresh')?.addEventListener('click', () => location.reload());
     document.getElementById('sync-banner-dismiss')?.addEventListener('click', () => {
       banner.style.display = 'none';
-      // Re-sync baseline on dismiss too, so the poll that runs a moment
-      // later doesn't immediately re-flag the exact change just dismissed.
-      fetchUpdatedAt().then((v) => { if (v) baseline = v; }).catch(() => {});
+      fetchUpdatedAt().then(bump).catch(() => {});
     });
 
-    fetchUpdatedAt().then((v) => { baseline = v; }).catch(() => {});
+    fetchUpdatedAt().then(bump).catch(() => {});
     setInterval(checkStale, 25000);
     // debug/test hook only -- not used by the app itself. Run
     // __syncBanner.getWriteLog() in the console any time to see every write
     // this tab has made, without waiting for the banner to show again.
-    window.__syncBanner = { checkStale, getBaseline: () => baseline, getWriteLog: () => writeLog.slice(), getLastLocalWrite: () => lastLocalWrite };
+    window.__syncBanner = { checkStale, getBaseline: () => baseline, getWriteLog: () => writeLog.slice() };
   })();
 
   // Mobile FAB — proxy to the real header buttons
