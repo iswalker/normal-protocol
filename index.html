@@ -1521,8 +1521,14 @@
   (function initSyncBanner() {
     const banner = document.getElementById('sync-banner');
     if (!banner) return;
+    const pageLoadedAt = Date.now();
     let baseline = null;
-    let lastLocalWriteAt = 0;
+    let lastLocalWrite = null; // { at, method, url }
+    // Ring buffer of every write this tab has made, for the console dump
+    // below -- cheap to keep, and it's exactly what you need to tell "my own
+    // write, just outside the suppression window" apart from "a real change
+    // from elsewhere" without having to reproduce it live.
+    const writeLog = [];
 
     // Mark any outgoing write to our own API so a poll landing right after
     // our own save doesn't mistake our own change for one from elsewhere.
@@ -1530,7 +1536,11 @@
     window.fetch = (input, init) => {
       const method = ((init && init.method) || 'GET').toUpperCase();
       const url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (method !== 'GET' && url.startsWith('/api/')) lastLocalWriteAt = Date.now();
+      if (method !== 'GET' && url.startsWith('/api/')) {
+        lastLocalWrite = { at: Date.now(), method, url };
+        writeLog.push(lastLocalWrite);
+        if (writeLog.length > 20) writeLog.shift();
+      }
       return origFetch(input, init);
     };
 
@@ -1541,16 +1551,29 @@
     }
     async function checkStale() {
       if (banner.style.display !== 'none') return; // already showing -- wait for dismiss/refresh
-      if (Date.now() - lastLocalWriteAt < 10000) return; // likely our own recent write settling
+      const sinceWrite = lastLocalWrite ? Date.now() - lastLocalWrite.at : Infinity;
+      if (sinceWrite < 10000) return; // likely our own recent write settling
       try {
         const updated_at = await fetchUpdatedAt();
         if (!updated_at) return;
-        if (baseline && updated_at !== baseline) banner.style.display = 'flex';
+        if (baseline && updated_at !== baseline) {
+          const ageSec = (n) => n === Infinity ? 'never' : Math.round(n / 1000) + 's ago';
+          console.log(
+            '%c[sync-banner] showing — data changed elsewhere',
+            'color:#2f7fb0;font-weight:bold',
+            '\n  old baseline:      ', baseline,
+            '\n  new updated_at:    ', updated_at,
+            '\n  this tab loaded:   ', new Date(pageLoadedAt).toISOString(), '(' + Math.round((Date.now() - pageLoadedAt) / 1000) + 's ago)',
+            '\n  last local write:  ', lastLocalWrite ? `${lastLocalWrite.method} ${lastLocalWrite.url} (${ageSec(sinceWrite)})` : 'none this tab has made',
+            '\n  all writes this tab has made:', writeLog.map(w => `${w.method} ${w.url} @ +${Math.round((w.at - pageLoadedAt) / 1000)}s`),
+          );
+          banner.style.display = 'flex';
+        }
         // Always resync to the latest value we've now seen -- otherwise the
         // SAME change keeps re-triggering the banner on every later poll
         // (e.g. after it's dismissed) instead of only flagging it once.
         baseline = updated_at;
-      } catch { /* offline or API hiccup -- just try again next tick */ }
+      } catch (e) { console.log('[sync-banner] poll failed (offline or API hiccup), will retry next tick:', e.message); }
     }
 
     document.getElementById('sync-banner-refresh')?.addEventListener('click', () => location.reload());
@@ -1563,8 +1586,10 @@
 
     fetchUpdatedAt().then((v) => { baseline = v; }).catch(() => {});
     setInterval(checkStale, 25000);
-    // debug/test hook only -- not used by the app itself
-    window.__syncBanner = { checkStale, getBaseline: () => baseline };
+    // debug/test hook only -- not used by the app itself. Run
+    // __syncBanner.getWriteLog() in the console any time to see every write
+    // this tab has made, without waiting for the banner to show again.
+    window.__syncBanner = { checkStale, getBaseline: () => baseline, getWriteLog: () => writeLog.slice(), getLastLocalWrite: () => lastLocalWrite };
   })();
 
   // Mobile FAB — proxy to the real header buttons
