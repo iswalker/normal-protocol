@@ -2912,6 +2912,17 @@
             .find((el) => (STAGE_PRI[(STATE.shipmentData[el.dataset.id] || {}).stage] ?? 0) > myPri);
           if (anchor) list.insertBefore(shipEl, anchor);
           else list.appendChild(shipEl);
+        } else {
+          // Un-marking a stage restores its color/unlocked state already, but
+          // left its DOM position wherever it happened to sit among the
+          // locked ones -- move it back down into the open section, at the
+          // very end of it, symmetric to how locking sorts it into the
+          // locked section instead of leaving it wherever it started.
+          const list = monthEl.querySelector('.month-list');
+          const firstLocked = [...list.querySelectorAll(':scope > .shipment.is-locked')]
+            .find((el) => el !== shipEl);
+          if (firstLocked) list.insertBefore(shipEl, firstLocked);
+          else list.appendChild(shipEl);
         }
 
         // A recurring root locked into this shipment hands the active-role off
