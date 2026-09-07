@@ -3766,6 +3766,12 @@
       return row;
     }
     buildFn(menu, ctxItem, ctxDivider, ctxMonthPick);
+    // Shared trailing section on every context menu (card or shipment) --
+    // an explicit way to back out, same effect as tapping outside the menu.
+    // Mainly for touch, where there's no obvious "click elsewhere" gesture
+    // once you're already looking at a popover menu.
+    menu.appendChild(ctxDivider());
+    menu.appendChild(ctxItem('Close Menu', false, () => {}));
     menu.style.left = e.clientX + 'px';
     menu.style.top = e.clientY + 'px';
     document.body.appendChild(menu);
@@ -3803,23 +3809,38 @@
   // also pop a menu, since right-click already covers that there.
   (function initGripTapContextMenu() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
-    board.addEventListener('click', (e) => {
-      const grip = e.target.closest('.card-grip, .truck.block-grip');
-      if (!grip) return;
+    // Driven directly off touchstart/touchend rather than the synthetic
+    // 'click' event: Sortable's own touch handling on this exact element
+    // (it's the drag handle) calls preventDefault() on touchstart to stage
+    // a possible drag, and per spec that suppresses the browser's synthetic
+    // click for that whole gesture -- which is why the first tap only ever
+    // "highlighted" the grip and a second, separate tap was needed to
+    // actually register. Tracking the touch ourselves sidesteps that
+    // entirely; e.preventDefault() on touchend still stops whatever
+    // click Sortable/the browser might otherwise fire from double-handling it.
+    const MOVE_TOLERANCE = 10;
+    let startX = 0, startY = 0, gripTarget = null, moved = false;
+    board.addEventListener('touchstart', (e) => {
+      gripTarget = e.target.closest('.card-grip, .truck.block-grip') || null;
+      moved = false;
+      if (gripTarget) { const t = e.touches[0]; startX = t.clientX; startY = t.clientY; }
+    }, { passive: true });
+    board.addEventListener('touchmove', (e) => {
+      if (!gripTarget) return;
+      const t = e.touches[0];
+      if (Math.abs(t.clientX - startX) > MOVE_TOLERANCE || Math.abs(t.clientY - startY) > MOVE_TOLERANCE) moved = true;
+    }, { passive: true });
+    board.addEventListener('touchend', (e) => {
+      const grip = gripTarget;
+      gripTarget = null;
+      if (!grip || moved) return;
       const target = grip.closest('.card[data-id], .shipment');
       if (!target) return;
-      // Stop this same click from continuing on to document's own
-      // click listener (closeCtxMenu, bound for closing the menu on an
-      // outside click) -- without this, the menu the dispatchEvent below
-      // just opened gets closed a moment later by that same original click
-      // finishing its bubble past `board`.
-      e.stopPropagation();
-      const rect = grip.getBoundingClientRect();
+      e.preventDefault();
       target.dispatchEvent(new MouseEvent('contextmenu', {
-        bubbles: true, cancelable: true,
-        clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+        bubbles: true, cancelable: true, clientX: startX, clientY: startY,
       }));
-    });
+    }, { passive: false });
   })();
 
   board.addEventListener('contextmenu', (e) => {
