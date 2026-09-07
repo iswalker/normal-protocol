@@ -4,10 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, user-scalable=yes" />
   <title>Normal Protocol</title>
-  <link rel="icon" type="image/svg+xml" href="Logos/icon.svg" />
-  <!-- Home-screen icons: iOS reads apple-touch-icon specifically (ignores
-       rel="icon" for that purpose); Android's "add to home screen" picks the
-       largest usable rel="icon" PNG, which this also covers. -->
+  <!-- Favicon, top-left logo (see .brand img below), and the iOS/Android
+       home-screen icons are now all driven off the one apple-touch-icon.png
+       asset -- the filename itself is meaningless to iOS as long as an
+       explicit rel="apple-touch-icon" link points at it (iOS only falls
+       back to auto-discovering a file literally named that at the site
+       root when there's no such link tag at all). Android's PNG sizes are
+       kept as their own files since it wants specific resolutions. -->
+  <link rel="icon" type="image/png" href="Logos/apple-touch-icon.png" />
   <link rel="apple-touch-icon" href="Logos/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="Logos/android-chrome-512x512.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="Logos/android-chrome-192x192.png" />
@@ -1313,13 +1317,16 @@
          left over via shrink, ellipsis-ing instead of pushing a wrap. */
       /* min-width is a floor flex-wrap's line-fit check still respects even
          with basis:0 (an item's automatic minimum clamps to min-width when
-         one's set) -- 30px was enough headroom for most names, but a run-out
-         string with a year suffix ("1/19/27") plus a longer item name could
-         still add up to more than the row and wrap after all. Down to 14px
-         (worth roughly one letter + ellipsis) as the smallest the name
-         should ever be forced to; the pairing with proj's own trimmed
-         width below is what actually keeps this fitting in practice. */
-      #tab-board .board.layout-compact .card-top { flex: 0 1 0; min-width: 14px; }
+         one's set). proj doesn't shrink at all (flex:0 0 auto below), so
+         ANY card whose run-out text runs even moderately wide squeezes the
+         name down to exactly this floor -- pushed as low as 14px earlier to
+         guarantee a same-line fit for one particularly long name+date
+         combo, but that meant nearly every card in practice showed one
+         truncated letter, which is worse than useful. 45px (~7-8 chars) is
+         the actual floor now; a genuinely extreme name+run-out combination
+         will fall back to wrapping onto its own row again rather than
+         becoming unreadable to stay on one. */
+      #tab-board .board.layout-compact .card-top { flex: 0 1 0; min-width: 45px; }
       #tab-board .board.layout-compact .proj { flex: 0 0 auto; margin-left: auto; }
       /* The run-out projection's desktop-tuned type (13/12px, roomy gaps) is
          wide enough on its own to force the wrap this whole rule set exists
@@ -1335,7 +1342,26 @@
       #tab-board .card-row-break { display: block; flex-basis: 100%; height: 0; }
       #tab-board .board.layout-compact .order { flex: 0 0 auto; }
       #tab-board .board.layout-compact .card-foot { flex: 0 0 auto; }
-      #tab-board .board.layout-compact .card-end { flex: 1 1 auto; min-width: 0; }
+      /* Same flex-basis:0 fix as .card-top/.ship-id: basis:auto measured
+         card-end (toggle + "ev N mo" + notes placeholder + delete) at its
+         full unshrunk width for the wrap decision, pushing it to its own
+         row even though order+foot left clear room and card-end's notes
+         field can shrink arbitrarily small. basis:0 lets it join that row
+         instead, ellipsis-ing the notes text down as needed. */
+      #tab-board .board.layout-compact .card-end { flex: 1 1 0; min-width: 0; }
+      /* The delete × pinned to the card's own top-right corner instead of
+         wherever card-end's row ends up wrapping to (bottom-right,
+         following the toggle/notes row) -- out of the flex flow entirely so
+         it stays put regardless of how many rows the rest wraps into. Only
+         row 1 (name + right-aligned run-out) actually sits under it, so the
+         reserved clearance goes on .proj specifically rather than as
+         padding on the whole card-body -- reserving it everywhere squeezed
+         the name down to its truncation floor on nearly every card, since
+         row 2 (price/qty/$/toggle/notes) never reaches that corner at all. */
+      #tab-board .board.layout-compact .proj { margin-right: 18px; }
+      #tab-board .board.layout-compact .card-end .del {
+        position: absolute; top: 1px; right: 2px; margin: 0;
+      }
 
       /* Inventory tab: hide table, show cards */
       #tab-inventory .table-wrap { display: none; }
@@ -1461,7 +1487,7 @@
 
 <header>
   <div class="brand">
-    <img src="Logos/icon.svg" alt="Normal Protocol" />
+    <img src="Logos/apple-touch-icon.png" alt="Normal Protocol" />
     <h1>Normal Protocol</h1>
     <button class="inv-search-link" id="inv-search-link" title="Search inventory">
       <svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg>
