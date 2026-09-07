@@ -834,7 +834,7 @@
     }
     #tab-board .tier-soon .badge { color: var(--soon); background: var(--soon-tint); }
     #tab-board .tier-out .badge { color: var(--out); background: var(--out-tint); }
-    #tab-board .proj { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    #tab-board .proj { display: grid; gap: 8px; margin-top: 10px; }
     #tab-board .proj .cell { min-width: 0; }
     #tab-board .proj .pk {
       font-size: 9px; font-weight: 600; letter-spacing: .07em;
@@ -1279,7 +1279,20 @@
          unshrunk name-text width for the wrap decision, which is enough on
          its own to push the $ total to line 2 even when there'd be room
          once the name is allowed to actually shrink. */
-      #tab-board .ship-id { flex-basis: 0; }
+      /* Base rule is flex:0 1 auto (no grow) -- basis:0 alone made ship-id
+         collapse to 0 width and vanish, since with grow:0 it never claims
+         any of the row's free space once its own hypothetical size doesn't
+         count toward the wrap decision. grow:1 lets it actually take the
+         freed space; basis stays 0 so the wrap decision still ignores the
+         name's raw text width, same reasoning as .card-top. */
+      #tab-board .ship-id { flex: 1 1 0; }
+      /* Notes forced onto its own row: it previously ran flex:1 1 0 on the
+         same line as ship-id, and with ship-id's grow bugged to 0 (see
+         above) notes soaked 100% of row 1 on its own, leaving nothing for
+         the name. Now that ship-id can grow, keep notes on row 2 anyway so
+         the name always gets the full row instead of splitting it with
+         notes turn by turn depending on notes length. */
+      #tab-board .ship-notes { flex-basis: 100%; }
       /* 3-way toggle -> single dropdown, to save the width 3 separate
          buttons need side by side. */
       #tab-board .ship-stage { display: none; }
@@ -1287,6 +1300,11 @@
         display: block; flex: none; font: 500 12px var(--font-ui);
         color: var(--ink-2); background: var(--paper); border: 1px solid var(--line);
         border-radius: 6px; padding: 1px 3px; max-width: 100px;
+        /* field-sizing:content (Chrome/Edge 123+) shrinks the box to the
+           selected option's actual text -- "Status" no longer reserves
+           "Received"-width space it doesn't need. max-width above is just
+           the fallback cap for browsers that don't support the property. */
+        field-sizing: content;
       }
       /* One more thing to save space on: the shipment's own min-order-date
          isn't as load-bearing as the per-item run-out dates below it. */
@@ -1326,7 +1344,7 @@
          the actual floor now; a genuinely extreme name+run-out combination
          will fall back to wrapping onto its own row again rather than
          becoming unreadable to stay on one. */
-      #tab-board .board.layout-compact .card-top { flex: 0 1 0; min-width: 45px; }
+      #tab-board .board.layout-compact .card-top { flex: 0 1 0; min-width: 220px; }
       #tab-board .board.layout-compact .proj { flex: 0 0 auto; margin-left: auto; }
       /* The run-out projection's desktop-tuned type (13/12px, roomy gaps) is
          wide enough on its own to force the wrap this whole rule set exists
