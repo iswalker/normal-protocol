@@ -134,14 +134,14 @@
 
     /* ── "Search Inventory" — opens the inventory as a modal ── */
     .inv-search-link {
-      appearance: none; background: transparent; border: none;
+      appearance: none; background: transparent; border: 1.5px solid var(--ink-12);
       display: inline-flex; align-items: center; gap: 5px;
-      padding: 4px 8px; border-radius: 6px; cursor: pointer;
+      padding: 5px 10px; border-radius: 7px; cursor: pointer;
       font-family: inherit; font-size: 13px; font-weight: 500;
       color: var(--ink-60); white-space: nowrap;
-      transition: color 0.15s, background 0.15s;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
     }
-    .inv-search-link:hover { color: #3f8f87; background: rgba(121,189,177,0.10); }
+    .inv-search-link:hover { color: var(--teal); border-color: var(--teal); background: rgba(121,189,177,0.10); }
     .inv-search-link svg { width: 13px; height: 13px; display: block; }
 
     /* ── Per-month Planned totals across the middle of the top bar ── */
@@ -963,7 +963,7 @@
     .sb-dragging, .sb-dragging * { cursor: grabbing !important; }
 
     /* ── Column alignment in compact mode ─────────────────────────────────
-       Metric order: SPENT | SHIPMENTS | PLANNED | MAX  (MAX rightmost, original)
+       Metric order: SPENT | PLANNED | MAX  (MAX rightmost, original)
 
        Strategy: give MAX a min-width:88px so PLANNED's right edge is predictable
        for typical amounts (< $1000 → MAX ≤ 7 chars = ~79px fits in 88px):
@@ -987,7 +987,7 @@
     #tab-board .ship-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
     /* month metrics: fixed-width columns so the alignment column is stable.
        PLANNED right edge = 14px (month-head pad) + 96px (MAX box) = 110px from month inner right.
-       SPENT and SHIPMENTS get min-width only (auto-size for short values, grow for large). */
+       SPENT gets min-width only (auto-size for short values, grow for large). */
     #tab-board .board.layout-compact .metric { width: 96px; }
     #tab-board .board.layout-compact .metric:last-child { padding-right: 9px; }
     /* loose cards: add 7px margin each side so they align with shipment cards */
@@ -1001,8 +1001,13 @@
     #tab-board .card.card--divider .card-grip { opacity: 0.35; flex: none; }
     #tab-board .card.card--divider .del { position: static; opacity: 0; font-size: 13px; width: 18px; height: 18px; }
     #tab-board .card.card--divider:hover .del { opacity: 0.6; }
-    #tab-board .board.layout-compact .card.card--untracked .proj { display: none; }
-    #tab-board .board.layout-compact .card.card--untracked .card-body {
+    /* .no-proj is set dynamically in updateCard() (not tied to the static
+       card--untracked class) so it also covers a recurring ghost whose
+       source item has no Inventory match -- ghosts never carry
+       card--untracked themselves, only their root does, so that class alone
+       missed exactly this case (the "—, —" placeholder report). */
+    #tab-board .board.layout-compact .card.no-proj .proj { display: none; }
+    #tab-board .board.layout-compact .card.no-proj .card-body {
       grid-template-columns: 321px 82px 84px 317px;
       grid-template-areas: "top order foot del";
     }
@@ -1366,8 +1371,8 @@
     <img src="Logos/icon.svg" alt="Normal Protocol" />
     <h1>Normal Protocol</h1>
     <button class="inv-search-link" id="inv-search-link" title="Search inventory">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
-      <span class="inv-search-label">Search Inventory</span>
+      <svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m324 168c-26.176 0-48 21.824-48 48v96c0 21.484 14.758 39.789 34.5 45.75-1.5977 8.3516-4.2305 13.012-6.75 15.75-3.9336 4.2773-10.414 6.9727-21.375 10.125s-25.805 5.7031-40.5 16.5-25.137 31.152-25.875 55.5c-0.003906 0.25-0.003906 0.5 0 0.75v382.88c0 39.895 32.855 72.75 72.75 72.75h239.25v48c0 39.473 32.527 72 72 72h310.88c39.473 0 72-32.527 72-72v-204c0-20.492-10.223-37.902-21.75-50.25s-24.621-21.324-36.75-29.625c-9.5156-6.5117-18.246-12.52-24.75-18 20.699-5.3086 36.375-23.949 36.375-46.125v-48c0-26.176-21.824-48-48-48h-264c-26.176 0-48 21.824-48 48v48c0 21.785 15.09 40.438 35.25 46.125-6.5039 5.4805-15.234 11.488-24.75 18-12.129 8.3008-25.598 17.277-37.125 29.625s-21.375 29.758-21.375 50.25v108h-239.25c-13.977 0-24.75-10.773-24.75-24.75v-382.88c0.52344-13.438 2.9453-15.105 6.375-17.625 3.5273-2.5898 12.379-5.332 25.125-9s29.801-9.1016 43.5-24c10.273-11.176 16.805-26.609 19.5-45.75h195c2.4844 17.617 8.207 32.156 17.25 43.125 12.32 14.945 28.207 21.207 40.875 25.125s22.828 6.3398 27.75 9 6.125 2.6055 7.875 11.25c0.71094 6.7109 4.2148 12.812 9.6523 16.809s12.305 5.5195 18.922 4.1953c6.6172-1.3242 12.371-5.3711 15.855-11.152 3.4805-5.7812 4.3672-12.758 2.4453-19.227-4.1641-20.598-17.945-36.352-31.875-43.875s-26.859-9.8047-36.375-12.75-14.797-5.4062-18.375-9.75c-2.2188-2.6914-4.5352-7.3242-6-15 19.742-5.9609 34.5-24.266 34.5-45.75v-96c0-26.176-21.824-48-48-48zm0 48h264v96h-264zm300 348h264v48h-264zm44.25 96h174.38c4.0781 11.105 10.969 20.387 18.375 27.75 11.469 11.402 24.129 20.004 36 28.125s22.777 15.941 29.25 22.875 8.625 11.262 8.625 17.25v204c0 13.711-10.289 24-24 24h-310.88c-13.711 0-24-10.289-24-24v-204c0-5.9883 2.1523-10.316 8.625-17.25s17.004-14.754 28.875-22.875 24.906-16.723 36.375-28.125c7.4062-7.3633 14.297-16.645 18.375-27.75z"/></svg>
+      <span class="inv-search-label">Inventory</span>
     </button>
   </div>
   <div class="month-strip" id="month-strip"></div>
@@ -2024,10 +2029,6 @@
             <span class="mk">Spent</span>
             <span class="mv spentv">$0.00</span>
           </div>
-          <div class="metric">
-            <span class="mk">Shipments</span>
-            <span class="mv shipv">$0.00</span>
-          </div>
           <div class="metric is-total">
             <span class="mk">Planned</span>
             <span class="mv plannedv">$0.00</span>
@@ -2090,6 +2091,12 @@
     cardEl.classList.toggle('tier-out', tier === 'out');
     cardEl.classList.toggle('has-order', hasInv && r.hasOrder);
     cardEl.classList.toggle('counted', !!c.includeInMonthTotal);
+    // No Inventory match (no projected run-out to show) -- hide the whole
+    // Supply/run-out column instead of a "—, —" placeholder, freeing up the
+    // space for everything else. Driven off the same live hasInv check that
+    // fills the column when there IS data, so it also covers a recurring
+    // ghost whose source has no match (ghosts never carry card--untracked).
+    cardEl.classList.toggle('no-proj', !hasInv);
 
     cardEl.querySelector('.status').textContent =
       !hasInv ? '—' : tier === 'out' ? 'OUT' : tier === 'soon' ? 'SOON' : 'OK';
@@ -2212,7 +2219,7 @@
     applyEffectiveMap();
     board.querySelectorAll('.month').forEach((monthEl) => {
       const list = monthEl.querySelector('.month-list');
-      let shipSum = 0, plannedItems = 0, maxItems = 0, itemCount = 0;
+      let plannedItems = 0, maxItems = 0, itemCount = 0;
 
       [...list.children].forEach((node) => {
         if (node.classList.contains('shipment')) {
@@ -2240,7 +2247,6 @@
           node.querySelector('.scount').textContent = sCount;
           const md = node.querySelector('.ship-min-date');
           if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
-          if ((STATE.shipmentData[node.dataset.id] || {}).stage !== 'received') shipSum += sTot;
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
           const cost = updateCard(node);
@@ -2253,7 +2259,6 @@
       const spent = monthSpent(monthEl);
       const spentEl = monthEl.querySelector('.spentv');
       if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
-      monthEl.querySelector('.shipv').textContent = SB.fmtMoney(shipSum);
       monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
       monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
@@ -2833,7 +2838,7 @@
     const monthEl = node.closest('.month');
     if (!monthEl) return;
     const list = monthEl.querySelector('.month-list');
-    let shipSum = 0, plannedItems = 0, maxItems = 0;
+    let plannedItems = 0, maxItems = 0;
     [...list.children].forEach((n) => {
       if (n.classList.contains('shipment')) {
         const shipLocked = !!(STATE.shipmentData[n.dataset.id] || {}).stage;
@@ -2853,7 +2858,6 @@
         n.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
         const md = n.querySelector('.ship-min-date');
         if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
-        if ((STATE.shipmentData[n.dataset.id] || {}).stage !== 'received') shipSum += sTot;
       } else if (n.classList.contains('card')) {
         const c = STATE.cardData[n.dataset.id];
         const cost = c ? calcForCard(c).cost : 0;
@@ -2864,7 +2868,6 @@
     const spent = monthSpent(monthEl);
     const spentEl = monthEl.querySelector('.spentv');
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
-    monthEl.querySelector('.shipv').textContent = SB.fmtMoney(shipSum);
     monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
     monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
     updateMonthStrip();
