@@ -229,6 +229,11 @@
       flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
       font-family: inherit; font-size: 13px; color: var(--ink); outline: none;
     }
+    .inv-search-clear {
+      flex: none; width: 16px; height: 16px; border: none; background: transparent;
+      color: var(--ink-60); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
+    }
+    .inv-search-clear:hover { color: var(--ink); background: var(--accent-tint, rgba(121,189,177,0.15)); }
 
     /* right side of the top bar — board-only Inventory controls */
     .header-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
@@ -715,16 +720,18 @@
       font-family: var(--font-num); font-size: 14.5px; font-weight: 500;
       margin-top: 2px; letter-spacing: -.01em;
     }
-    #tab-board .metric.is-total .mv { color: var(--accent-deep); font-weight: 600; }
+    #tab-board .metric.is-total .mv { color: var(--ink-2); font-weight: 600; transition: color .15s; }
     #tab-board .metric.is-max .mv { color: var(--ink-2); }
     #tab-board .metric.spent .mv { color: var(--b-ink); transition: color .15s; }
-    /* Spent and Planned both jump-navigate (see jumpToMonthSection) --
-       Planned always reads teal already (.is-total above); Spent only picks
-       up the same teal once scroll-spy finds the completed/locked section
-       in view, kept in sync on scroll the same way the month-strip's own
-       is-current highlight is (see updateCurrentMonthFromScroll). */
+    /* Spent and Planned both jump-navigate (see jumpToMonthSection) and
+       share one teal "you are here" indicator between them, mutually
+       exclusive -- Planned lit while scrolled above the completed/locked
+       section, Spent lit once scroll-spy finds it in view, kept in sync on
+       scroll the same way the month-strip's own is-current highlight is
+       (see updateCurrentMonthFromScroll). */
     #tab-board .metric.spent, #tab-board .metric.is-total { cursor: pointer; }
-    #tab-board .metric.spent.is-current-section .mv { color: var(--accent-deep); }
+    #tab-board .metric.spent.is-current-section .mv,
+    #tab-board .metric.is-total.is-current-section .mv { color: var(--accent-deep); }
     #tab-board .field label .lbl-sub { color: var(--ink-3); font-weight: 500; }
 
     #tab-board .month-list {
@@ -1650,6 +1657,7 @@
     <div class="inv-modal-search" title="Search inventory">
       <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
       <input id="inv-filter-item" type="search" placeholder="Search…" autocomplete="off" />
+      <button class="inv-search-clear" id="inv-search-clear" title="Clear search" style="display:none">×</button>
     </div>
     <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
     <button class="inv-modal-close" id="inv-modal-close" title="Close" aria-label="Close">&times;</button>
@@ -1730,12 +1738,18 @@
     document.dispatchEvent(new CustomEvent('inventoryActivated'));
     // Land the cursor in the Item filter so you can type straight away. Deferred
     // so it runs after the rows render, which would otherwise steal focus back.
-    const focusFilter = () => {
-      const f = document.getElementById('inv-filter-item');
-      if (f && f.offsetParent !== null) { f.focus(); f.select?.(); return true; }
-      return false;
-    };
-    requestAnimationFrame(() => { if (!focusFilter()) setTimeout(focusFilter, 120); });
+    // Desktop only -- on mobile this pops the on-screen keyboard and zooms
+    // the page in the instant Inventory opens, before the user asked for
+    // either, and made the search box read as permanently "focused" (white)
+    // instead of its normal grey resting state.
+    if (!window.matchMedia('(pointer: coarse)').matches) {
+      const focusFilter = () => {
+        const f = document.getElementById('inv-filter-item');
+        if (f && f.offsetParent !== null) { f.focus(); f.select?.(); return true; }
+        return false;
+      };
+      requestAnimationFrame(() => { if (!focusFilter()) setTimeout(focusFilter, 120); });
+    }
   }
   function closeInventory() {
     if (!invOv) return;
@@ -2257,7 +2271,6 @@
           <span class="mname">${esc(m.name)}</span>
           <span class="msub">${esc(m.sub || '')}</span>
           <span class="mcount">0</span>
-          <button class="notes-toggle month-notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
         <div class="month-search-box" data-act="focus-month-search" title="Search this month">
@@ -2265,6 +2278,7 @@
           <input type="text" class="month-search-input" placeholder="Search…" autocomplete="off" />
           <button class="month-search-clear" data-act="clear-month-search" title="Clear search" style="display:none">×</button>
         </div>
+        <button class="notes-toggle month-notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         <div class="month-metrics">
           <div class="metric spent" data-act="jump-spent" title="Jump to completed orders">
             <span class="mk">Spent</span>
@@ -2601,12 +2615,15 @@
     });
     for (const m of months) {
       const spentMetric = m.querySelector(':scope > .month-head .metric.spent');
-      if (!spentMetric) continue;
+      const plannedMetric = m.querySelector(':scope > .month-head .metric.is-total');
+      if (!spentMetric || !plannedMetric) continue;
       const firstLocked = m.querySelector(':scope > .month-list > .shipment.is-locked');
       const inCompletedSection = !!firstLocked && (vertical
         ? firstLocked.getBoundingClientRect().top <= tbRect.top + EDGE_TOLERANCE
         : firstLocked.getBoundingClientRect().left <= tbRect.left + EDGE_TOLERANCE);
+      // Mutually exclusive: exactly one of the two reads teal at a time.
       spentMetric.classList.toggle('is-current-section', inCompletedSection);
+      plannedMetric.classList.toggle('is-current-section', !inCompletedSection);
     }
   }
   {
@@ -3184,9 +3201,19 @@
           const c = STATE.cardData[cardEl.dataset.id];
           const r = c ? calcForCard(c) : null;
           const cost = r ? r.cost : 0;
+          // A month-level search hides non-matching items (see
+          // applyMonthSearch) but the shipment's own $ badge always totals
+          // everything inside it regardless -- so sTot (badge) is unaffected,
+          // only the Planned/Max figures this feeds into below skip
+          // search-hidden items, the same way they'd skip an item that
+          // wasn't there at all.
+          const hiddenBySearch = cardEl.classList.contains('search-hide');
           if (!shipLocked) {
-            maxItems += cost;
-            if (c && c.includeInMonthTotal) { sTot += cost; plannedItems += cost; }
+            if (!hiddenBySearch) {
+              maxItems += cost;
+              if (c && c.includeInMonthTotal) plannedItems += cost;
+            }
+            if (c && c.includeInMonthTotal) sTot += cost;
             if (c && c.dose && c.loggedOn && r && r.hasOrder && isFinite(r.newRunOut)) {
               if (!minRunOut || r.newRunOut < minRunOut) minRunOut = r.newRunOut;
             }
@@ -3196,6 +3223,7 @@
         const md = n.querySelector('.ship-min-date');
         if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
       } else if (n.classList.contains('card')) {
+        if (n.classList.contains('search-hide')) return;
         const c = STATE.cardData[n.dataset.id];
         const cost = c ? calcForCard(c).cost : 0;
         maxItems += cost;
@@ -3330,6 +3358,14 @@
     }
     if (a === 'del-ship') {
       const shipEl = act.closest('.shipment');
+      // Desktop has no equivalent confirm today and this isn't meant to add
+      // one there -- it's specifically for mobile, where the delete × sits
+      // right next to other frequently-tapped controls in a cramped header
+      // and a mis-tap is far easier than on a mouse-driven desktop layout.
+      if (window.matchMedia('(pointer: coarse)').matches) {
+        const shipName = (STATE.shipmentData[shipEl.dataset.id] || {}).name || 'this order';
+        if (!confirm(`Delete "${shipName}" and everything in it?`)) return;
+      }
       // A recurring root card living in this shipment has its projections
       // scattered across other months' shipments, which a plain DOM removal
       // here would never touch — they'd survive as ghosts pointing at an id
@@ -3438,6 +3474,7 @@
         node.classList.toggle('search-hide', !!lq && !itemName.includes(lq));
       }
     });
+    recalcTotalsFor(monthEl);
     updateClearFiltersBtn();
   }
 
@@ -4026,6 +4063,34 @@
       target.dispatchEvent(new MouseEvent('contextmenu', {
         bubbles: true, cancelable: true, clientX: startX, clientY: startY,
       }));
+    }, { passive: false });
+  })();
+
+  // ── mobile: same preventDefault-swallowed-click problem as the grip tap
+  //    above, on the notes-toggle icon -- Sortable's touch handling on the
+  //    draggable item this button sits inside eats the first tap's synthetic
+  //    click, so a real device needed two taps to register one. Same fix:
+  //    track the touch ourselves and fire the click by hand. ──
+  (function initNotesToggleTap() {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    const MOVE_TOLERANCE = 10;
+    let startX = 0, startY = 0, target = null, moved = false;
+    board.addEventListener('touchstart', (e) => {
+      target = e.target.closest('.notes-toggle') || null;
+      moved = false;
+      if (target) { const t = e.touches[0]; startX = t.clientX; startY = t.clientY; }
+    }, { passive: true });
+    board.addEventListener('touchmove', (e) => {
+      if (!target) return;
+      const t = e.touches[0];
+      if (Math.abs(t.clientX - startX) > MOVE_TOLERANCE || Math.abs(t.clientY - startY) > MOVE_TOLERANCE) moved = true;
+    }, { passive: true });
+    board.addEventListener('touchend', (e) => {
+      const btn = target;
+      target = null;
+      if (!btn || moved) return;
+      e.preventDefault();
+      btn.click();
     }, { passive: false });
   })();
 
@@ -5498,9 +5563,21 @@
       const isMobile = window.matchMedia('(max-width: 680px)').matches;
       deskCount.textContent = String(isMobile ? visibleCardCount : visibleCount);
     }
+    const searchClearBtn = document.getElementById('inv-search-clear');
+    if (searchClearBtn) searchClearBtn.style.display = itemQRaw ? 'block' : 'none';
   }
 
   FILTER_COLS.forEach(f => f.el.addEventListener('input', applyFilters));
+
+  // Clearing the search does NOT refocus the input -- on mobile, focusing a
+  // text input re-opens the on-screen keyboard and zooms the page right
+  // after the user asked to dismiss what they typed, not start typing again.
+  document.getElementById('inv-search-clear')?.addEventListener('click', () => {
+    const input = document.getElementById('inv-filter-item');
+    if (!input) return;
+    input.value = '';
+    applyFilters();
+  });
 
 
   if (body) body.addEventListener('click', async (e) => {
