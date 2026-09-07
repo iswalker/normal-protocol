@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, user-scalable=yes" />
   <title>Normal Protocol</title>
   <link rel="icon" type="image/svg+xml" href="Logos/icon.svg" />
+  <!-- Home-screen icons: iOS reads apple-touch-icon specifically (ignores
+       rel="icon" for that purpose); Android's "add to home screen" picks the
+       largest usable rel="icon" PNG, which this also covers. -->
+  <link rel="apple-touch-icon" href="Logos/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="Logos/android-chrome-512x512.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="Logos/android-chrome-192x192.png" />
+  <meta name="apple-mobile-web-app-title" content="Normal Protocol" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -221,7 +228,7 @@
       color: var(--ink-60); transition: color 0.15s, border-color 0.15s;
     }
     .settings-btn:hover { color: var(--teal); border-color: var(--teal); }
-    .settings-btn svg { width: 14px; height: 14px; display: block; fill: currentColor; }
+    .settings-btn svg { width: 16px; height: 16px; display: block; fill: currentColor; }
     .settings-panel {
       display: none; flex-direction: column; gap: 6px;
       position: absolute; top: calc(100% + 8px); right: 0; z-index: 200;
@@ -525,14 +532,28 @@
 
     /* ── Mobile header ── */
     @media (max-width: 680px) {
-      header { padding: 0 10px; gap: 4px; min-height: 52px; }
+      header { padding: 0 10px; gap: 4px; min-height: 52px; flex-wrap: wrap; row-gap: 6px; }
 
       /* Logo only — no text */
       .brand h1 { display: none; }
-      .brand { flex: 0 0 auto; }
+      .brand { flex: 0 0 auto; order: 1; }
+      .header-right { order: 2; }
 
-      /* The per-month Planned strip needs room the phone doesn't have */
-      .month-strip { display: none; }
+      /* Brought back as its own full-width row under the primary toolbar,
+         instead of hidden outright -- order:3 (after brand/header-right,
+         regardless of its actual DOM position between them) plus
+         flex-basis:100% is what forces it alone onto line 2. Still the same
+         #month-strip element with the same click-to-jump handler, just
+         restyled to fit and scrollable within itself since several months
+         rarely fit a phone's width even at this size. */
+      .month-strip {
+        display: flex; order: 3; flex: 1 1 100%;
+        overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+        padding-bottom: 6px; margin-bottom: -6px;
+      }
+      .month-strip-cell { padding: 2px 10px; flex: 0 0 auto; }
+      .month-strip-amt { font-size: 12.5px; }
+      .month-strip-mon { font-size: 9.5px; }
       /* Keep the "Search Inventory" label on mobile too -- an icon-only button
          here was a tiny tap target, and the title next to it is already
          hidden at this width so there's room. */
@@ -1121,6 +1142,9 @@
       display: flex; border: 1px solid var(--line); border-radius: 6px;
       overflow: hidden; flex: none;
     }
+    /* Mobile-only <select> equivalent of the button row above -- see the
+       max-width:680px block for what shows it. */
+    #tab-board .ship-stage-select { display: none; }
     #tab-board .stage-btn {
       font: 500 10.5px/1 var(--font-ui); padding: 4px 8px;
       background: var(--paper); color: var(--ink-3);
@@ -1209,6 +1233,12 @@
 
     /* ── Mobile layout (≤ 680px) ── */
     @media (max-width: 680px) {
+      /* Months already stack to full width below -- there's nothing that's
+         actually supposed to need horizontal scroll room at this width, so
+         lock it down instead of leaving the page free to rubber-band/scroll
+         sideways over a few stray overflow pixels. */
+      body, #tab-board { overflow-x: hidden; }
+
       /* Board tab: stack months vertically */
       #board {
         flex-direction: column !important;
@@ -1230,6 +1260,17 @@
       #tab-board .ship-head { flex-wrap: wrap; row-gap: 6px; }
       #tab-board .ship-row-break { display: block; flex-basis: 100%; height: 0; }
       #tab-board .ship-head .ship-total { margin-left: 0; }
+      /* 3-way toggle -> single dropdown, to save the width 3 separate
+         buttons need side by side. */
+      #tab-board .ship-stage { display: none; }
+      #tab-board .ship-stage-select {
+        display: block; flex: none; font: 500 12px var(--font-ui);
+        color: var(--ink-2); background: var(--paper); border: 1px solid var(--line);
+        border-radius: 6px; padding: 4px 6px; max-width: 100px;
+      }
+      /* One more thing to save space on: the shipment's own min-order-date
+         isn't as load-bearing as the per-item run-out dates below it. */
+      #tab-board .ship-min-date { display: none; }
 
       /* Card row: same problem — the compact grid's fixed pixel columns
          (143/155/94/81px) add up to more than a phone screen and everything
@@ -1239,8 +1280,25 @@
         display: flex; flex-wrap: wrap; align-items: center;
         column-gap: 8px; row-gap: 5px;
       }
-      #tab-board .board.layout-compact .card-top { flex: 1 1 auto; min-width: 0; }
+      /* flex:0 (no grow) on card-top + margin-left:auto on proj is the classic
+         "one side left, one side right, same line" pairing -- card-top no
+         longer claims the whole row via flex-grow before proj is even
+         considered, which is what was forcing proj onto its own line 2
+         despite plenty of room (name left-aligned + ellipsis if it's long,
+         run-out right-aligned, saving the row it used to take). */
+      #tab-board .board.layout-compact .card-top { flex: 0 1 auto; min-width: 30px; }
       #tab-board .board.layout-compact .proj { flex: 0 0 auto; margin-left: auto; }
+      /* The run-out projection's desktop-tuned type (13/12px, roomy gaps) is
+         wide enough on its own to force the wrap this whole rule set exists
+         to avoid -- shrink it further so it reliably fits next to a name on
+         one line instead of just being repositioned onto an empty one. */
+      #tab-board .board.layout-compact .proj .pv { gap: 3px; }
+      #tab-board .board.layout-compact .proj .cur,
+      #tab-board .board.layout-compact .proj .nxt { gap: 2px; }
+      #tab-board .board.layout-compact .proj .dl { font-size: 11px; }
+      #tab-board .board.layout-compact .proj .dl .u { font-size: 9px; }
+      #tab-board .board.layout-compact .proj .ro { font-size: 10px; }
+      #tab-board .board.layout-compact .proj .arrow { font-size: 10px; }
       #tab-board .card-row-break { display: block; flex-basis: 100%; height: 0; }
       #tab-board .board.layout-compact .order { flex: 0 0 auto; }
       #tab-board .board.layout-compact .card-foot { flex: 0 0 auto; }
@@ -1371,7 +1429,7 @@
     <img src="Logos/icon.svg" alt="Normal Protocol" />
     <h1>Normal Protocol</h1>
     <button class="inv-search-link" id="inv-search-link" title="Search inventory">
-      <svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m324 168c-26.176 0-48 21.824-48 48v96c0 21.484 14.758 39.789 34.5 45.75-1.5977 8.3516-4.2305 13.012-6.75 15.75-3.9336 4.2773-10.414 6.9727-21.375 10.125s-25.805 5.7031-40.5 16.5-25.137 31.152-25.875 55.5c-0.003906 0.25-0.003906 0.5 0 0.75v382.88c0 39.895 32.855 72.75 72.75 72.75h239.25v48c0 39.473 32.527 72 72 72h310.88c39.473 0 72-32.527 72-72v-204c0-20.492-10.223-37.902-21.75-50.25s-24.621-21.324-36.75-29.625c-9.5156-6.5117-18.246-12.52-24.75-18 20.699-5.3086 36.375-23.949 36.375-46.125v-48c0-26.176-21.824-48-48-48h-264c-26.176 0-48 21.824-48 48v48c0 21.785 15.09 40.438 35.25 46.125-6.5039 5.4805-15.234 11.488-24.75 18-12.129 8.3008-25.598 17.277-37.125 29.625s-21.375 29.758-21.375 50.25v108h-239.25c-13.977 0-24.75-10.773-24.75-24.75v-382.88c0.52344-13.438 2.9453-15.105 6.375-17.625 3.5273-2.5898 12.379-5.332 25.125-9s29.801-9.1016 43.5-24c10.273-11.176 16.805-26.609 19.5-45.75h195c2.4844 17.617 8.207 32.156 17.25 43.125 12.32 14.945 28.207 21.207 40.875 25.125s22.828 6.3398 27.75 9 6.125 2.6055 7.875 11.25c0.71094 6.7109 4.2148 12.812 9.6523 16.809s12.305 5.5195 18.922 4.1953c6.6172-1.3242 12.371-5.3711 15.855-11.152 3.4805-5.7812 4.3672-12.758 2.4453-19.227-4.1641-20.598-17.945-36.352-31.875-43.875s-26.859-9.8047-36.375-12.75-14.797-5.4062-18.375-9.75c-2.2188-2.6914-4.5352-7.3242-6-15 19.742-5.9609 34.5-24.266 34.5-45.75v-96c0-26.176-21.824-48-48-48zm0 48h264v96h-264zm300 348h264v48h-264zm44.25 96h174.38c4.0781 11.105 10.969 20.387 18.375 27.75 11.469 11.402 24.129 20.004 36 28.125s22.777 15.941 29.25 22.875 8.625 11.262 8.625 17.25v204c0 13.711-10.289 24-24 24h-310.88c-13.711 0-24-10.289-24-24v-204c0-5.9883 2.1523-10.316 8.625-17.25s17.004-14.754 28.875-22.875 24.906-16.723 36.375-28.125c7.4062-7.3633 14.297-16.645 18.375-27.75z"/></svg>
+      <svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg>
       <span class="inv-search-label">Inventory</span>
     </button>
   </div>
@@ -1881,6 +1939,8 @@
     shipEl.querySelectorAll('.stage-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.stage === stage);
     });
+    const select = shipEl.querySelector(':scope > .ship-head > .ship-stage-select');
+    if (select) select.value = stage || '';
     shipEl.querySelectorAll('.ship-body input[data-field="price"], .ship-body input[data-field="qty"]').forEach((inp) => {
       inp.disabled = locked;
     });
@@ -1983,6 +2043,14 @@
     const stageBtns = ['ordered', 'entered', 'received']
       .map((st) => `<button class="stage-btn${stage === st ? ' active' : ''}" data-act="set-stage" data-stage="${st}">${st[0].toUpperCase() + st.slice(1)}</button>`)
       .join('');
+    // Mobile-only equivalent of the 3-way toggle above -- a <select> instead
+    // of 3 buttons side by side. "Status" (empty value) is the same state as
+    // all three buttons being unselected. Driven through the exact same
+    // set-stage action as the buttons (see the 'change' listener below), not
+    // a separate code path, so promote/demote/confirm-receive all still run.
+    const stageOptions = ['', 'ordered', 'entered', 'received']
+      .map((st) => `<option value="${st}"${stage === (st || null) ? ' selected' : ''}>${st ? st[0].toUpperCase() + st.slice(1) : 'Status'}</option>`)
+      .join('');
     return `
     <div class="shipment${locked ? ' is-locked' : ''}" data-id="${block.id}" data-kind="shipment">
       <div class="ship-head">
@@ -1994,6 +2062,7 @@
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <span class="ship-min-date"></span>
         <div class="ship-stage">${stageBtns}</div>
+        <select class="ship-stage-select" data-act="set-stage-select" aria-label="Status">${stageOptions}</select>
         <span class="ship-row-break" aria-hidden="true"></span>
         <div class="ship-total"><span class="amt">$0.00</span></div>
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
@@ -2762,6 +2831,29 @@
       handle: '.card-grip',
     }));
   }
+
+  // Mobile stage dropdown -- routes through the exact same set-stage click
+  // handling as the desktop 3-way toggle (promote/demote, the Received
+  // confirm gate, InventoryWriter, persist) rather than a parallel code
+  // path, by just clicking the equivalent button. The select's displayed
+  // value updates natively the instant a user picks an option, ahead of
+  // whether that stage change actually commits (e.g. cancelling the
+  // Received confirm dialog) -- reverted here immediately and only moved
+  // forward once applyShipmentStage() runs for real, so a cancelled pick
+  // doesn't leave the dropdown showing something that didn't happen.
+  board.addEventListener('change', (e) => {
+    const sel = e.target.closest('.ship-stage-select');
+    if (!sel) return;
+    const shipEl = sel.closest('.shipment');
+    const newVal = sel.value;
+    const oldVal = shipEl.querySelector('.stage-btn.active')?.dataset.stage || '';
+    sel.value = oldVal;
+    if (newVal === oldVal) return;
+    const targetBtn = newVal
+      ? shipEl.querySelector(`.stage-btn[data-stage="${newVal}"]`)
+      : shipEl.querySelector('.stage-btn.active');
+    targetBtn?.click();
+  });
 
   // ── editing ──
   board.addEventListener('input', (e) => {
@@ -3596,6 +3688,46 @@
     makeShipSortable(newEl.querySelector('.ship-body'));
     return newEl.querySelector('.ship-body');
   }
+
+  // ── mobile: press-and-hold → the same context menu right-click opens ──
+  // Touch has no right-click, so a ~1.5s hold-without-moving synthesizes a
+  // real 'contextmenu' event at the touch point instead of duplicating the
+  // menu-building logic below. Scoped away from anything that's already
+  // interactive (buttons/inputs/links/contenteditable) so a long tap on
+  // those doesn't ALSO pop a menu, and away from the drag grips specifically
+  // since dragging already owns press-and-move there -- if a drag actually
+  // starts (Sortable's .sb-dragging on body) the pending hold is dropped.
+  (function initLongPressContextMenu() {
+    const HOLD_MS = 1500, MOVE_TOLERANCE = 10;
+    let timer = null, startX = 0, startY = 0, target = null;
+    const cancel = () => { clearTimeout(timer); timer = null; };
+    board.addEventListener('touchstart', (e) => {
+      const t = e.target.closest('.card[data-id], .shipment');
+      if (!t || e.target.closest('[contenteditable], input, button, select, a, .card-grip, .truck.block-grip')) {
+        cancel();
+        return;
+      }
+      target = t;
+      const touch = e.touches[0];
+      startX = touch.clientX; startY = touch.clientY;
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        if (document.body.classList.contains('sb-dragging')) return; // a real drag won out instead
+        navigator.vibrate?.(12);
+        target.dispatchEvent(new MouseEvent('contextmenu', {
+          bubbles: true, cancelable: true, clientX: startX, clientY: startY,
+        }));
+      }, HOLD_MS);
+    }, { passive: true });
+    board.addEventListener('touchmove', (e) => {
+      if (!timer) return;
+      const touch = e.touches[0];
+      if (Math.abs(touch.clientX - startX) > MOVE_TOLERANCE || Math.abs(touch.clientY - startY) > MOVE_TOLERANCE) cancel();
+    }, { passive: true });
+    board.addEventListener('touchend', cancel, { passive: true });
+    board.addEventListener('touchcancel', cancel, { passive: true });
+  })();
 
   board.addEventListener('contextmenu', (e) => {
     // Card menu takes priority over shipment menu
