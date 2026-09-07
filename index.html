@@ -723,8 +723,6 @@
       font-family: var(--font-num); font-size: 12px; color: var(--accent-deep);
       white-space: nowrap; flex: 0 0 auto;
     }
-    /* Sits right after the Ordered/Entered/Received stage buttons. */
-    #tab-board .ship-head .ship-total { margin-left: 12px; }
     /* Forces a flex line-break right after the stage buttons on narrow
        screens (see the max-width:680px block below) — a no-op on desktop,
        where .ship-head never wraps. */
@@ -794,7 +792,7 @@
     }
     #tab-board .ship-total {
       font-family: var(--font-num); font-size: 14px; font-weight: 600;
-      color: var(--accent-deep); text-align: right; padding-left: 4px;
+      color: var(--accent-deep); text-align: right;
     }
     #tab-board .ship-body { padding: 9px; display: flex; flex-direction: column; gap: 9px; min-height: 30px; }
     #tab-board .ship-body > * { flex: 0 0 auto; }
@@ -1277,7 +1275,7 @@
          occupies (see below) -- only row 1's trailing item (ship-total)
          ever reaches that corner, so the clearance goes here rather than
          as padding on the whole header, which would eat into every row. */
-      #tab-board .ship-head .ship-total { margin-left: 8px; margin-right: 20px; }
+      #tab-board .ship-head .ship-total { margin-right: 18px; }
       /* Same flex-basis:0 fix as .card-top, same reason: .ship-id's
          basis:auto (the base, desktop-shared rule) measures it at its full
          unshrunk name-text width for the wrap decision, which is enough on
@@ -1304,7 +1302,7 @@
          to the shipment's own corner, same pattern as .card-end .del. */
       #tab-board .ship-head { position: relative; }
       #tab-board .ship-head .del {
-        position: absolute; top: 1px; right: 2px; margin: 0;
+        position: absolute; top: 7px; right: 2px; margin: 0;
       }
       /* 3-way toggle -> single dropdown, to save the width 3 separate
          buttons need side by side. */
