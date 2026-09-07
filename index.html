@@ -573,6 +573,17 @@
       .board-controls { display: flex !important; }
       .board-controls .refresh-inv-btn { display: none; }
       .inv-modal-ov { padding: 0; }
+      /* #tab-inventory carries both the "#tab-inventory" id (a leftover from
+         when Inventory rendered as a normal in-flow tab, height:calc(100vh -
+         48px) reserving room for a header bar above it) and the "inv-modal"
+         class (the current fixed full-screen overlay presentation) on the
+         same element -- the id selector below beats the plain-class
+         .inv-modal rule regardless of source order, leaving both a 48px
+         gap of overlay backdrop showing at the bottom and this rule's own
+         padding-bottom as a second, smaller gap inside the white card.
+         #tab-inventory.inv-modal (id+class) outranks the plain id rule to
+         actually win. */
+      #tab-inventory.inv-modal { height: 100%; padding-bottom: 0; }
       .inv-modal { border-radius: 0; height: 100%; }
     }
 
@@ -701,7 +712,14 @@
     }
     #tab-board .metric.is-total .mv { color: var(--accent-deep); font-weight: 600; }
     #tab-board .metric.is-max .mv { color: var(--ink-2); }
-    #tab-board .metric.spent .mv { color: var(--b-ink); }
+    #tab-board .metric.spent .mv { color: var(--b-ink); transition: color .15s; }
+    /* Spent and Planned both jump-navigate (see jumpToMonthSection) --
+       Planned always reads teal already (.is-total above); Spent only picks
+       up the same teal once scroll-spy finds the completed/locked section
+       in view, kept in sync on scroll the same way the month-strip's own
+       is-current highlight is (see updateCurrentMonthFromScroll). */
+    #tab-board .metric.spent, #tab-board .metric.is-total { cursor: pointer; }
+    #tab-board .metric.spent.is-current-section .mv { color: var(--accent-deep); }
     #tab-board .field label .lbl-sub { color: var(--ink-3); font-weight: 500; }
 
     #tab-board .month-list {
@@ -754,13 +772,25 @@
       color: var(--ink-3); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
     }
     #tab-board .month-search-clear:hover { color: var(--ink); background: var(--accent-tint); }
+    /* Notes lives in its own row below .month-head (not inside it) so it's
+       never part of the header's position:sticky box -- a sticky ancestor
+       drags every descendant along as it pins, and an editable notes field
+       has no business staying glued to the top of the screen while the list
+       under it scrolls. The .month-notes-toggle icon (in month-head, see
+       below) is a static trigger and fine to stay sticky; only the actual
+       editable field needed to move out. */
+    #tab-board .month-notes-row { padding: 2px 14px 8px; }
     #tab-board .month-notes {
-      flex: 1 1 0; min-width: 60px; font-size: 12px; color: #222; padding-left: 4px;
+      display: block; font-size: 12px; color: #222;
       outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       cursor: text;
     }
     #tab-board .month-notes:empty::before { content: attr(placeholder); opacity: .35; pointer-events: none; }
-    #tab-board .month-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
+    #tab-board .month-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; white-space: normal; }
+    /* Desktop: no toggle needed, the row is always visible (unchanged
+       behavior from before the relocation above); .notes-toggle is hidden
+       by default everywhere (see .card-notes block) and only shown on
+       mobile -- see the max-width:680px block. */
     /* Cards/shipments hidden by an active month search */
     #tab-board .month-list > .search-hide,
     #tab-board .ship-body > .search-hide { display: none !important; }
@@ -1008,8 +1038,16 @@
        content width didn't match the one width this math was tuned for.
        They now just sit in the header's normal flex order, per shipmentHTML:
        min-date right after "+ Item", total right after the stage buttons. */
-    #tab-board .ship-notes {
-      font-size: 12px; color: #222; flex: 1 1 0; min-width: 0;
+    /* Hidden unless the shipment already has saved notes (.notes-open, set
+       at render time -- see shipmentHTML) or the "Add Notes" context-menu
+       action opens it (right-click on desktop, tap the grip on mobile --
+       both already route through the same contextmenu handler). Unlike
+       cards/months there's no tap icon for shipments; the context menu
+       already exists and is reachable on both platforms, so it doubles as
+       the reveal mechanism instead of adding a second, redundant control. */
+    #tab-board .ship-notes { display: none; }
+    #tab-board .shipment.notes-open .ship-notes {
+      display: block; font-size: 12px; color: #222; flex: 1 1 0; min-width: 0;
       outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       cursor: text;
     }
@@ -1140,6 +1178,9 @@
       cursor: text;
     }
     #tab-board .card-notes:empty::before { content: attr(placeholder); opacity: .35; pointer-events: none; }
+    /* Desktop: field stays inline and always visible, same as before -- the
+       toggle icon is a mobile-only affordance. See max-width:680px block. */
+    #tab-board .notes-toggle { display: none; }
     #tab-board .card-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
     #tab-board .board.layout-compact .card-end .del {
       position: static; width: 18px; height: 18px; opacity: .4; flex: none;
@@ -1262,6 +1303,20 @@
       #tab-board .month-head { flex-wrap: wrap; row-gap: 4px; }
       #tab-board .month-metrics { flex: 1 1 100%; margin-left: 0; margin-right: 0; justify-content: flex-end; }
       #tab-board .board.layout-compact .metric { width: auto; min-width: 0; }
+      /* Notes: icon replaces the always-visible inline field from desktop --
+         tapping it reveals the actual field in .month-notes-row, below the
+         header (outside month-head's position:sticky box, so the field
+         itself scrolls away with the list instead of staying pinned).
+         Auto-open already if there's a saved value (.notes-open, set at
+         render time by monthHTML). */
+      #tab-board .month-notes-toggle {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 20px; height: 20px; flex: none; padding: 0; border: 0;
+        background: transparent; color: var(--ink-3); cursor: pointer;
+      }
+      #tab-board .month-notes-toggle svg { width: 13px; height: 13px; }
+      #tab-board .month-notes-row { display: none; }
+      #tab-board .month-notes-row.notes-open { display: block; }
 
       /* Shipment header: wrap instead of clipping the total/notes/× off the
          right edge — the fixed-width flex row was tuned for desktop and
@@ -1391,6 +1446,19 @@
       #tab-board .board.layout-compact .card-end .del {
         position: absolute; top: 2px; right: 2px; margin: 0;
       }
+      /* Notes: icon replaces the always-visible inline field from desktop --
+         tapping it reveals the actual field on its own row, below the
+         price/qty/$ row above (card-end's own row). Auto-open already if
+         there's a saved value (.notes-open, set at render time by cardHTML),
+         so nothing is hidden that the user already typed. */
+      #tab-board .board.layout-compact .card-end .notes-toggle {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 20px; height: 20px; flex: none; padding: 0; border: 0;
+        background: transparent; color: var(--ink-3); cursor: pointer;
+      }
+      #tab-board .board.layout-compact .card-end .notes-toggle svg { width: 13px; height: 13px; }
+      #tab-board .board.layout-compact .card-end .card-notes { display: none; flex-basis: 100%; padding-left: 0; }
+      #tab-board .board.layout-compact .card-end.notes-open .card-notes { display: block; }
 
       /* Inventory tab: hide table, show cards */
       #tab-inventory .table-wrap { display: none; }
@@ -1910,6 +1978,7 @@
     truck: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h11v9H1z"/><path d="M12 8h4l3 3v3h-7z"/><circle cx="5" cy="16.5" r="1.6"/><circle cx="16" cy="16.5" r="1.6"/></svg>`,
     plus: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>`,
     search: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>`,
+    notes: `<svg viewBox="0 0 1200 1200" fill="currentColor"><path d="m1087.5 131.25h-975c-10.363 0-18.75-8.3867-18.75-18.75s8.3867-18.75 18.75-18.75h975c10.363 0 18.75 8.3867 18.75 18.75s-8.3867 18.75-18.75 18.75zm18.75 176.26c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm0 194.99c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm0 195.01c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm0 194.99c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm-466.3 195.01c0-10.363-8.3867-18.75-18.75-18.75h-508.7c-10.363 0-18.75 8.3867-18.75 18.75s8.3867 18.75 18.75 18.75h508.7c10.363 0 18.75-8.3867 18.75-18.75z"/></svg>`,
   };
 
   let STATE; // { cardData, shipmentData }
@@ -2115,9 +2184,10 @@
           <span class="meta">on hand <b class="onhand">0</b> · <b class="dose">0</b>/day · <b class="bsize">0</b>/btl</span>
           <span class="ototal"><small>Order</small><span class="amt">$0.00</span></span>
         </div>
-        <div class="card-end">
+        <div class="card-end${c.notes && c.notes.trim() ? ' notes-open' : ''}">
           <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month's Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
           ${!isGhost ? `<span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${c.recur || ''}">mo</span>` : ''}
+          <button class="notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
           <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || '')}</span>
           <button class="del" data-act="del-card" title="Remove item" aria-label="Remove item">×</button>
         </div>
@@ -2142,7 +2212,7 @@
       .map((st) => `<option value="${st}"${stage === (st || null) ? ' selected' : ''}>${st ? st[0].toUpperCase() + st.slice(1) : 'Status'}</option>`)
       .join('');
     return `
-    <div class="shipment${locked ? ' is-locked' : ''}" data-id="${block.id}" data-kind="shipment">
+    <div class="shipment${locked ? ' is-locked' : ''}${s.notes && s.notes.trim() ? ' notes-open' : ''}" data-id="${block.id}" data-kind="shipment">
       <div class="ship-head">
         <span class="truck block-grip" title="Drag shipment">${ICON.truck}</span>
         <div class="ship-id">
@@ -2175,6 +2245,7 @@
           <span class="mname">${esc(m.name)}</span>
           <span class="msub">${esc(m.sub || '')}</span>
           <span class="mcount">0</span>
+          <button class="notes-toggle month-notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
         <div class="month-search-box" data-act="focus-month-search" title="Search this month">
@@ -2182,13 +2253,12 @@
           <input type="text" class="month-search-input" placeholder="Search…" autocomplete="off" />
           <button class="month-search-clear" data-act="clear-month-search" title="Clear search" style="display:none">×</button>
         </div>
-        <span class="month-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
         <div class="month-metrics">
-          <div class="metric spent">
+          <div class="metric spent" data-act="jump-spent" title="Jump to completed orders">
             <span class="mk">Spent</span>
             <span class="mv spentv">$0.00</span>
           </div>
-          <div class="metric is-total">
+          <div class="metric is-total" data-act="jump-planned" title="Jump to top">
             <span class="mk">Planned</span>
             <span class="mv plannedv">$0.00</span>
           </div>
@@ -2197,6 +2267,9 @@
             <span class="mv maxv">$0.00</span>
           </div>
         </div>
+      </div>
+      <div class="month-notes-row${m.notes && m.notes.trim() ? ' notes-open' : ''}">
+        <span class="month-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
       </div>
       <div class="month-list" data-list="month">${m.blocks.map(blockHTML).join('')}</div>
     </div>`;
@@ -2456,10 +2529,44 @@
     strip.innerHTML = cells.join('');
     updateCurrentMonthFromScroll();
   }
+  // Scrolls #tab-board so targetEl's leading edge sits flush against the
+  // scroller's edge, with the same gap the board already uses between
+  // months -- scrollIntoView pins flush with no breathing room, so the
+  // offset is computed by hand instead. Shared by the month-strip cell
+  // click and the Spent/Planned metric jumps below.
+  function scrollElementIntoBoardView(targetEl) {
+    const scroller = document.getElementById('tab-board');
+    if (!scroller || !targetEl) return;
+    const gap = parseFloat(getComputedStyle(board).columnGap) || 16;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+    scroller.scrollTo({
+      left: Math.max(0, scroller.scrollLeft + (targetRect.left - scrollerRect.left) - gap),
+      top: Math.max(0, scroller.scrollTop + (targetRect.top - scrollerRect.top) - gap),
+      behavior: 'smooth',
+    });
+  }
+  // Planned jumps to the month's own top (same target as its month-strip
+  // cell). Spent jumps to the "completed orders" section -- the locked
+  // (Ordered/Entered/Received, greyed-out) shipments render() always sorts
+  // to the end of the month's list -- or falls back to the month's top if
+  // nothing's locked yet.
+  function jumpToMonthSection(monthEl, which) {
+    if (!monthEl) return;
+    if (which === 'spent') {
+      const firstLocked = monthEl.querySelector(':scope > .month-list > .shipment.is-locked');
+      scrollElementIntoBoardView(firstLocked || monthEl);
+    } else {
+      scrollElementIntoBoardView(monthEl);
+    }
+  }
   // Scroll-spy: highlights whichever month is actually scrolled into view
   // (mobile scrolls vertically, desktop horizontally -- same #tab-board
   // container either way, just checked along whichever axis #board is
   // currently laid out on) instead of always today's real-world month.
+  // Same pass also flags each month's Spent metric teal while the completed
+  // (locked) section is the one in view, mirroring the month-strip's own
+  // is-current highlight rather than a one-shot click effect.
   function updateCurrentMonthFromScroll() {
     const tb = document.getElementById('tab-board');
     if (!tb) return;
@@ -2480,6 +2587,15 @@
     document.querySelectorAll('.month-strip-cell').forEach((cell) => {
       cell.classList.toggle('is-current', cell.dataset.monthId === currentId);
     });
+    for (const m of months) {
+      const spentMetric = m.querySelector(':scope > .month-head .metric.spent');
+      if (!spentMetric) continue;
+      const firstLocked = m.querySelector(':scope > .month-list > .shipment.is-locked');
+      const inCompletedSection = !!firstLocked && (vertical
+        ? firstLocked.getBoundingClientRect().top <= tbRect.top + EDGE_TOLERANCE
+        : firstLocked.getBoundingClientRect().left <= tbRect.left + EDGE_TOLERANCE);
+      spentMetric.classList.toggle('is-current-section', inCompletedSection);
+    }
   }
   {
     let scrollSpyTicking = false;
@@ -2496,20 +2612,7 @@
     if (!cell) return;
     const monthEl = board.querySelector(`.month[data-id="${cell.dataset.monthId}"]`);
     if (!monthEl) return;
-    // scrollIntoView pins the month flush against the viewport edge with no
-    // breathing room -- compute the scroll target by hand instead, offset by
-    // the same gap the board already uses between months, so a jumped-to
-    // month sits with the same left/top buffer as one you scrolled to by hand.
-    const scroller = document.getElementById('tab-board');
-    if (!scroller) return;
-    const gap = parseFloat(getComputedStyle(board).columnGap) || 16;
-    const scrollerRect = scroller.getBoundingClientRect();
-    const monthRect = monthEl.getBoundingClientRect();
-    scroller.scrollTo({
-      left: Math.max(0, scroller.scrollLeft + (monthRect.left - scrollerRect.left) - gap),
-      top: Math.max(0, scroller.scrollTop + (monthRect.top - scrollerRect.top) - gap),
-      behavior: 'smooth',
-    });
+    scrollElementIntoBoardView(monthEl);
   });
   window.SBoard.recalc = recalcAll;
 
@@ -3263,6 +3366,24 @@
       input.focus();
       return;
     }
+    if (a === 'toggle-notes') {
+      // Mobile-only affordance (see max-width:680px CSS) -- reveals the
+      // notes field and focuses it. Card notes live in the same row
+      // (card-end); month notes were relocated to their own row below
+      // month-head so they're never part of its sticky box (see monthHTML).
+      const cardEnd = act.closest('.card-end');
+      const scope = cardEnd || act.closest('.month')?.querySelector('.month-notes-row');
+      const notesEl = scope?.querySelector('.card-notes, .month-notes');
+      if (!scope || !notesEl) return;
+      scope.classList.add('notes-open');
+      requestAnimationFrame(() => notesEl.focus());
+      return;
+    }
+    if (a === 'jump-spent' || a === 'jump-planned') {
+      const monthEl = act.closest('.month');
+      jumpToMonthSection(monthEl, a === 'jump-spent' ? 'spent' : 'planned');
+      return;
+    }
   });
 
   // Filters one month's shipments/loose cards to `q` (case-insensitive). A
@@ -3698,6 +3819,15 @@
       );
       focusValues.delete(t);
       if (changed) persist();
+      // Collapse back to the icon/menu-triggered closed state if the field
+      // was opened (by tap or "Add Notes") and left blank -- otherwise an
+      // empty notes row would stay visibly open forever after one stray tap.
+      // A field that already had a saved value is never collapsed this way
+      // since it only runs when textContent is empty.
+      if (t.matches('.card-notes, .month-notes, .ship-notes') && !t.textContent.trim()) {
+        (t.closest('.card-end') || t.closest('.month-notes-row') || t.closest('.shipment'))
+          ?.classList.remove('notes-open');
+      }
     }
     if (e.target.matches('input[data-field="price"], input[data-field="qty"]')) {
       const t = e.target;
@@ -4000,6 +4130,11 @@
     }
 
     buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
+      menu.appendChild(ctxItem('Add Notes', false, () => {
+        shipEl.classList.add('notes-open');
+        requestAnimationFrame(() => shipEl.querySelector('.ship-notes')?.focus());
+      }));
+      menu.appendChild(ctxDivider());
       menu.appendChild(ctxItem('Move to Top', isFirst, () => {
         list.prepend(shipEl); recalcAll(); persist();
       }));
