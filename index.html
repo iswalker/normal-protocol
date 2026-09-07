@@ -532,7 +532,7 @@
 
     /* ── Mobile header ── */
     @media (max-width: 680px) {
-      header { padding: 0 10px; gap: 4px; min-height: 52px; flex-wrap: wrap; row-gap: 6px; }
+      header { padding: 0 10px 8px; gap: 4px; min-height: 52px; flex-wrap: wrap; row-gap: 6px; }
 
       /* Logo only — no text */
       .brand h1 { display: none; }
@@ -551,7 +551,12 @@
         overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
         padding-bottom: 6px; margin-bottom: -6px;
       }
-      .month-strip-cell { padding: 2px 10px; flex: 0 0 auto; }
+      /* Same fixed 6px radius as desktop, but these cells are noticeably
+         shorter here (smaller font, tighter padding) so that radius eats a
+         much bigger share of the divider's height -- enough to read as a
+         curved line instead of straight. Square them off here specifically
+         rather than removing the radius everywhere. */
+      .month-strip-cell { padding: 2px 10px; flex: 0 0 auto; border-radius: 0; }
       .month-strip-amt { font-size: 12.5px; }
       .month-strip-mon { font-size: 9.5px; }
       /* Keep the "Search Inventory" label on mobile too -- an icon-only button
@@ -807,9 +812,11 @@
     #tab-board .card.tier-out      { border-left-color: var(--out); }
     #tab-board .card:not(.counted) { border-style: dashed; }
     #tab-board .card-top { display: flex; align-items: flex-start; gap: 7px; }
-    /* drag handles: invisible left-border strip on cards, truck icon on shipments */
-    #tab-board .card-grip { cursor: grab; flex: none; }
-    #tab-board .truck.block-grip { cursor: grab; }
+    /* drag handles: invisible left-border strip on cards, truck icon on shipments.
+       Also the mobile tap target for the context menu (see
+       initGripTapContextMenu) -- no callout/selection UI stealing that tap. */
+    #tab-board .card-grip { cursor: grab; flex: none; -webkit-touch-callout: none; user-select: none; }
+    #tab-board .truck.block-grip { cursor: grab; -webkit-touch-callout: none; user-select: none; }
     #tab-board .grip:active { cursor: grabbing; }
     #tab-board .card-name {
       flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600;
@@ -1254,19 +1261,28 @@
       #tab-board .month-metrics { flex: 1 1 100%; margin-left: 0; margin-right: 0; justify-content: flex-end; }
       #tab-board .board.layout-compact .metric { width: auto; min-width: 0; }
 
-      /* Shipment header: wrap onto a 2nd row after the Ordered/Entered/Received
-         toggle instead of clipping the total/notes/× off the right edge — the
-         fixed-width flex row was tuned for desktop and never shrinks. */
+      /* Shipment header: wrap instead of clipping the total/notes/× off the
+         right edge — the fixed-width flex row was tuned for desktop and
+         never shrinks. Unlike the month/card rows, there's no forced break
+         point here (.ship-row-break stays at its base display:none): with
+         the 3-way toggle now a compact dropdown there's often enough room
+         left on row 1 for the $ total too, so let flex-wrap decide
+         naturally instead of always pushing it to its own row. */
       #tab-board .ship-head { flex-wrap: wrap; row-gap: 6px; }
-      #tab-board .ship-row-break { display: block; flex-basis: 100%; height: 0; }
-      #tab-board .ship-head .ship-total { margin-left: 0; }
+      #tab-board .ship-head .ship-total { margin-left: 8px; }
+      /* Same flex-basis:0 fix as .card-top, same reason: .ship-id's
+         basis:auto (the base, desktop-shared rule) measures it at its full
+         unshrunk name-text width for the wrap decision, which is enough on
+         its own to push the $ total to line 2 even when there'd be room
+         once the name is allowed to actually shrink. */
+      #tab-board .ship-id { flex-basis: 0; }
       /* 3-way toggle -> single dropdown, to save the width 3 separate
          buttons need side by side. */
       #tab-board .ship-stage { display: none; }
       #tab-board .ship-stage-select {
         display: block; flex: none; font: 500 12px var(--font-ui);
         color: var(--ink-2); background: var(--paper); border: 1px solid var(--line);
-        border-radius: 6px; padding: 4px 6px; max-width: 100px;
+        border-radius: 6px; padding: 1px 3px; max-width: 100px;
       }
       /* One more thing to save space on: the shipment's own min-order-date
          isn't as load-bearing as the per-item run-out dates below it. */
@@ -1285,16 +1301,33 @@
          longer claims the whole row via flex-grow before proj is even
          considered, which is what was forcing proj onto its own line 2
          despite plenty of room (name left-aligned + ellipsis if it's long,
-         run-out right-aligned, saving the row it used to take). */
-      #tab-board .board.layout-compact .card-top { flex: 0 1 auto; min-width: 30px; }
+         run-out right-aligned, saving the row it used to take).
+         flex-basis is 0, not auto: flex-wrap's line-fitting decision uses
+         each item's hypothetical (basis) size BEFORE shrink is applied, so
+         basis:auto still measured card-top at its full unshrunk content
+         width there and wrapped proj to line 2 the moment name+proj's RAW
+         widths (ignoring that card-top *could* shrink) added up to more
+         than the row -- which a long item name or a run-out string with a
+         year suffix ("1/19/27") hits easily. basis:0 makes only proj's
+         width count toward that decision; card-top then gets whatever's
+         left over via shrink, ellipsis-ing instead of pushing a wrap. */
+      /* min-width is a floor flex-wrap's line-fit check still respects even
+         with basis:0 (an item's automatic minimum clamps to min-width when
+         one's set) -- 30px was enough headroom for most names, but a run-out
+         string with a year suffix ("1/19/27") plus a longer item name could
+         still add up to more than the row and wrap after all. Down to 14px
+         (worth roughly one letter + ellipsis) as the smallest the name
+         should ever be forced to; the pairing with proj's own trimmed
+         width below is what actually keeps this fitting in practice. */
+      #tab-board .board.layout-compact .card-top { flex: 0 1 0; min-width: 14px; }
       #tab-board .board.layout-compact .proj { flex: 0 0 auto; margin-left: auto; }
       /* The run-out projection's desktop-tuned type (13/12px, roomy gaps) is
          wide enough on its own to force the wrap this whole rule set exists
          to avoid -- shrink it further so it reliably fits next to a name on
          one line instead of just being repositioned onto an empty one. */
-      #tab-board .board.layout-compact .proj .pv { gap: 3px; }
+      #tab-board .board.layout-compact .proj .pv { gap: 2px; }
       #tab-board .board.layout-compact .proj .cur,
-      #tab-board .board.layout-compact .proj .nxt { gap: 2px; }
+      #tab-board .board.layout-compact .proj .nxt { gap: 1px; }
       #tab-board .board.layout-compact .proj .dl { font-size: 11px; }
       #tab-board .board.layout-compact .proj .dl .u { font-size: 9px; }
       #tab-board .board.layout-compact .proj .ro { font-size: 10px; }
@@ -1404,9 +1437,11 @@
       }
     }
 
-    /* Prevent iOS Safari from zooming on input focus (requires font-size >= 16px) */
+    /* iOS Safari auto-zooms on focusing any input under 16px -- dropped to
+       13px anyway per request; that zoom will come back on iOS specifically
+       (Android/desktop unaffected). */
     @media (max-width: 680px) {
-      input, select, textarea { font-size: 16px !important; }
+      input, select, textarea { font-size: 13px !important; }
     }
 
     /* Desktop: hide card view, show table */
@@ -2341,6 +2376,12 @@
   function updateMonthStrip() {
     const strip = document.getElementById('month-strip');
     if (!strip) return;
+    // Today's real-world month is only the bootstrap default, for the very
+    // first render before the board has been scrolled at all --
+    // updateCurrentMonthFromScroll() below immediately re-syncs it to
+    // whatever's actually in view, and stays authoritative from then on
+    // (rebuilding the strip's innerHTML here would otherwise wipe out
+    // whatever the scroll listener had set, every time this reruns).
     const now = SB.today();
     const curKey = MONTH_NAMES[now.getMonth()] + '_' + now.getFullYear();
     const cells = [];
@@ -2358,6 +2399,40 @@
       );
     });
     strip.innerHTML = cells.join('');
+    updateCurrentMonthFromScroll();
+  }
+  // Scroll-spy: highlights whichever month is actually scrolled into view
+  // (mobile scrolls vertically, desktop horizontally -- same #tab-board
+  // container either way, just checked along whichever axis #board is
+  // currently laid out on) instead of always today's real-world month.
+  function updateCurrentMonthFromScroll() {
+    const tb = document.getElementById('tab-board');
+    if (!tb) return;
+    const vertical = getComputedStyle(board).flexDirection === 'column';
+    const tbRect = tb.getBoundingClientRect();
+    const months = [...board.querySelectorAll('.month')].filter((m) => m.style.display !== 'none');
+    if (!months.length) return;
+    // The last month whose leading edge has reached near the top/left of the
+    // viewport is "current" -- same idea as a scroll-spy nav highlight.
+    let currentId = months[0].dataset.id;
+    const EDGE_TOLERANCE = 40;
+    for (const m of months) {
+      const r = m.getBoundingClientRect();
+      const edge = vertical ? r.top : r.left;
+      const containerEdge = vertical ? tbRect.top : tbRect.left;
+      if (edge <= containerEdge + EDGE_TOLERANCE) currentId = m.dataset.id;
+    }
+    document.querySelectorAll('.month-strip-cell').forEach((cell) => {
+      cell.classList.toggle('is-current', cell.dataset.monthId === currentId);
+    });
+  }
+  {
+    let scrollSpyTicking = false;
+    document.getElementById('tab-board')?.addEventListener('scroll', () => {
+      if (scrollSpyTicking) return;
+      scrollSpyTicking = true;
+      requestAnimationFrame(() => { updateCurrentMonthFromScroll(); scrollSpyTicking = false; });
+    }, { passive: true });
   }
   // Clicking a month-strip cell scrolls the board horizontally to that month,
   // instead of requiring a manual scroll left/right to find it.
@@ -3689,44 +3764,36 @@
     return newEl.querySelector('.ship-body');
   }
 
-  // ── mobile: press-and-hold → the same context menu right-click opens ──
-  // Touch has no right-click, so a ~1.5s hold-without-moving synthesizes a
-  // real 'contextmenu' event at the touch point instead of duplicating the
-  // menu-building logic below. Scoped away from anything that's already
-  // interactive (buttons/inputs/links/contenteditable) so a long tap on
-  // those doesn't ALSO pop a menu, and away from the drag grips specifically
-  // since dragging already owns press-and-move there -- if a drag actually
-  // starts (Sortable's .sb-dragging on body) the pending hold is dropped.
-  (function initLongPressContextMenu() {
-    const HOLD_MS = 1500, MOVE_TOLERANCE = 10;
-    let timer = null, startX = 0, startY = 0, target = null;
-    const cancel = () => { clearTimeout(timer); timer = null; };
-    board.addEventListener('touchstart', (e) => {
-      const t = e.target.closest('.card[data-id], .shipment');
-      if (!t || e.target.closest('[contenteditable], input, button, select, a, .card-grip, .truck.block-grip')) {
-        cancel();
-        return;
-      }
-      target = t;
-      const touch = e.touches[0];
-      startX = touch.clientX; startY = touch.clientY;
-      cancel();
-      timer = setTimeout(() => {
-        timer = null;
-        if (document.body.classList.contains('sb-dragging')) return; // a real drag won out instead
-        navigator.vibrate?.(12);
-        target.dispatchEvent(new MouseEvent('contextmenu', {
-          bubbles: true, cancelable: true, clientX: startX, clientY: startY,
-        }));
-      }, HOLD_MS);
-    }, { passive: true });
-    board.addEventListener('touchmove', (e) => {
-      if (!timer) return;
-      const touch = e.touches[0];
-      if (Math.abs(touch.clientX - startX) > MOVE_TOLERANCE || Math.abs(touch.clientY - startY) > MOVE_TOLERANCE) cancel();
-    }, { passive: true });
-    board.addEventListener('touchend', cancel, { passive: true });
-    board.addEventListener('touchcancel', cancel, { passive: true });
+  // ── mobile: tap the grip/drag-handle → open the same context menu
+  //    right-click opens ──
+  // Long-press was tried first, but on touch it lost the race to iOS/
+  // Android's own text-selection callout before our timer ever fired --
+  // holding a finger on a card just triggered "Select/Copy", not our menu.
+  // A plain tap on the drag handle is more reliable: that's the one spot on
+  // a card/shipment already reserved for touch (dragging needs press-and-
+  // move there), so a tap without movement is free to mean something else,
+  // and it can't be mistaken for selecting text. Scoped to touch/coarse-
+  // pointer devices only -- a desktop mouse click on the grip shouldn't
+  // also pop a menu, since right-click already covers that there.
+  (function initGripTapContextMenu() {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    board.addEventListener('click', (e) => {
+      const grip = e.target.closest('.card-grip, .truck.block-grip');
+      if (!grip) return;
+      const target = grip.closest('.card[data-id], .shipment');
+      if (!target) return;
+      // Stop this same click from continuing on to document's own
+      // click listener (closeCtxMenu, bound for closing the menu on an
+      // outside click) -- without this, the menu the dispatchEvent below
+      // just opened gets closed a moment later by that same original click
+      // finishing its bubble past `board`.
+      e.stopPropagation();
+      const rect = grip.getBoundingClientRect();
+      target.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true, cancelable: true,
+        clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+      }));
+    });
   })();
 
   board.addEventListener('contextmenu', (e) => {
