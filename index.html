@@ -213,6 +213,22 @@
     }
     .inv-modal-close:hover { color: var(--teal); border-color: var(--teal); }
     .inv-modal-body { overflow: auto; flex: 1 1 auto; }
+    /* Single search box driving both the desktop table's Item-column filter
+       and the mobile card filter (one shared input, #inv-filter-item -- see
+       applyFilters) -- replaces what used to be two separate "Filter…"
+       boxes in two different places. */
+    .inv-modal-search {
+      flex: 0 1 220px; min-width: 100px; height: 30px; display: flex; align-items: center; gap: 6px;
+      padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: #f7f9f9;
+      cursor: text; transition: border-color .12s, background .12s;
+    }
+    .inv-modal-search:hover { border-color: #c4cdd0; }
+    .inv-modal-search:focus-within { border-color: var(--teal); background: #fff; }
+    .inv-modal-search svg { width: 13px; height: 13px; display: block; flex: none; color: var(--ink-60); }
+    .inv-modal-search input {
+      flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
+      font-family: inherit; font-size: 13px; color: var(--ink); outline: none;
+    }
 
     /* right side of the top bar — board-only Inventory controls */
     .header-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
@@ -221,8 +237,6 @@
     .inv-controls.show { display: flex; }
     .inv-soon-btn { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #e08a3c; color: #e08a3c; background: transparent; cursor: pointer; }
     .inv-soon-btn.active { background: #e08a3c; color: #fff; }
-    .inv-item-count { font-size: 12px; color: var(--ink-60); white-space: nowrap; }
-    .inv-item-count-mob { flex-shrink: 0; }
     /* settings gear popout */
     .settings-wrap { position: relative; }
     .settings-btn {
@@ -605,15 +619,6 @@
         min-height: 48px; white-space: nowrap;
       }
       .mob-fab-primary:active { filter: brightness(0.9); }
-      /* Soon toggle inside the sticky filter row */
-      #inv-card-filter { flex: 1; min-width: 0; }
-      .mob-fab-soon {
-        appearance: none; cursor: pointer; font-family: inherit; font-size: 12px;
-        font-weight: 500; padding: 7px 10px; border-radius: 8px; white-space: nowrap;
-        border: 1.5px solid #e08a3c; color: #e08a3c; background: transparent;
-        min-height: 36px; flex-shrink: 0;
-      }
-      .mob-fab-soon.active { background: #e08a3c; color: #fff; }
     }
   </style>
 
@@ -1482,18 +1487,6 @@
 
       /* Inventory tab: hide table, show cards */
       #tab-inventory .table-wrap { display: none; }
-      #inv-card-filter-wrap {
-        display: flex !important;
-        align-items: center;
-        gap: 8px;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-        background: var(--bg, #f5f3ee);
-        padding: 8px 12px;
-        margin: 0;
-        border-bottom: 1px solid var(--ink-12);
-      }
       #inv-cards {
         display: flex !important;
         flex-direction: column;
@@ -1647,6 +1640,11 @@
   <div class="inv-modal-head">
     <span class="inv-modal-title">Inventory</span>
     <span class="inv-count-badge" id="inv-item-count"></span>
+    <div class="inv-modal-search" title="Search inventory">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
+      <input id="inv-filter-item" type="search" placeholder="Search…" autocomplete="off" />
+    </div>
+    <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
     <button class="inv-modal-close" id="inv-modal-close" title="Close" aria-label="Close">&times;</button>
   </div>
   <div class="inv-modal-body">
@@ -1682,8 +1680,8 @@
           <th></th>
         </tr>
         <tr class="inv-filters">
-          <th><input id="inv-filter-item" type="search" placeholder="Filter…" /></th>
-          <th><button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button></th>
+          <th></th>
+          <th></th>
           <th></th><th></th><th></th><th></th><th></th><th></th>
           <th><input id="inv-filter-annual" type="search" placeholder="Filter…" /></th>
           <th><input id="inv-filter-offcycle" type="search" placeholder="Filter…" /></th>
@@ -1695,11 +1693,6 @@
         <tr><td colspan="12" class="loading">Open the Inventory tab to load data.</td></tr>
       </tbody>
     </table>
-  </div>
-  <div id="inv-card-filter-wrap" style="display:none;">
-    <input id="inv-card-filter" type="search" placeholder="Filter…" style="padding:7px 10px; border:1.5px solid var(--ink-12); border-radius:8px; font-size:14px; background:var(--cream); color:var(--ink);" />
-    <span class="inv-item-count inv-item-count-mob" id="inv-item-count-mob"></span>
-    <button class="mob-fab-soon" id="mob-soon-btn">⚠ Soon</button>
   </div>
   <div id="inv-cards" style="display:none"></div>
   </div>
@@ -1731,8 +1724,7 @@
     // Land the cursor in the Item filter so you can type straight away. Deferred
     // so it runs after the rows render, which would otherwise steal focus back.
     const focusFilter = () => {
-      const f = document.getElementById('inv-filter-item')
-             || document.getElementById('inv-card-filter');
+      const f = document.getElementById('inv-filter-item');
       if (f && f.offsetParent !== null) { f.focus(); f.select?.(); return true; }
       return false;
     };
@@ -1852,23 +1844,16 @@
     window.__syncBanner = { checkStale, getBaseline: () => baseline, getWriteLog: () => writeLog.slice() };
   })();
 
-  // Mobile FAB — proxy to the real header buttons
+  // Mobile FAB — proxy to the real header button (Soon and the search/count
+  // are shared header controls now, used directly by both platforms, so
+  // only Scan still needs a mobile-only proxy)
   // Must run after DOMContentLoaded because mob-inv-fab is defined after all scripts in the HTML
   document.addEventListener('DOMContentLoaded', function () {
     const proxy = (mobId, headId) => {
       const m = document.getElementById(mobId), h = document.getElementById(headId);
       if (m && h) m.addEventListener('click', () => h.click());
     };
-    proxy('mob-scan-btn',    'inv-scan-btn');
-    // Soon button also mirrors the active state
-    const mobSoon  = document.getElementById('mob-soon-btn');
-    const headSoon = document.getElementById('inv-soon-btn');
-    if (mobSoon && headSoon) {
-      mobSoon.addEventListener('click', () => {
-        headSoon.click();
-        mobSoon.classList.toggle('active', headSoon.classList.contains('active'));
-      });
-    }
+    proxy('mob-scan-btn', 'inv-scan-btn');
   });
 
   // start the board once all scripts (incl. the board itself) have parsed
@@ -5475,8 +5460,11 @@
       body.appendChild(tr);
     }
 
-    // Mobile cards
-    const cardQ = (document.getElementById('inv-card-filter')?.value || '').trim().toLowerCase();
+    // Mobile cards -- same shared #inv-filter-item input as the desktop
+    // table's Item column filter (see FILTER_COLS above); both loops run
+    // unconditionally regardless of which view is actually visible, CSS
+    // decides that per viewport.
+    const cardQ = (document.getElementById('inv-filter-item')?.value || '').trim().toLowerCase();
     let visibleCardCount = 0;
     document.getElementById('inv-cards')?.querySelectorAll('.inv-card').forEach((card) => {
       const name = (card.querySelector('.inv-card-name')?.textContent || '').toLowerCase();
@@ -5486,28 +5474,25 @@
       card.style.display = show ? '' : 'none';
       if (show) visibleCardCount++;
     });
-    const cardQRaw = (document.getElementById('inv-card-filter')?.value || '').trim();
-    if (cardQRaw && !existingNames.has(cardQRaw.toLowerCase())) {
+    if (itemQRaw && !existingNames.has(itemQRaw.toLowerCase())) {
       const card = document.createElement('div');
       card.id = 'inv-add-card'; card.className = 'inv-card inv-add-card';
-      card.textContent = `+ Add "${cardQRaw}"`;
-      card.addEventListener('click', () => openNewItemDialog?.(cardQRaw));
+      card.textContent = `+ Add "${itemQRaw}"`;
+      card.addEventListener('click', () => openNewItemDialog?.(itemQRaw));
       document.getElementById('inv-cards')?.appendChild(card);
     }
 
-    // Update count badges — desktop reads table rows, mobile reads cards
-    const fmt = (n) => n + ' item' + (n === 1 ? '' : 's');
+    // Single count badge in the header -- reads whichever view is actually
+    // on screen (table on desktop, cards on mobile) so it always matches
+    // what the user is looking at instead of only ever tracking the table.
     const deskCount = document.getElementById('inv-item-count');
-    const mobCount  = document.getElementById('inv-item-count-mob');
-    // Bare number in the modal header — it reads as a count pill, like the board's
-    if (deskCount) deskCount.textContent = String(visibleCount);
-    if (mobCount)  mobCount.textContent  = fmt(visibleCardCount || visibleCount);
+    if (deskCount) {
+      const isMobile = window.matchMedia('(max-width: 680px)').matches;
+      deskCount.textContent = String(isMobile ? visibleCardCount : visibleCount);
+    }
   }
 
   FILTER_COLS.forEach(f => f.el.addEventListener('input', applyFilters));
-
-  const cardFilterEl = document.getElementById('inv-card-filter');
-  if (cardFilterEl) cardFilterEl.addEventListener('input', applyFilters);
 
 
   if (body) body.addEventListener('click', async (e) => {
