@@ -4,17 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, user-scalable=yes" />
   <title>Normal Protocol</title>
-  <!-- Favicon, top-left logo (see .brand img below), and the iOS/Android
-       home-screen icons are now all driven off the one apple-touch-icon.png
-       asset -- the filename itself is meaningless to iOS as long as an
-       explicit rel="apple-touch-icon" link points at it (iOS only falls
-       back to auto-discovering a file literally named that at the site
-       root when there's no such link tag at all). Android's PNG sizes are
-       kept as their own files since it wants specific resolutions. -->
-  <link rel="icon" type="image/png" href="Logos/apple-touch-icon.png" />
-  <link rel="apple-touch-icon" href="Logos/apple-touch-icon.png" />
-  <link rel="icon" type="image/png" sizes="512x512" href="Logos/android-chrome-512x512.png" />
-  <link rel="icon" type="image/png" sizes="192x192" href="Logos/android-chrome-192x192.png" />
+  <!-- Favicon, top-left logo (see .brand img below), apple-touch-icon, and
+       the Android home-screen icon are all driven off the one logo.png
+       asset (180x180) -- the filename itself is meaningless to iOS as long
+       as an explicit rel="apple-touch-icon" link points at it (iOS only
+       falls back to auto-discovering a file literally named that at the
+       site root when there's no such link tag at all). The dedicated
+       android-chrome-*.png files this used to reference were removed
+       locally, so Android now just scales this same 180x180 file too. -->
+  <link rel="icon" type="image/png" href="Logos/logo.png" />
+  <link rel="apple-touch-icon" href="Logos/logo.png" />
+  <link rel="icon" type="image/png" sizes="180x180" href="Logos/logo.png" />
   <meta name="apple-mobile-web-app-title" content="Normal Protocol" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1487,7 +1487,7 @@
 
 <header>
   <div class="brand">
-    <img src="Logos/apple-touch-icon.png" alt="Normal Protocol" />
+    <img src="Logos/logo.png" alt="Normal Protocol" />
     <h1>Normal Protocol</h1>
     <button class="inv-search-link" id="inv-search-link" title="Search inventory">
       <svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg>
