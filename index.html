@@ -192,7 +192,7 @@
     }
     .inv-modal-head {
       display: flex; align-items: center; gap: 12px;
-      padding: 12px 18px; border-bottom: 1.5px solid var(--ink-12);
+      padding: 6px 13px; border-bottom: 1.5px solid var(--ink-12);
       background: var(--cream-dark); flex-shrink: 0;
     }
     .inv-modal-title { font-size: 15px; font-weight: 600; }
@@ -1317,6 +1317,10 @@
       #tab-board .month-notes-toggle svg { width: 13px; height: 13px; }
       #tab-board .month-notes-row { display: none; }
       #tab-board .month-notes-row.notes-open { display: block; }
+      /* Same reasoning as the card notes-toggle above: hide the icon once
+         there's actual saved text (the row is already auto-open showing
+         it), keep it while open-but-blank so it can still collapse back. */
+      #tab-board .month-head:has(+ .month-notes-row .month-notes:not(:empty)) .month-notes-toggle { display: none; }
 
       /* Shipment header: wrap instead of clipping the total/notes/× off the
          right edge — the fixed-width flex row was tuned for desktop and
@@ -1349,7 +1353,12 @@
          the name. Now that ship-id can grow, keep notes on row 2 anyway so
          the name always gets the full row instead of splitting it with
          notes turn by turn depending on notes length. */
-      #tab-board .ship-notes { flex-basis: 100%; }
+      /* Specificity note: the visible-state rule (.shipment.notes-open
+         .ship-notes, in the base CSS) sets its own "flex: 1 1 0" -- 3
+         classes there beats this rule's 1, so without matching that
+         specificity here, flex-basis:100% would lose the cascade and never
+         actually apply despite being declared later in the file. */
+      #tab-board .shipment.notes-open .ship-notes { flex-basis: 100%; }
       /* Same fix as the card-end delete button below: with notes forced to
          row 2, the × (last in flex order, after notes) got pushed along
          with it onto row 2/3 depending on wrap instead of staying at the
@@ -1432,7 +1441,11 @@
          row even though order+foot left clear room and card-end's notes
          field can shrink arbitrarily small. basis:0 lets it join that row
          instead, ellipsis-ing the notes text down as needed. */
-      #tab-board .board.layout-compact .card-end { flex: 1 1 0; min-width: 0; }
+      /* flex-wrap:wrap is what actually lets .card-notes's flex-basis:100%
+         (below) push it onto a new row -- without it, a wrap-eligible basis
+         is meaningless on a nowrap container and the field just stays
+         inline, squeezed alongside the toggle/recur/delete controls. */
+      #tab-board .board.layout-compact .card-end { flex: 1 1 0; min-width: 0; flex-wrap: wrap; }
       /* The delete × pinned to the card's own top-right corner instead of
          wherever card-end's row ends up wrapping to (bottom-right,
          following the toggle/notes row) -- out of the flex flow entirely so
@@ -1459,6 +1472,13 @@
       #tab-board .board.layout-compact .card-end .notes-toggle svg { width: 13px; height: 13px; }
       #tab-board .board.layout-compact .card-end .card-notes { display: none; flex-basis: 100%; padding-left: 0; }
       #tab-board .board.layout-compact .card-end.notes-open .card-notes { display: block; }
+      /* Icon only earns its keep while the field is blank -- once there's
+         actual saved text the field is already showing (auto-open, see
+         cardHTML/.notes-open), so the icon would be a redundant control.
+         It stays visible while open-but-blank (mid-edit, nothing typed
+         yet) so tapping it can still collapse back rather than being stuck
+         permanently open. */
+      #tab-board .board.layout-compact .card-end:has(.card-notes:not(:empty)) .notes-toggle { display: none; }
 
       /* Inventory tab: hide table, show cards */
       #tab-inventory .table-wrap { display: none; }
@@ -1477,21 +1497,21 @@
       #inv-cards {
         display: flex !important;
         flex-direction: column;
-        gap: 10px;
-        padding: 12px;
+        gap: 6px;
+        padding: 7px 12px;
       }
       .inv-card {
         background: white;
         border: 1.5px solid var(--ink-12);
         border-radius: var(--radius);
-        padding: 12px 14px;
+        padding: 7px 12px 5px 12px;
         font-size: 13px;
       }
       .inv-card-header {
         display: flex;
         align-items: flex-start;
         gap: 8px;
-        margin-bottom: 8px;
+        margin-bottom: 1px;
       }
       .inv-card-name-group {
         flex: 0 1 auto;
@@ -1523,7 +1543,7 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         border-bottom: 1px solid var(--ink-12);
-        padding: 5px 0;
+        padding: 4px 0px;
       }
       .inv-card-pair:last-of-type { border-bottom: none; }
       .inv-card-half {
@@ -3371,12 +3391,21 @@
       // notes field and focuses it. Card notes live in the same row
       // (card-end); month notes were relocated to their own row below
       // month-head so they're never part of its sticky box (see monthHTML).
+      // The icon itself is only ever visible while the field is blank (CSS
+      // hides it once there's saved text -- the field is already showing
+      // then), so a click here always means either "open it" or "it's open
+      // and still blank, collapse it back" -- never "hide text I typed".
       const cardEnd = act.closest('.card-end');
       const scope = cardEnd || act.closest('.month')?.querySelector('.month-notes-row');
       const notesEl = scope?.querySelector('.card-notes, .month-notes');
       if (!scope || !notesEl) return;
-      scope.classList.add('notes-open');
-      requestAnimationFrame(() => notesEl.focus());
+      if (scope.classList.contains('notes-open')) {
+        scope.classList.remove('notes-open');
+        if (document.activeElement === notesEl) notesEl.blur();
+      } else {
+        scope.classList.add('notes-open');
+        requestAnimationFrame(() => notesEl.focus());
+      }
       return;
     }
     if (a === 'jump-spent' || a === 'jump-planned') {
@@ -3823,8 +3852,13 @@
       // was opened (by tap or "Add Notes") and left blank -- otherwise an
       // empty notes row would stay visibly open forever after one stray tap.
       // A field that already had a saved value is never collapsed this way
-      // since it only runs when textContent is empty.
-      if (t.matches('.card-notes, .month-notes, .ship-notes') && !t.textContent.trim()) {
+      // since it only runs when textContent is empty. Skipped when focus is
+      // headed straight for the notes-toggle button: that's the user
+      // re-clicking the icon to collapse it themselves (see 'toggle-notes'),
+      // and blur firing first here would strip .notes-open out from under
+      // that click, which would then see it already gone and reopen it.
+      if (t.matches('.card-notes, .month-notes, .ship-notes') && !t.textContent.trim()
+          && !e.relatedTarget?.closest('.notes-toggle')) {
         (t.closest('.card-end') || t.closest('.month-notes-row') || t.closest('.shipment'))
           ?.classList.remove('notes-open');
       }
@@ -4129,12 +4163,18 @@
       recalcAll(); persist();
     }
 
+    // Once there's saved text the field is already showing (auto-open, see
+    // shipmentHTML's .notes-open), so the entry would be a no-op redundant
+    // with what's already visible -- only offer it while genuinely blank.
+    const shipHasNotes = !!shipEl.querySelector('.ship-notes')?.textContent.trim();
     buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
-      menu.appendChild(ctxItem('Add Notes', false, () => {
-        shipEl.classList.add('notes-open');
-        requestAnimationFrame(() => shipEl.querySelector('.ship-notes')?.focus());
-      }));
-      menu.appendChild(ctxDivider());
+      if (!shipHasNotes) {
+        menu.appendChild(ctxItem('Add Notes', false, () => {
+          shipEl.classList.add('notes-open');
+          requestAnimationFrame(() => shipEl.querySelector('.ship-notes')?.focus());
+        }));
+        menu.appendChild(ctxDivider());
+      }
       menu.appendChild(ctxItem('Move to Top', isFirst, () => {
         list.prepend(shipEl); recalcAll(); persist();
       }));
