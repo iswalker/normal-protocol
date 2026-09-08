@@ -792,8 +792,10 @@
        relocates the field out of .month-head, since only mobile ever
        complained about an editable field being glued to a position:sticky
        header while the list under it scrolls -- a sticky ancestor drags
-       every descendant along as it pins. */
-    #tab-board .month-notes-row { display: none; }
+       every descendant along as it pins. Padding matches .month-list's own
+       left/right inset (11px) so the field lines up with the shipments
+       below it instead of hugging the container's bare edge. */
+    #tab-board .month-notes-row { display: none; padding: 2px 11px 8px; }
     #tab-board .month-notes {
       display: block; font-size: 12px; color: #222;
       outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
