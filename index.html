@@ -2016,12 +2016,18 @@
     return d.getFullYear() !== now.getFullYear()
       ? `${base}/${String(d.getFullYear()).slice(2)}` : base;
   }
+  // Intl.NumberFormat is meant to be built once and reused -- .toLocaleString()
+  // constructs (and throws away) an equivalent formatter internally on every
+  // single call, which shows up when it's called this often: recalcAll formats
+  // a price for every card, every shipment total, and every month's three
+  // metrics, every time it runs.
+  const MONEY_FMT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const MONEY_FMT0 = new Intl.NumberFormat('en-US');
   function fmtMoney(n) {
-    return '$' + (Number(n) || 0).toLocaleString('en-US',
-      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return '$' + MONEY_FMT.format(Number(n) || 0);
   }
   function fmtMoney0(n) {
-    return '$' + Math.round(Number(n) || 0).toLocaleString('en-US');
+    return '$' + MONEY_FMT0.format(Math.round(Number(n) || 0));
   }
   function fmtUnits(n) {
     const r = Math.round(n);
@@ -2746,10 +2752,16 @@
     if (board.querySelector('.month')) {
       const cardEl = board.querySelector(`.card[data-id="${cardId}"]`);
       if (cardEl) {
-        const monthEls = Array.from(board.querySelectorAll('.month'));
         const monthEl  = cardEl.closest('.month');
         const shipEl   = cardEl.closest('.shipment');
-        return { monthIdx: monthEls.indexOf(monthEl), shipId: shipEl ? shipEl.dataset.id : null };
+        // #board's direct children are exclusively .month elements (see
+        // render()), so a plain sibling-position lookup gives the same
+        // index as board.querySelectorAll('.month').indexOf(monthEl) did,
+        // without that query's own subtree walk + class match -- this ran
+        // once per card in loops over every recurring item (syncGhosts,
+        // cleanupAndPromote, promoteFirstGhost), so the saved work compounds.
+        const monthIdx = monthEl ? [...monthEl.parentNode.children].indexOf(monthEl) : -1;
+        return { monthIdx, shipId: shipEl ? shipEl.dataset.id : null };
       }
     }
     for (let mi = 0; mi < structure.length; mi++) {
