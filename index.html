@@ -2704,10 +2704,16 @@
       const spentMetric = m.querySelector(':scope > .month-head .metric.spent');
       const plannedMetric = m.querySelector(':scope > .month-head .metric.is-total');
       if (!spentMetric || !plannedMetric) continue;
+      // Always .top here, regardless of `vertical` (which axis MONTHS are
+      // arranged on) -- shipments always stack top-to-bottom WITHIN a
+      // month's own card, on both desktop and mobile, so scrolling down
+      // into the completed section is a vertical concern either way. Using
+      // `.left` on desktop compared a shipment's horizontal position, which
+      // never changes as you scroll down inside one month -- the first
+      // locked shipment in the left-most month always read "in view", teal
+      // on Spent even sitting at the very top of the page.
       const firstLocked = m.querySelector(':scope > .month-list > .shipment.is-locked');
-      const inCompletedSection = !!firstLocked && (vertical
-        ? firstLocked.getBoundingClientRect().top <= tbRect.top + EDGE_TOLERANCE
-        : firstLocked.getBoundingClientRect().left <= tbRect.left + EDGE_TOLERANCE);
+      const inCompletedSection = !!firstLocked && firstLocked.getBoundingClientRect().top <= tbRect.top + EDGE_TOLERANCE;
       // Mutually exclusive: exactly one of the two reads teal at a time.
       spentMetric.classList.toggle('is-current-section', inCompletedSection);
       plannedMetric.classList.toggle('is-current-section', !inCompletedSection);
