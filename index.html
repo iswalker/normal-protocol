@@ -2519,6 +2519,12 @@
     applyEffectiveMap();
     board.querySelectorAll('.month').forEach((monthEl) => {
       const list = monthEl.querySelector('.month-list');
+      // While a search is active, Planned/Max should read as "just what's
+      // matching" -- folding in Spent (the month's actual YNAB activity,
+      // unrelated to which items happen to match the query) would mix an
+      // always-present figure into a number that's supposed to represent
+      // only the filtered results.
+      const searchActive = !!monthEl.querySelector('.month-search-input')?.value.trim();
       let plannedItems = 0, maxItems = 0, itemCount = 0;
 
       [...list.children].forEach((node) => {
@@ -2529,9 +2535,13 @@
             const cost = updateCard(cardEl);
             const c = STATE.cardData[cardEl.dataset.id];
             const inc = c && c.includeInMonthTotal;
+            const hiddenBySearch = cardEl.classList.contains('search-hide');
             if (!shipLocked) {
-              maxItems += cost;
-              if (inc) { sTot += cost; plannedItems += cost; sCount++; }
+              if (!hiddenBySearch) {
+                maxItems += cost;
+                if (inc) plannedItems += cost;
+              }
+              if (inc) { sTot += cost; sCount++; }
             } else {
               if (inc) { sTot += cost; sCount++; }
             }
@@ -2550,8 +2560,10 @@
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
           const cost = updateCard(node);
-          maxItems += cost;
-          if (STATE.cardData[node.dataset.id] && STATE.cardData[node.dataset.id].includeInMonthTotal) plannedItems += cost;
+          if (!node.classList.contains('search-hide')) {
+            maxItems += cost;
+            if (STATE.cardData[node.dataset.id] && STATE.cardData[node.dataset.id].includeInMonthTotal) plannedItems += cost;
+          }
           itemCount++;
         }
       });
@@ -2559,8 +2571,9 @@
       const spent = monthSpent(monthEl);
       const spentEl = monthEl.querySelector('.spentv');
       if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
-      monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
-      monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
+      const spentForTotals = searchActive ? 0 : spent;
+      monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spentForTotals + plannedItems);
+      monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spentForTotals + maxItems);
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
     });
     updateMonthVisibility();
@@ -3285,8 +3298,13 @@
     const spent = monthSpent(monthEl);
     const spentEl = monthEl.querySelector('.spentv');
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
-    monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
-    monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
+    // Same reasoning as recalcAll: while searching, Planned/Max shouldn't
+    // fold in Spent (always-present YNAB activity, unrelated to which
+    // items match the query) alongside the filtered items' own total.
+    const searchActive = !!monthEl.querySelector('.month-search-input')?.value.trim();
+    const spentForTotals = searchActive ? 0 : spent;
+    monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spentForTotals + plannedItems);
+    monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spentForTotals + maxItems);
     updateMonthStrip();
   }
 
