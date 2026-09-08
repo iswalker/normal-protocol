@@ -227,13 +227,15 @@
        and the mobile card filter (one shared input, #inv-filter-item -- see
        applyFilters) -- replaces what used to be two separate "Filter…"
        boxes in two different places. */
+    /* Same transparent/bordered treatment as .global-search-box (the header's
+       "Search All" box) instead of a filled white/grey pill. */
     .inv-modal-search {
       flex: 0 1 220px; min-width: 100px; height: 30px; display: flex; align-items: center; gap: 6px;
-      padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: #f7f9f9;
+      padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: transparent;
       cursor: text; transition: border-color .12s, background .12s;
     }
-    .inv-modal-search:hover { border-color: #c4cdd0; }
-    .inv-modal-search:focus-within { border-color: var(--teal); background: #fff; }
+    .inv-modal-search:hover { border-color: var(--teal); background: rgba(121,189,177,0.10); }
+    .inv-modal-search:focus-within { border-color: var(--teal); background: rgba(121,189,177,0.10); }
     .inv-modal-search svg { width: 13px; height: 13px; display: block; flex: none; color: var(--ink-60); }
     .inv-modal-search input {
       flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
@@ -247,10 +249,10 @@
 
     /* right side of the top bar — board-only Inventory controls */
     .header-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
-    .board-controls { display: flex; align-items: center; gap: 10px; }
+    .board-controls { display: flex; align-items: center; gap: 10px; padding-left: 7px; }
     .inv-controls { display: none; align-items: center; gap: 10px; }
     .inv-controls.show { display: flex; }
-    .inv-soon-btn { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #e08a3c; color: #e08a3c; background: transparent; cursor: pointer; }
+    .inv-soon-btn { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #e08a3c; color: #e08a3c; background: transparent; cursor: pointer; white-space: nowrap; flex: none; }
     .inv-soon-btn.active { background: #e08a3c; color: #fff; }
     /* settings gear popout */
     .settings-wrap { position: relative; }
@@ -610,7 +612,7 @@
       /* Keep the "Search Inventory" label on mobile too -- an icon-only button
          here was a tiny tap target, and the title next to it is already
          hidden at this width so there's room. */
-      .inv-search-link { padding: 5px 9px 5px 5px; font-size: 13px; }
+      .inv-search-link { padding: 4px 9px 4px 5px; font-size: 13px; }
 
       /* Hide action buttons from header — they move to the mobile FAB */
       .inv-controls { display: none !important; }
@@ -1534,7 +1536,7 @@
          reaches that corner at all. */
       #tab-board .board.layout-compact .proj { margin-right: 18px; }
       #tab-board .board.layout-compact .card-end .del {
-        position: absolute; top: 2px; right: 2px; margin: 0;
+        position: absolute; top: 13px; right: 2px; margin: 0;
       }
       /* Notes: hidden unless it already has a saved value (.notes-open, set
          at render time by cardHTML) or the notes-toggle icon opens it --
