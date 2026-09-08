@@ -897,6 +897,14 @@
     #tab-board .proj .dl .u { font-size: 11px; color: var(--ink-3); margin-left: 1px; }
     #tab-board .proj .ro { font-family: var(--font-num); font-size: 15px; color: var(--b-ink); }
     #tab-board .proj .sep { font-size: 11px; color: var(--ink-3); margin-left: -4px; }
+    /* Dose/day prefix -- greyed out (var(--ink-3)) the same as the rest of
+       the projection's secondary/auxiliary text (.sep, the arrow), not the
+       bold --b-ink the day-count/date figures get, since it's meant as a
+       quiet sanity-check rather than a primary number. Always visible
+       (unlike .arrow/.nxt below, which only show once .card.has-order) --
+       dose is relevant with or without a placed order. */
+    #tab-board .proj .dose-tag { font-family: var(--font-num); font-weight: 500; color: var(--ink-3); font-size: 13px; }
+    #tab-board .proj .dose-arrow { color: var(--ink-3); font-size: 12px; }
     #tab-board .tier-soon .proj .cur .dl { color: var(--soon); }
     #tab-board .tier-out .proj .cur .dl { color: var(--out); }
     #tab-board .proj .arrow { color: var(--ink-3); font-size: 12px; opacity: 0; width: 0; transition: opacity .15s; }
@@ -1494,6 +1502,8 @@
       #tab-board .board.layout-compact .proj .dl .u { font-size: 9px; }
       #tab-board .board.layout-compact .proj .ro { font-size: 10px; }
       #tab-board .board.layout-compact .proj .arrow { font-size: 10px; }
+      #tab-board .board.layout-compact .proj .dose-tag { font-size: 10px; }
+      #tab-board .board.layout-compact .proj .dose-arrow { font-size: 9px; }
       #tab-board .card-row-break { display: block; flex-basis: 100%; height: 0; }
       #tab-board .board.layout-compact .order { flex: 0 0 auto; }
       #tab-board .board.layout-compact .card-foot { flex: 0 0 auto; }
@@ -2234,6 +2244,8 @@
         <div class="proj">
           <div class="pk">Supply</div>
           <div class="pv">
+            <span class="dose-tag">0x</span>
+            <span class="dose-arrow">→</span>
             <span class="cur">
               <span class="dl"><span class="n">0</span><span class="u">d</span></span>
               <span class="sep">,</span>
@@ -2408,6 +2420,7 @@
       !hasInv ? '—' : tier === 'out' ? 'OUT' : tier === 'soon' ? 'SOON' : 'OK';
 
     const proj = cardEl.querySelector('.proj');
+    const doseTag = proj.querySelector('.dose-tag');
     const curDl = proj.querySelector('.cur .dl');
     const nxtDl = proj.querySelector('.nxt .dl');
     const curRo = proj.querySelector('.cur .ro');
@@ -2417,6 +2430,12 @@
       if (n) { n.textContent = '—'; if (u) u.textContent = ''; } else { span.textContent = '—'; }
     };
     if (hasInv) {
+      // Dose/day prefixed onto the run-out tag (e.g. "7x → 21d, 2/29") --
+      // greyed out the same as the rest of the projection math, mainly so a
+      // dose that's obviously wrong (0x, or way off from what's actually
+      // being taken) is visible for a sanity check right on the card
+      // instead of only in the Inventory table's own Dose/Day column.
+      doseTag.textContent = String(+r.dose.toFixed(1)) + 'x';
       setDays(curDl, r.curDaysLeft);
       setDays(nxtDl, r.newDaysLeft);
       curRo.textContent = df(r.curRunOut);
@@ -2425,6 +2444,7 @@
       cardEl.querySelector('.dose').textContent = String(+r.dose.toFixed(1));
       cardEl.querySelector('.bsize').textContent = String(r.bottle);
     } else {
+      doseTag.textContent = '—';
       [curDl, nxtDl].forEach(dash);
       curRo.textContent = '—';
       nxtRo.textContent = '—';
