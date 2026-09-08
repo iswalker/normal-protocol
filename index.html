@@ -157,7 +157,8 @@
       appearance: none; background: transparent; border: 1.5px solid var(--ink-12);
       display: inline-flex; align-items: center; gap: 4px;
       padding: 5px 9px 5px 5px; border-radius: 7px; cursor: pointer;
-      font-family: inherit; font-size: 13px; font-weight: 500;
+      /* Matches .inv-scan-btn's font styling exactly (12px, normal weight). */
+      font-family: inherit; font-size: 12px; font-weight: normal;
       color: var(--ink-60); white-space: nowrap;
       transition: color 0.15s, border-color 0.15s, background 0.15s;
     }
@@ -775,7 +776,7 @@
     #tab-board .month-search-box:focus-within { border-color: var(--accent); background: #fff; }
     #tab-board .month-search-box svg { width: 12px; height: 12px; display: block; flex: none; color: var(--ink-3); }
     #tab-board .month-search-input {
-      flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
+      flex: 1 1 0; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
       font-family: inherit; font-size: 12.5px; color: var(--b-ink); outline: none;
     }
     #tab-board .month-search-clear {
@@ -783,14 +784,15 @@
       color: var(--ink-3); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
     }
     #tab-board .month-search-clear:hover { color: var(--ink); background: var(--accent-tint); }
-    /* Notes lives in its own row below .month-head (not inside it) so it's
-       never part of the header's position:sticky box -- a sticky ancestor
-       drags every descendant along as it pins, and an editable notes field
-       has no business staying glued to the top of the screen while the list
-       under it scrolls. The .month-notes-toggle icon (in month-head, see
-       below) is a static trigger and fine to stay sticky; only the actual
-       editable field needed to move out. */
-    #tab-board .month-notes-row { padding: 2px 14px 8px; }
+    /* Desktop keeps the original placement -- Notes shares the search box,
+       taking the other half of the room the search input used to have all
+       to itself. #tab-board .month-notes-row (mobile's own separate row,
+       below) is desktop-hidden entirely; only mobile relocates the field
+       out of .month-head, since only mobile ever complained about an
+       editable field being glued to a position:sticky header while the
+       list under it scrolls -- a sticky ancestor drags every descendant
+       along as it pins. */
+    #tab-board .month-notes-row { display: none; }
     #tab-board .month-notes {
       display: block; font-size: 12px; color: #222;
       outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -798,10 +800,10 @@
     }
     #tab-board .month-notes:empty::before { content: attr(placeholder); opacity: .35; pointer-events: none; }
     #tab-board .month-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; white-space: normal; }
-    /* Desktop: no toggle needed, the row is always visible (unchanged
-       behavior from before the relocation above); .notes-toggle is hidden
-       by default everywhere (see .card-notes block) and only shown on
-       mobile -- see the max-width:680px block. */
+    #tab-board .month-notes--desktop {
+      flex: 1 1 0; min-width: 0; padding-left: 8px; margin-left: 2px;
+      border-left: 1px solid var(--line);
+    }
     /* Cards/shipments hidden by an active month search */
     #tab-board .month-list > .search-hide,
     #tab-board .ship-body > .search-hide { display: none !important; }
@@ -1088,7 +1090,7 @@
     #tab-board .board.layout-compact .card.no-proj .proj { display: none; }
     #tab-board .board.layout-compact .card.no-proj .card-body {
       grid-template-columns: 321px 82px 84px 317px;
-      grid-template-areas: "top order foot del" "notes notes notes notes";
+      grid-template-areas: "top order foot del";
     }
     /* lock tracked card names (cursor only; actual editing is blocked by no contenteditable) */
     #tab-board .card-name:not([contenteditable]) { cursor: default; user-select: none; }
@@ -1103,31 +1105,17 @@
     #tab-board .board.layout-compact .card-body {
       display: grid;
       grid-template-columns: 143px 155px 94px 81px 1fr;
-      grid-template-areas: "top proj order foot del" "notes notes notes notes notes";
+      grid-template-areas: "top proj order foot del";
       align-items: center; column-gap: 9px;
     }
-    /* Notes: hidden unless it already has a saved value (.notes-open, set
-       at render time by cardHTML) or the notes-toggle icon opens it --
-       collapses back if left blank on blur. Its own full-width grid row
-       (see grid-template-areas above) instead of living inline inside
-       card-end (the "del" cell) -- that confined it to card-end's own
-       narrow column, off-center under the toggle/delete controls instead
-       of starting flush at the card's left edge like the rest of the
-       card's content. */
-    #tab-board .board.layout-compact .card-notes { grid-area: notes; display: none; padding-left: 0; margin-top: 2px; }
-    #tab-board .board.layout-compact .card.notes-open .card-notes { display: block; }
-    #tab-board .board.layout-compact .card-end .notes-toggle {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 20px; height: 20px; flex: none; padding: 0; border: 0;
-      background: transparent; color: var(--ink-3); cursor: pointer;
-    }
-    #tab-board .board.layout-compact .card-end .notes-toggle svg { width: 13px; height: 13px; }
-    /* Icon only earns its keep while the field is blank -- once there's
-       actual saved text the field is already showing (auto-open above),
-       so the icon would be a redundant control. It stays visible while
-       open-but-blank (mid-edit, nothing typed yet) so tapping it can still
-       collapse back rather than being stuck permanently open. */
-    #tab-board .board.layout-compact .card:has(.card-notes:not(:empty)) .notes-toggle { display: none; }
+    /* Desktop: notes stays inline inside card-end (the "del" cell) next to
+       the toggle/recur/delete controls, always visible -- this is the
+       original placement/behavior. Only mobile moves it out to its own
+       full-width row with a tap-to-reveal icon -- see the max-width:680px
+       block, where .card-end itself switches to display:contents so its
+       children (including this field) become direct flex items of
+       card-body instead of being confined to card-end's own narrow
+       column. .notes-toggle is hidden here (mobile-only, see below). */
     #tab-board .board.layout-compact .badge,
     #tab-board .board.layout-compact .proj .pk,
     #tab-board .board.layout-compact .meta,
@@ -1358,6 +1346,9 @@
         background: transparent; color: var(--ink-3); cursor: pointer;
       }
       #tab-board .month-notes-toggle svg { width: 13px; height: 13px; }
+      /* Desktop's in-search-box notes field hidden here; mobile uses its
+         own separate below-header row instead (see .month-notes-row). */
+      #tab-board .month-notes--desktop { display: none; }
       #tab-board .month-notes-row { display: none; }
       #tab-board .month-notes-row.notes-open { display: block; }
       /* Same reasoning as the card notes-toggle above: hide the icon once
@@ -1482,31 +1473,45 @@
       #tab-board .card-row-break { display: block; flex-basis: 100%; height: 0; }
       #tab-board .board.layout-compact .order { flex: 0 0 auto; }
       #tab-board .board.layout-compact .card-foot { flex: 0 0 auto; }
-      /* Same flex-basis:0 fix as .card-top/.ship-id: basis:auto measured
-         card-end (toggle + "ev N mo" + delete -- notes moved out to its own
-         grid row, see the shared .board.layout-compact rules above) at its
-         full unshrunk width for the wrap decision, pushing it to its own
-         row even though order+foot left clear room. basis:0 lets it join
-         that row instead. */
-      #tab-board .board.layout-compact .card-end { flex: 1 1 0; min-width: 0; }
+      /* Desktop keeps card-end as a real flex box holding toggle/recur/
+         notes/delete together inline (the original design). Mobile instead
+         dissolves it with display:contents -- its children become direct
+         flex items of .card-body itself, joining order/foot's own row (and
+         letting .card-notes's flex-basis:100% below actually wrap across
+         the FULL card width instead of just card-end's own narrow slice). */
+      #tab-board .board.layout-compact .card-end { display: contents; }
       /* The delete × pinned to the card's own top-right corner instead of
-         wherever card-end's row ends up wrapping to (bottom-right,
-         following the toggle/notes row) -- out of the flex flow entirely so
-         it stays put regardless of how many rows the rest wraps into. Only
-         row 1 (name + right-aligned run-out) actually sits under it, so the
-         reserved clearance goes on .proj specifically rather than as
-         padding on the whole card-body -- reserving it everywhere squeezed
-         the name down to its truncation floor on nearly every card, since
-         row 2 (price/qty/$/toggle/notes) never reaches that corner at all. */
+         wherever it lands once card-end's former row wraps -- out of the
+         flex flow entirely so it stays put regardless of how many rows the
+         rest wraps into. Only row 1 (name + right-aligned run-out) actually
+         sits under it, so the reserved clearance goes on .proj specifically
+         rather than as padding on the whole card-body -- reserving it
+         everywhere squeezed the name down to its truncation floor on
+         nearly every card, since row 2 (price/qty/$/toggle/notes) never
+         reaches that corner at all. */
       #tab-board .board.layout-compact .proj { margin-right: 18px; }
       #tab-board .board.layout-compact .card-end .del {
         position: absolute; top: 2px; right: 2px; margin: 0;
       }
-      /* Notes icon/field visibility and the .card-notes grid row itself are
-         no longer mobile-only -- see the shared .board.layout-compact rules
-         above (base card-body CSS) -- since the field needed to break out
-         of card-end's own narrow grid cell to actually span the full card
-         width either way, it's the same fix on both platforms now. */
+      /* Notes: hidden unless it already has a saved value (.notes-open, set
+         at render time by cardHTML) or the notes-toggle icon opens it --
+         collapses back if left blank on blur. Desktop keeps it inline and
+         always visible instead (see the shared .card-notes/.notes-toggle
+         rules above) -- this tap-to-reveal treatment is mobile-only. */
+      #tab-board .board.layout-compact .card-notes { display: none; margin-top: 2px; padding-left: 0; }
+      #tab-board .board.layout-compact .card.notes-open .card-notes { display: block; }
+      #tab-board .board.layout-compact .card-end .notes-toggle {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 20px; height: 20px; flex: none; padding: 0; border: 0;
+        background: transparent; color: var(--ink-3); cursor: pointer;
+      }
+      #tab-board .board.layout-compact .card-end .notes-toggle svg { width: 13px; height: 13px; }
+      /* Icon only earns its keep while the field is blank -- once there's
+         actual saved text the field is already showing (auto-open above),
+         so the icon would be a redundant control. It stays visible while
+         open-but-blank (mid-edit, nothing typed yet) so tapping it can
+         still collapse back rather than being stuck permanently open. */
+      #tab-board .board.layout-compact .card:has(.card-notes:not(:empty)) .notes-toggle { display: none; }
 
       /* Inventory tab: hide table, show cards */
       #tab-inventory .table-wrap { display: none; }
@@ -2214,9 +2219,9 @@
           <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month's Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
           ${!isGhost ? `<span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${c.recur || ''}">mo</span>` : ''}
           <button class="notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
+          <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || '')}</span>
           <button class="del" data-act="del-card" title="Remove item" aria-label="Remove item">×</button>
         </div>
-        <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || '')}</span>
       </div>
     </div>`;
   }
@@ -2277,6 +2282,7 @@
           ${ICON.search}
           <input type="text" class="month-search-input" placeholder="Search…" autocomplete="off" />
           <button class="month-search-clear" data-act="clear-month-search" title="Clear search" style="display:none">×</button>
+          <span class="month-notes month-notes--desktop" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
         </div>
         <button class="notes-toggle month-notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         <div class="month-metrics">
@@ -2295,7 +2301,7 @@
         </div>
       </div>
       <div class="month-notes-row${m.notes && m.notes.trim() ? ' notes-open' : ''}">
-        <span class="month-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
+        <span class="month-notes month-notes--mobile" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
       </div>
       <div class="month-list" data-list="month">${m.blocks.map(blockHTML).join('')}</div>
     </div>`;
@@ -3184,6 +3190,16 @@
       persistSoon();
     } else if (t.matches('.month-notes')) {
       if (!t.textContent.trim()) t.innerHTML = '';
+      // Desktop (shares the search box) and mobile (its own row below the
+      // header) are two separate elements holding the same value -- mirror
+      // keystrokes into the other one live so neither goes stale if the
+      // viewport crosses the breakpoint mid-session, and so toApi() (which
+      // just reads the first '.month-notes' match) never picks up an
+      // outdated copy.
+      const monthEl = t.closest('.month');
+      monthEl?.querySelectorAll('.month-notes').forEach((el) => {
+        if (el !== t) el.textContent = t.textContent;
+      });
       persistSoon();
     }
   });
@@ -3401,7 +3417,11 @@
     if (a === 'focus-month-search') {
       // Clicking anywhere in the box (not just the input itself) focuses it,
       // same as clicking a Notes field -- no separate toggle/reveal step.
-      if (e.target.closest('.month-search-clear')) return;
+      // Desktop's notes field shares this same box (see monthHTML) and
+      // handles its own click-to-edit already, so it's excluded here the
+      // same way the clear button is -- otherwise clicking into notes would
+      // get immediately hijacked back to the search input.
+      if (e.target.closest('.month-search-clear, .month-notes')) return;
       act.querySelector('.month-search-input')?.focus();
       return;
     }
