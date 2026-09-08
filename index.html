@@ -1197,10 +1197,22 @@
        toggle icon is a mobile-only affordance. See max-width:680px block. */
     #tab-board .notes-toggle { display: none; }
     #tab-board .card-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
+    /* position:absolute, pinned to the card's own right edge, rather than
+       relying on flowing after .card-notes -- a contenteditable span with
+       overflow:hidden + white-space:nowrap doesn't reliably clip its own
+       overflowing text in every case (observed: text past the box's own
+       width visually painting into the space after it instead of getting
+       ellipsis-clipped there), which put the × wherever that overflow
+       happened to end instead of a stable position. Absolute positioning
+       makes the × immune to that regardless of whether the clipping
+       upstream ever fully holds; .card-notes gets matching right padding
+       below so its own text has clearance to stop before reaching it. */
     #tab-board .board.layout-compact .card-end .del {
-      position: static; width: 18px; height: 18px; opacity: .4; flex: none;
+      position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+      width: 18px; height: 18px; opacity: .4;
     }
     #tab-board .board.layout-compact .card:hover .card-end .del { opacity: 1; }
+    #tab-board .board.layout-compact .card-notes { padding-right: 22px; }
 
     /* ── shipment stage toggle ── */
     #tab-board .ship-stage {
@@ -1494,7 +1506,7 @@
          collapses back if left blank on blur. Desktop keeps it inline and
          always visible instead (see the shared .card-notes/.notes-toggle
          rules above) -- this tap-to-reveal treatment is mobile-only. */
-      #tab-board .board.layout-compact .card-notes { display: none; margin-top: 2px; padding-left: 0; }
+      #tab-board .board.layout-compact .card-notes { display: none; margin-top: 2px; padding-left: 0; padding-right: 0; }
       #tab-board .board.layout-compact .card.notes-open .card-notes { display: block; }
       #tab-board .board.layout-compact .card-end .notes-toggle {
         display: inline-flex; align-items: center; justify-content: center;
