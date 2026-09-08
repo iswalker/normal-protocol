@@ -2870,9 +2870,9 @@
   // Reconciles rather than rebuilds: a ghost already sitting in a month this
   // source still wants is left alone, so re-running this (on load, or after a
   // promote) neither churns ghost ids nor rewrites the whole board to Turso.
-  function syncGhosts(sourceId) {
+  function syncGhosts(sourceId, skipRecalc) {
     const src = STATE.cardData[sourceId];
-    if (!src || !src.recur || src.recur < 1) { cleanGhostsForSource(sourceId); recalcAll(); return; }
+    if (!src || !src.recur || src.recur < 1) { cleanGhostsForSource(sourceId); if (!skipRecalc) recalcAll(); return; }
     const N = Math.max(1, Math.min(12, Math.round(Number(src.recur))));
     const { monthIdx: srcMi, shipId: srcShipId } = findCardLocation(sourceId);
     if (srcMi === -1) return;
@@ -2942,7 +2942,7 @@
       }
       added++;
     }
-    recalcAll();
+    if (!skipRecalc) recalcAll();
     // Only save when the ghost set actually changed, so a plain page load that
     // reconciles to the same result doesn't rewrite Turso.
     if (added || strays.length) persistSoon();
@@ -4450,10 +4450,20 @@
       // after extending the rolling window) -- syncGhosts is otherwise only
       // re-run when a card's "ev N mo" value is edited, so a plain page load
       // never reached the newest month(s) on its own.
+      // skipRecalc=true here: syncGhosts's own recalcAll() at the end of
+      // every call rebuilds the whole month-strip and force-reflows every
+      // month's layout via getBoundingClientRect (updateCurrentMonthFromScroll)
+      // -- fine for one interactive edit, but this loop can run it once per
+      // recurring item on a plain page load, and that layout-thrashing
+      // dominated cold-load CPU time (~1.4s of it in a profile of a board
+      // with a few dozen recurring items). One recalcAll() after the whole
+      // batch produces the identical end state.
+      let anyGhostChanges = false;
       Object.keys(STATE.cardData).forEach((id) => {
         const c = STATE.cardData[id];
-        if (c && !c.ghostOf && c.recur) syncGhosts(id);
+        if (c && !c.ghostOf && c.recur) { syncGhosts(id, true); anyGhostChanges = true; }
       });
+      if (anyGhostChanges) recalcAll();
       const asof = document.getElementById('board-asof');
       if (asof) asof.textContent = SB.fmtDate(SB.today());
 
