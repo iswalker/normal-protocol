@@ -56,7 +56,18 @@
     }
 
     .brand { display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 0; }
-    .brand img { width: 26px; height: 26px; }
+    /* Same border treatment as #tab-board .month (1px #dde3e4, 14px radius)
+       -- on a 26px box that radius exceeds half the width, so the browser
+       clamps it to a full circle; that's expected, not a bug, since the
+       ask was to match the month styling exactly rather than hit a
+       specific corner radius. overflow:hidden clips the square PNG (which
+       already has its own transparent-cornered rounding baked in) to the
+       CSS radius so it reads as one clean edge instead of two mismatched
+       roundings layered on top of each other. */
+    .brand img {
+      width: 26px; height: 26px; box-sizing: border-box;
+      border: 1px solid #dde3e4; border-radius: 14px; overflow: hidden;
+    }
     .brand h1 {
       font-size: 16px;
       font-weight: 600;
@@ -1322,6 +1333,16 @@
          lock it down instead of leaving the page free to rubber-band/scroll
          sideways over a few stray overflow pixels. */
       body, #tab-board { overflow-x: hidden; }
+
+      /* iOS Safari auto-zooms the whole page in whenever a focused text
+         field's font-size is under 16px -- true of nearly every input/
+         notes field in this app's compact mobile UI (12-14px). Bumping to
+         16px only while focused avoids the zoom without permanently
+         widening any field's normal resting size. !important since this
+         needs to win over every field's own more specific font-size rule
+         (e.g. #tab-board .month-search-input), not just the ones written
+         after it in the file. */
+      input:focus, textarea:focus, [contenteditable="true"]:focus { font-size: 16px !important; }
 
       /* Board tab: stack months vertically */
       #board {
