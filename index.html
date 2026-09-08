@@ -424,6 +424,27 @@
     }
     .clear-filters-btn:hover { color: #fff; background: #e08a3c; }
 
+    /* Same look/behavior as a single month's #tab-board .month-search-box,
+       but broadcasts to every month at once (see the 'global-search-input'
+       input handler) instead of filtering just its own column. */
+    .global-search-box {
+      flex: 0 1 200px; min-width: 90px; height: 30px; display: flex; align-items: center; gap: 6px;
+      padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: #f7f9f9;
+      cursor: text; transition: border-color .12s, background .12s;
+    }
+    .global-search-box:hover { border-color: #c4cdd0; }
+    .global-search-box:focus-within { border-color: var(--teal); background: #fff; }
+    .global-search-box svg { width: 13px; height: 13px; display: block; flex: none; color: var(--ink-60); }
+    .global-search-input {
+      flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
+      font-family: inherit; font-size: 13px; color: var(--ink); outline: none;
+    }
+    .global-search-clear {
+      flex: none; width: 16px; height: 16px; border: none; background: transparent;
+      color: var(--ink-60); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
+    }
+    .global-search-clear:hover { color: var(--ink); background: var(--accent-tint, rgba(121,189,177,0.15)); }
+
     .scan-overlay {
       position: fixed; inset: 0; background: rgba(23,26,28,0.55); z-index: 300;
       display: flex; align-items: center; justify-content: center;
@@ -1646,6 +1667,11 @@
   <div class="header-right">
     <span class="board-controls" id="board-controls">
       <button class="clear-filters-btn" id="clear-filters-btn" style="display:none" title="Clear all active month searches">Clear Filters</button>
+      <div class="global-search-box" data-act="focus-global-search" title="Search every month">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
+        <input type="text" id="global-search-input" class="global-search-input" placeholder="Search all…" autocomplete="off" />
+        <button class="global-search-clear" id="global-search-clear" title="Clear search" style="display:none">×</button>
+      </div>
       <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
       <div class="settings-wrap">
         <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
@@ -3527,7 +3553,47 @@
       if (clearBtn) clearBtn.style.display = 'none';
       applyMonthSearch(input.closest('.month'), '');
     });
+    const gInput = document.getElementById('global-search-input');
+    if (gInput) gInput.value = '';
+    const gClear = document.getElementById('global-search-clear');
+    if (gClear) gClear.style.display = 'none';
   });
+
+  // ── header search-all-months box: same behavior as one month's own
+  //    search box, just broadcast to every month's input at once so each
+  //    month's existing filtering/clear-button/"Clear Filters" visibility
+  //    logic (applyMonthSearch, updateClearFiltersBtn) keeps working
+  //    unmodified -- this is a convenience fan-out, not a separate path. ──
+  (function initGlobalSearch() {
+    const input = document.getElementById('global-search-input');
+    const clearBtn = document.getElementById('global-search-clear');
+    const box = document.querySelector('.global-search-box');
+    if (!input || !box) return;
+    function applyToAllMonths(q) {
+      board.querySelectorAll('.month').forEach((monthEl) => {
+        const monthInput = monthEl.querySelector('.month-search-input');
+        if (!monthInput) return;
+        monthInput.value = q;
+        const monthClear = monthInput.closest('.month-search-box')?.querySelector('.month-search-clear');
+        if (monthClear) monthClear.style.display = q ? 'block' : 'none';
+        applyMonthSearch(monthEl, q);
+      });
+      clearBtn.style.display = q ? 'block' : 'none';
+    }
+    box.addEventListener('click', (e) => {
+      if (e.target.closest('.global-search-clear')) return;
+      input.focus();
+    });
+    input.addEventListener('input', () => applyToAllMonths(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { input.value = ''; applyToAllMonths(''); input.blur(); }
+    });
+    clearBtn.addEventListener('click', () => {
+      input.value = '';
+      applyToAllMonths('');
+      input.blur();
+    });
+  })();
 
   function newCard(name) {
     const id = uid('c_');
