@@ -428,12 +428,16 @@
        but broadcasts to every month at once (see the 'global-search-input'
        input handler) instead of filtering just its own column. */
     .global-search-box {
+      /* Same transparent/bordered treatment as .inv-search-link and
+         .inv-scan-btn (which it sits beside) instead of a filled white/grey
+         pill -- those two don't visually "stand out" from the header the
+         way a filled box does, so this shouldn't either. */
       flex: 0 1 200px; min-width: 90px; height: 30px; display: flex; align-items: center; gap: 6px;
-      padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: #f7f9f9;
+      padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: transparent;
       cursor: text; transition: border-color .12s, background .12s;
     }
-    .global-search-box:hover { border-color: #c4cdd0; }
-    .global-search-box:focus-within { border-color: var(--teal); background: #fff; }
+    .global-search-box:hover { border-color: var(--teal); background: rgba(121,189,177,0.10); }
+    .global-search-box:focus-within { border-color: var(--teal); background: rgba(121,189,177,0.10); }
     .global-search-box svg { width: 13px; height: 13px; display: block; flex: none; color: var(--ink-60); }
     .global-search-input {
       flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
@@ -610,7 +614,15 @@
 
       /* Hide action buttons from header — they move to the mobile FAB */
       .inv-controls { display: none !important; }
-      .board-controls { display: flex !important; }
+      .board-controls { display: flex !important; min-width: 0; }
+      /* Search All was overflowing past its own row-1 share and covering
+         the Inventory button to its left -- board-controls' min-width:0
+         above lets the row actually shrink, and the search box's own
+         basis/min-width drop to 0 here so it's the ONE flexible item that
+         absorbs whatever's genuinely left between Inventory (fixed-size,
+         .brand is flex:0 0 auto) and Scan/gear (also fixed) instead of
+         insisting on a floor wider than that gap. */
+      .global-search-box { flex: 1 1 0; min-width: 0; }
       .board-controls .refresh-inv-btn { display: none; }
       .inv-modal-ov { padding: 0; }
       /* #tab-inventory carries both the "#tab-inventory" id (a leftover from
@@ -1531,9 +1543,18 @@
          rules above) -- this tap-to-reveal treatment is mobile-only. */
       #tab-board .board.layout-compact .card-notes { display: none; margin-top: 2px; padding-left: 0; padding-right: 0; }
       #tab-board .board.layout-compact .card.notes-open .card-notes { display: block; }
+      /* margin-left:auto pushes it to the right edge of whatever line it
+         wraps onto (card-end is display:contents here, so it's really a
+         direct flex item of card-body's row 2) instead of sitting wherever
+         it lands relative to the toggle/recur controls before it -- same
+         "always the far right" idea as the × delete button, just via the
+         flex-wrap-line trick rather than position:absolute since (unlike
+         the ×, which pins to the card's fixed top-right corner) this
+         icon's row can be at a different height depending on wrapping. */
       #tab-board .board.layout-compact .card-end .notes-toggle {
         display: inline-flex; align-items: center; justify-content: center;
         width: 20px; height: 20px; flex: none; padding: 0; border: 0;
+        margin-left: auto;
         background: transparent; color: var(--ink-3); cursor: pointer;
       }
       #tab-board .board.layout-compact .card-end .notes-toggle svg { width: 13px; height: 13px; }
@@ -1669,7 +1690,7 @@
       <button class="clear-filters-btn" id="clear-filters-btn" style="display:none" title="Clear all active month searches">Clear Filters</button>
       <div class="global-search-box" data-act="focus-global-search" title="Search every month">
         <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
-        <input type="text" id="global-search-input" class="global-search-input" placeholder="Search all…" autocomplete="off" />
+        <input type="text" id="global-search-input" class="global-search-input" placeholder="Search…" autocomplete="off" />
         <button class="global-search-clear" id="global-search-clear" title="Clear search" style="display:none">×</button>
       </div>
       <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
@@ -4189,16 +4210,22 @@
   })();
 
   // ── mobile: same preventDefault-swallowed-click problem as the grip tap
-  //    above, on the notes-toggle icon -- Sortable's touch handling on the
-  //    draggable item this button sits inside eats the first tap's synthetic
-  //    click, so a real device needed two taps to register one. Same fix:
-  //    track the touch ourselves and fire the click by hand. ──
-  (function initNotesToggleTap() {
+  //    above, on a handful of other controls that live inside a draggable
+  //    card/shipment -- Sortable's touch handling on the item they sit
+  //    inside eats the first tap's synthetic click, so a real device needed
+  //    a first tap to "focus" and a second to actually register. Same fix:
+  //    track the touch ourselves and fire the click by hand. Covers the
+  //    notes icon, the include-in-total toggle, "+ Item"/"+ Order", and the
+  //    mobile Status <select> (a real .click() from inside a genuine
+  //    touchend handler still counts as user activation for opening its
+  //    native picker, same as a trusted tap would). ──
+  (function initTapFix() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
+    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select';
     const MOVE_TOLERANCE = 10;
     let startX = 0, startY = 0, target = null, moved = false;
     board.addEventListener('touchstart', (e) => {
-      target = e.target.closest('.notes-toggle') || null;
+      target = e.target.closest(SEL) || null;
       moved = false;
       if (target) { const t = e.touches[0]; startX = t.clientX; startY = t.clientY; }
     }, { passive: true });
@@ -4208,11 +4235,11 @@
       if (Math.abs(t.clientX - startX) > MOVE_TOLERANCE || Math.abs(t.clientY - startY) > MOVE_TOLERANCE) moved = true;
     }, { passive: true });
     board.addEventListener('touchend', (e) => {
-      const btn = target;
+      const el = target;
       target = null;
-      if (!btn || moved) return;
+      if (!el || moved) return;
       e.preventDefault();
-      btn.click();
+      el.click();
     }, { passive: false });
   })();
 
