@@ -417,23 +417,13 @@
     }
     .inv-scan-btn:hover { color: var(--teal); border-color: var(--teal); }
 
-    /* Shown only while at least one month's search box has text in it */
-    .clear-filters-btn {
-      appearance: none; border: 1.5px solid #e08a3c; background: transparent;
-      cursor: pointer; padding: 5px 10px; border-radius: 7px; font-family: inherit;
-      font-size: 12px; color: #e08a3c; white-space: nowrap; font-weight: 500;
-      transition: color 0.15s, border-color 0.15s, background 0.15s;
-    }
-    .clear-filters-btn:hover { color: #fff; background: #e08a3c; }
-
-    /* Same look/behavior as a single month's #tab-board .month-search-box,
-       but broadcasts to every month at once (see the 'global-search-input'
-       input handler) instead of filtering just its own column. */
+    /* Filters every month at once (see the 'global-search-input' input
+       handler) -- lives right after the Inventory button, left-aligned,
+       not among the right-aligned Scan/settings controls. Same transparent/
+       bordered treatment as .inv-search-link and .inv-scan-btn instead of a
+       filled white/grey pill -- those don't visually "stand out" from the
+       header the way a filled box does, so this shouldn't either. */
     .global-search-box {
-      /* Same transparent/bordered treatment as .inv-search-link and
-         .inv-scan-btn (which it sits beside) instead of a filled white/grey
-         pill -- those two don't visually "stand out" from the header the
-         way a filled box does, so this shouldn't either. */
       flex: 0 1 200px; min-width: 90px; height: 30px; display: flex; align-items: center; gap: 6px;
       padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: transparent;
       cursor: text; transition: border-color .12s, background .12s;
@@ -586,8 +576,14 @@
 
       /* Logo only — no text */
       .brand h1 { display: none; }
-      .brand { flex: 0 0 auto; order: 1; }
-      .header-right { order: 2; }
+      /* Search now lives here (right after Inventory, left-aligned) instead
+         of over in .header-right, so .brand needs to be the one that
+         shrinks now -- logo/Inventory button stay fixed-size (flex:none),
+         the search box is the one flexible item absorbing whatever's left
+         before .header-right's own fixed-size Scan/gear. */
+      .brand { flex: 1 1 0; order: 1; min-width: 0; }
+      .brand img, .brand .inv-search-link { flex: none; }
+      .header-right { flex: 0 0 auto; order: 2; }
 
       /* Brought back as its own full-width row under the primary toolbar,
          instead of hidden outright -- order:3 (after brand/header-right,
@@ -617,13 +613,11 @@
       /* Hide action buttons from header — they move to the mobile FAB */
       .inv-controls { display: none !important; }
       .board-controls { display: flex !important; min-width: 0; }
-      /* Search All was overflowing past its own row-1 share and covering
-         the Inventory button to its left -- board-controls' min-width:0
-         above lets the row actually shrink, and the search box's own
-         basis/min-width drop to 0 here so it's the ONE flexible item that
-         absorbs whatever's genuinely left between Inventory (fixed-size,
-         .brand is flex:0 0 auto) and Scan/gear (also fixed) instead of
-         insisting on a floor wider than that gap. */
+      /* Search All's basis/min-width drop to 0 here (it's now .brand's one
+         flexible child, see above) so it absorbs whatever's genuinely left
+         between the fixed-size logo/Inventory button and .header-right's
+         own fixed-size Scan/gear, instead of insisting on a wider floor
+         than that gap and overflowing past it. */
       .global-search-box { flex: 1 1 0; min-width: 0; }
       .board-controls .refresh-inv-btn { display: none; }
       .inv-modal-ov { padding: 0; }
@@ -795,34 +789,11 @@
     #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     }
-    /* One combined search box, sits right after "+ Order"; a Notes field
-       (same pattern as ship-notes/card-notes) takes the other half of the
-       room that used to all go to the search box -- both share the space
-       left before .month-metrics (which has its own margin-left:auto). The
-       search icon is just a leading decoration inside its box, not a
-       separate toggle button, so you click straight into the text like the
-       Notes field instead of needing to reveal an input first. */
-    #tab-board .month-search-box {
-      flex: 1 1 0; min-width: 60px; height: 26px; display: flex; align-items: center; gap: 6px;
-      padding: 0 8px; border: 1.5px solid var(--line); border-radius: 7px; background: #f7f9f9;
-      cursor: text; transition: border-color .12s, background .12s;
-    }
-    #tab-board .month-search-box:hover { border-color: #c4cdd0; }
-    #tab-board .month-search-box:focus-within { border-color: var(--accent); background: #fff; }
-    #tab-board .month-search-box svg { width: 12px; height: 12px; display: block; flex: none; color: var(--ink-3); }
-    #tab-board .month-search-input {
-      flex: 1 1 0; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
-      font-family: inherit; font-size: 12.5px; color: var(--b-ink); outline: none;
-    }
-    #tab-board .month-search-clear {
-      flex: none; width: 16px; height: 16px; border: none; background: transparent;
-      color: var(--ink-3); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
-    }
-    #tab-board .month-search-clear:hover { color: var(--ink); background: var(--accent-tint); }
     /* Desktop keeps the original placement -- a plain-text field (same
        treatment as item/shipment notes, no box/border of its own) sitting
-       beside the search box, each taking half the room the search input
-       used to have all to itself. #tab-board .month-notes-row (mobile's
+       right after "+ Order", taking the room a per-month search box used to
+       occupy (the header's global search box now covers that, filtering
+       every month at once). #tab-board .month-notes-row (mobile's
        own separate row, below) is desktop-hidden entirely; only mobile
        relocates the field out of .month-head, since only mobile ever
        complained about an editable field being glued to a position:sticky
@@ -1359,8 +1330,8 @@
          16px only while focused avoids the zoom without permanently
          widening any field's normal resting size. !important since this
          needs to win over every field's own more specific font-size rule
-         (e.g. #tab-board .month-search-input), not just the ones written
-         after it in the file. */
+         (e.g. .global-search-input), not just the ones written after it in
+         the file. */
       input:focus, textarea:focus, [contenteditable="true"]:focus { font-size: 16px !important; }
 
       /* Board tab: stack months vertically */
@@ -1685,16 +1656,15 @@
       <svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg>
       <span class="inv-search-label">Inventory</span>
     </button>
+    <div class="global-search-box" data-act="focus-global-search" title="Search every month">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
+      <input type="text" id="global-search-input" class="global-search-input" placeholder="Search…" autocomplete="off" />
+      <button class="global-search-clear" id="global-search-clear" title="Clear search" style="display:none">×</button>
+    </div>
   </div>
   <div class="month-strip" id="month-strip"></div>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
-      <button class="clear-filters-btn" id="clear-filters-btn" style="display:none" title="Clear all active month searches">Clear Filters</button>
-      <div class="global-search-box" data-act="focus-global-search" title="Search every month">
-        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
-        <input type="text" id="global-search-input" class="global-search-input" placeholder="Search…" autocomplete="off" />
-        <button class="global-search-clear" id="global-search-clear" title="Clear search" style="display:none">×</button>
-      </div>
       <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
       <div class="settings-wrap">
         <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
@@ -2079,6 +2049,10 @@
 
   let STATE; // { cardData, shipmentData }
   let structure;
+  // Current query from the header's global search box (see initGlobalSearch) --
+  // there's no more per-month search input to read a live value from, this is
+  // the one source of truth for whether a search is active and what it is.
+  let globalSearchQuery = '';
   let INV_MAP = {};     // lowercased-name -> Inventory row (set by applyInventory)
   let SPENT_BY_MONTH = {}; // month name -> $ amount (set by YNAB sync)
   let PROJ_MAP = {};    // lowercased-name -> { daysLeft, runOut } after all board orders
@@ -2343,11 +2317,6 @@
           <span class="mcount">0</span>
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
-        <div class="month-search-box" data-act="focus-month-search" title="Search this month">
-          ${ICON.search}
-          <input type="text" class="month-search-input" placeholder="Search…" autocomplete="off" />
-          <button class="month-search-clear" data-act="clear-month-search" title="Clear search" style="display:none">×</button>
-        </div>
         <span class="month-notes month-notes--desktop" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
         <button class="notes-toggle month-notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         <div class="month-metrics">
@@ -2560,7 +2529,7 @@
       // unrelated to which items happen to match the query) would mix an
       // always-present figure into a number that's supposed to represent
       // only the filtered results.
-      const searchActive = !!monthEl.querySelector('.month-search-input')?.value.trim();
+      const searchActive = !!globalSearchQuery.trim();
       let plannedItems = 0, maxItems = 0, itemCount = 0;
 
       [...list.children].forEach((node) => {
@@ -3225,12 +3194,6 @@
   // ── editing ──
   board.addEventListener('input', (e) => {
     const t = e.target;
-    if (t.matches('.month-search-input')) {
-      applyMonthSearch(t.closest('.month'), t.value);
-      const clearBtn = t.closest('.month-search-box')?.querySelector('.month-search-clear');
-      if (clearBtn) clearBtn.style.display = t.value ? 'block' : 'none';
-      return;
-    }
     if (t.matches('.recur-ctl-n')) {
       const cardEl = t.closest('.card');
       const id = cardEl.dataset.id;
@@ -3348,7 +3311,7 @@
     // While searching, monthSpent drops the unattributable YNAB base but
     // keeps matching "Ordered" shipment totals -- a completed order that
     // matches the search still counts toward Spent.
-    const searchActive = !!monthEl.querySelector('.month-search-input')?.value.trim();
+    const searchActive = !!globalSearchQuery.trim();
     const spent = monthSpent(monthEl, searchActive);
     const spentEl = monthEl.querySelector('.spentv');
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
@@ -3526,26 +3489,6 @@
       showMerchantPicker(act, monthEl);
       return;
     }
-    if (a === 'focus-month-search') {
-      // Clicking anywhere in the box (not just the input itself) focuses it,
-      // same as clicking a Notes field -- no separate toggle/reveal step.
-      // Desktop's notes field shares this same box (see monthHTML) and
-      // handles its own click-to-edit already, so it's excluded here the
-      // same way the clear button is -- otherwise clicking into notes would
-      // get immediately hijacked back to the search input.
-      if (e.target.closest('.month-search-clear, .month-notes')) return;
-      act.querySelector('.month-search-input')?.focus();
-      return;
-    }
-    if (a === 'clear-month-search') {
-      const monthEl = act.closest('.month');
-      const input = monthEl.querySelector('.month-search-input');
-      input.value = '';
-      act.style.display = 'none';
-      applyMonthSearch(monthEl, '');
-      input.focus();
-      return;
-    }
     if (a === 'toggle-notes') {
       // Reveals the notes field and focuses it. Card notes get their own
       // full-width row in .card-body (grid-area on desktop, flex-basis:100%
@@ -3607,53 +3550,21 @@
       }
     });
     recalcTotalsFor(monthEl);
-    updateClearFiltersBtn();
   }
 
-  // Shows/hides the header's "Clear Filters" button based on whether ANY
-  // month currently has an active search -- applyMonthSearch is the one
-  // place every search mutation (typing, the × button, Escape) already
-  // passes through, so this stays in sync without repeating the check at
-  // each call site.
-  function updateClearFiltersBtn() {
-    const btn = document.getElementById('clear-filters-btn');
-    if (!btn) return;
-    const active = [...board.querySelectorAll('.month-search-input')].some((i) => i.value.trim());
-    btn.style.display = active ? 'inline-block' : 'none';
-  }
-  document.getElementById('clear-filters-btn')?.addEventListener('click', () => {
-    board.querySelectorAll('.month-search-input').forEach((input) => {
-      if (!input.value) return;
-      input.value = '';
-      const clearBtn = input.closest('.month-search-box')?.querySelector('.month-search-clear');
-      if (clearBtn) clearBtn.style.display = 'none';
-      applyMonthSearch(input.closest('.month'), '');
-    });
-    const gInput = document.getElementById('global-search-input');
-    if (gInput) gInput.value = '';
-    const gClear = document.getElementById('global-search-clear');
-    if (gClear) gClear.style.display = 'none';
-  });
-
-  // ── header search-all-months box: same behavior as one month's own
-  //    search box, just broadcast to every month's input at once so each
-  //    month's existing filtering/clear-button/"Clear Filters" visibility
-  //    logic (applyMonthSearch, updateClearFiltersBtn) keeps working
-  //    unmodified -- this is a convenience fan-out, not a separate path. ──
+  // ── header search-all-months box: the only search UI now (per-month
+  //    search boxes and the "Clear Filters" button are gone -- this filters
+  //    every month at once, and its own × already does what Clear Filters
+  //    did). globalSearchQuery is the one source of truth recalcAll/
+  //    recalcTotalsFor read to know whether a search is active. ──
   (function initGlobalSearch() {
     const input = document.getElementById('global-search-input');
     const clearBtn = document.getElementById('global-search-clear');
     const box = document.querySelector('.global-search-box');
     if (!input || !box) return;
     function applyToAllMonths(q) {
-      board.querySelectorAll('.month').forEach((monthEl) => {
-        const monthInput = monthEl.querySelector('.month-search-input');
-        if (!monthInput) return;
-        monthInput.value = q;
-        const monthClear = monthInput.closest('.month-search-box')?.querySelector('.month-search-clear');
-        if (monthClear) monthClear.style.display = q ? 'block' : 'none';
-        applyMonthSearch(monthEl, q);
-      });
+      globalSearchQuery = q;
+      board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, q));
       clearBtn.style.display = q ? 'block' : 'none';
     }
     box.addEventListener('click', (e) => {
@@ -4100,14 +4011,6 @@
   board.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.matches('[contenteditable]')) {
       e.preventDefault(); e.target.blur();
-    }
-    if (e.key === 'Escape' && e.target.matches('.month-search-input')) {
-      const monthEl = e.target.closest('.month');
-      e.target.value = '';
-      const clearBtn = e.target.closest('.month-search-box')?.querySelector('.month-search-clear');
-      if (clearBtn) clearBtn.style.display = 'none';
-      applyMonthSearch(monthEl, '');
-      e.target.blur();
     }
   });
 
