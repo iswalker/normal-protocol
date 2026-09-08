@@ -2432,14 +2432,21 @@
   }
 
   // ── totals ──
-  function monthSpent(monthEl) {
+  // searchAware (used while a month search is active) drops the YNAB base
+  // entirely -- that figure has no per-item breakdown to check against a
+  // search term -- but keeps the "Ordered" shipment total, only counting
+  // cards that actually match (aren't .search-hide), since that portion
+  // *is* attributable to specific items and a matching completed order
+  // should still show up as Spent instead of always reading zero.
+  function monthSpent(monthEl, searchAware) {
     const name = monthEl.querySelector('.mname')?.textContent.trim();
-    let base = SPENT_BY_MONTH[name] || 0;
+    let base = searchAware ? 0 : (SPENT_BY_MONTH[name] || 0);
     // Add ordered shipment totals (Entered/Received are excluded — user has entered in YNAB)
     monthEl.querySelectorAll('.month-list > .shipment').forEach((shipEl) => {
       const sd = STATE.shipmentData[shipEl.dataset.id] || {};
       if (sd.stage === 'ordered') {
         shipEl.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
+          if (searchAware && cardEl.classList.contains('search-hide')) return;
           const c = STATE.cardData[cardEl.dataset.id];
           if (c) base += (Number(c.price) || 0) * (Number(c.qty) || 0);
         });
@@ -2568,16 +2575,14 @@
         }
       });
 
-      const spent = monthSpent(monthEl);
+      // While searching, monthSpent drops the unattributable YNAB base but
+      // keeps matching "Ordered" shipment totals -- a completed order that
+      // matches the search still counts toward Spent.
+      const spent = monthSpent(monthEl, searchActive);
       const spentEl = monthEl.querySelector('.spentv');
-      // Zeroed out while searching, not just excluded from Planned/Max below
-      // -- YNAB's actual-spend figure has no per-item breakdown to check
-      // against the search term, so there's no way to show "how much of
-      // this matches" -- only whether it's 0 or the whole unfiltered total.
-      const spentForTotals = searchActive ? 0 : spent;
-      if (spentEl) spentEl.textContent = SB.fmtMoney(spentForTotals);
-      monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spentForTotals + plannedItems);
-      monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spentForTotals + maxItems);
+      if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
+      monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
+      monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
     });
     updateMonthVisibility();
@@ -3299,17 +3304,15 @@
         if (c && c.includeInMonthTotal) plannedItems += cost;
       }
     });
-    const spent = monthSpent(monthEl);
-    const spentEl = monthEl.querySelector('.spentv');
-    // Zeroed out while searching, not just excluded from Planned/Max below
-    // -- YNAB's actual-spend figure has no per-item breakdown to check
-    // against the search term, so there's no way to show "how much of
-    // this matches" -- only whether it's 0 or the whole unfiltered total.
+    // While searching, monthSpent drops the unattributable YNAB base but
+    // keeps matching "Ordered" shipment totals -- a completed order that
+    // matches the search still counts toward Spent.
     const searchActive = !!monthEl.querySelector('.month-search-input')?.value.trim();
-    const spentForTotals = searchActive ? 0 : spent;
-    if (spentEl) spentEl.textContent = SB.fmtMoney(spentForTotals);
-    monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spentForTotals + plannedItems);
-    monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spentForTotals + maxItems);
+    const spent = monthSpent(monthEl, searchActive);
+    const spentEl = monthEl.querySelector('.spentv');
+    if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
+    monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
+    monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
     updateMonthStrip();
   }
 
