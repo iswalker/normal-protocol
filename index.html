@@ -2570,8 +2570,12 @@
 
       const spent = monthSpent(monthEl);
       const spentEl = monthEl.querySelector('.spentv');
-      if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
+      // Zeroed out while searching, not just excluded from Planned/Max below
+      // -- YNAB's actual-spend figure has no per-item breakdown to check
+      // against the search term, so there's no way to show "how much of
+      // this matches" -- only whether it's 0 or the whole unfiltered total.
       const spentForTotals = searchActive ? 0 : spent;
+      if (spentEl) spentEl.textContent = SB.fmtMoney(spentForTotals);
       monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spentForTotals + plannedItems);
       monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spentForTotals + maxItems);
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
@@ -3297,12 +3301,13 @@
     });
     const spent = monthSpent(monthEl);
     const spentEl = monthEl.querySelector('.spentv');
-    if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
-    // Same reasoning as recalcAll: while searching, Planned/Max shouldn't
-    // fold in Spent (always-present YNAB activity, unrelated to which
-    // items match the query) alongside the filtered items' own total.
+    // Zeroed out while searching, not just excluded from Planned/Max below
+    // -- YNAB's actual-spend figure has no per-item breakdown to check
+    // against the search term, so there's no way to show "how much of
+    // this matches" -- only whether it's 0 or the whole unfiltered total.
     const searchActive = !!monthEl.querySelector('.month-search-input')?.value.trim();
     const spentForTotals = searchActive ? 0 : spent;
+    if (spentEl) spentEl.textContent = SB.fmtMoney(spentForTotals);
     monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spentForTotals + plannedItems);
     monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spentForTotals + maxItems);
     updateMonthStrip();
