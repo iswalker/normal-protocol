@@ -1096,6 +1096,14 @@
     }
     /* lock tracked card names (cursor only; actual editing is blocked by no contenteditable) */
     #tab-board .card-name:not([contenteditable]) { cursor: default; user-select: none; }
+    /* Linked-to-Inventory names get the open-inv-item shortcut instead --
+       .no-proj (no run-out to show, so no live Inventory match right now)
+       is the one case that still reads as inert, matching the click
+       handler's own guard. */
+    #tab-board .card-name[data-act="open-inv-item"] { cursor: pointer; }
+    #tab-board .card-name[data-act="open-inv-item"]:hover { text-decoration: underline; text-underline-offset: 2px; }
+    #tab-board .card.no-proj .card-name[data-act="open-inv-item"] { cursor: default; }
+    #tab-board .card.no-proj .card-name[data-act="open-inv-item"]:hover { text-decoration: none; }
 
     /* ── COMPACT layout — one dense grid row per card ── */
     #tab-board .board.layout-compact .month-list { gap: 5px; }
@@ -2219,7 +2227,7 @@
       <div class="card-body">
         <div class="card-top">
           <span class="card-grip block-grip" aria-hidden="true"></span>
-          <div class="card-name" ${untracked && !isGhost ? 'contenteditable="true" spellcheck="false"' : ''} data-field="name">${esc(c.name)}</div>
+          <div class="card-name" ${untracked && !isGhost ? 'contenteditable="true" spellcheck="false"' : 'data-act="open-inv-item" title="Open in Inventory"'} data-field="name">${esc(c.name)}</div>
           <span class="badge loose-tag">Loose</span>
           <span class="badge status">OK</span>
         </div>
@@ -3415,6 +3423,28 @@
       return;
     }
 
+    if (a === 'open-inv-item') {
+      // Shortcut to check/update On Hand for a supplement without hunting
+      // for it in the Inventory table -- only meaningful for cards actually
+      // linked to Inventory (a run-out projection showing means there's a
+      // match; see updateCard's hasInv/.no-proj). An untracked/free-text
+      // item never has a data-act here at all (its name is contenteditable
+      // instead), but a tracked item can still be .no-proj at the moment of
+      // click if Inventory data hasn't loaded/matched yet -- bail rather
+      // than open the modal to a search with nothing to show.
+      const cardEl = act.closest('.card');
+      if (!cardEl || cardEl.classList.contains('no-proj')) return;
+      const name = STATE.cardData[cardEl.dataset.id]?.name || '';
+      if (!name) return;
+      document.getElementById('inv-search-link')?.click();
+      requestAnimationFrame(() => {
+        const input = document.getElementById('inv-filter-item');
+        if (!input) return;
+        input.value = name;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      return;
+    }
     if (a === 'toggle-include') {
       e.preventDefault();
       const cardEl = act.closest('.card');
@@ -4147,13 +4177,18 @@
   //    inside eats the first tap's synthetic click, so a real device needed
   //    a first tap to "focus" and a second to actually register. Same fix:
   //    track the touch ourselves and fire the click by hand. Covers the
-  //    notes icon, the include-in-total toggle, "+ Item"/"+ Order", and the
+  //    notes icon, the include-in-total toggle, "+ Item"/"+ Order", the
   //    mobile Status <select> (a real .click() from inside a genuine
   //    touchend handler still counts as user activation for opening its
-  //    native picker, same as a trusted tap would). ──
+  //    native picker, same as a trusted tap would), and the open-in-
+  //    Inventory item name shortcut. Scoped to [data-act="open-inv-item"]
+  //    specifically, not bare .card-name -- an untracked item's name is a
+  //    plain contenteditable there instead (no data-act), and this fix's
+  //    own .click()+preventDefault() would otherwise swallow the tap
+  //    needed to place a cursor and start editing it. ──
   (function initTapFix() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
-    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select';
+    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"]';
     const MOVE_TOLERANCE = 10;
     let startX = 0, startY = 0, target = null, moved = false;
     board.addEventListener('touchstart', (e) => {
