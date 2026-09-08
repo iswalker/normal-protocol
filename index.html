@@ -3472,14 +3472,23 @@
       // here would never touch — they'd survive as ghosts pointing at an id
       // that's about to stop existing anywhere on the board. Cascade the same
       // way deleting that one card directly already does, per root found.
-      for (const cardEl of shipEl.querySelectorAll('.card[data-id]')) {
+      // Ask every recurring card's confirm BEFORE mutating anything: this
+      // used to `continue` past just that card's ghost cleanup on Cancel,
+      // while shipEl.remove() ran unconditionally afterward regardless --
+      // Cancel deleted the shipment (and the item) anyway, just without
+      // cleaning up its ghosts. Bailing out here, before any DOM/STATE
+      // change has happened, is what actually cancels the whole action.
+      const recurCards = [...shipEl.querySelectorAll('.card[data-id]')].filter((cardEl) => {
+        const c = STATE.cardData[cardEl.dataset.id];
+        return c && !c.ghostOf && c.recur;
+      });
+      for (const cardEl of recurCards) {
         const cid = cardEl.dataset.id;
         const c = STATE.cardData[cid];
-        if (!c || c.ghostOf || !c.recur) continue;
         const ghostCount = unlockedGhostsOf(cid).length;
-        if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) continue;
-        cleanGhostsForSource(cid);
+        if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
       }
+      recurCards.forEach((cardEl) => cleanGhostsForSource(cardEl.dataset.id));
       shipEl.remove();
       recalcAll(); persist();
       return;
