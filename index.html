@@ -212,7 +212,6 @@
       font-family: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
       font-size: 10px; color: #51606a; background: #dbe2e3;
       padding: 1px 7px; border-radius: 20px;
-      margin-right: auto;
     }
     .inv-modal-close {
       appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
@@ -220,6 +219,11 @@
       font-size: 18px; line-height: 1; color: var(--ink-60);
       display: flex; align-items: center; justify-content: center;
       transition: color 0.15s, border-color 0.15s;
+      /* Search/Soon sit left-aligned right after the count now (the
+         margin-right:auto used to live on .inv-count-badge above, pushing
+         search+Soon+close all the way to the right as a group) -- only the
+         close button itself floats to the far right now. */
+      margin-left: auto;
     }
     .inv-modal-close:hover { color: var(--teal); border-color: var(--teal); }
     .inv-modal-body { overflow: auto; flex: 1 1 auto; }
@@ -269,7 +273,7 @@
       position: absolute; top: calc(100% + 8px); right: 0; z-index: 200;
       background: white; border: 1.5px solid var(--ink-12);
       border-radius: 10px; box-shadow: 0 4px 16px rgba(23,26,28,0.10);
-      padding: 8px; min-width: 200px;
+      padding: 8px; min-width: 240px;
     }
     .settings-panel.open { display: flex; }
     .settings-panel-title {
@@ -282,6 +286,22 @@
       border-radius: 7px; padding: 7px 10px; font-size: 12.5px; font-family: inherit;
       color: var(--ink); cursor: pointer; text-align: left;
       transition: border-color 0.15s, background 0.15s;
+    }
+    /* Item border color legend -- hex values repeated here rather than the
+       --accent/--soon/--out custom properties since those are declared
+       scoped to #tab-board and this panel lives in <header>, outside it. */
+    .settings-legend { display: flex; flex-direction: column; gap: 5px; padding: 2px 4px; }
+    .settings-legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink); }
+    .settings-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+    .settings-legend-row b { font-weight: 600; }
+    .settings-shortcut-row {
+      display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink);
+      padding: 2px 4px;
+    }
+    .settings-shortcut-row kbd {
+      flex: none; font-family: var(--font-num, monospace); font-size: 11px;
+      border: 1px solid var(--ink-12); border-bottom-width: 2px; border-radius: 4px;
+      background: #f7f9f9; padding: 1px 6px; color: var(--ink);
     }
     .settings-action-btn:hover { border-color: var(--teal); background: rgba(121,189,177,0.06); color: #3f8f87; }
 
@@ -903,7 +923,7 @@
        quiet sanity-check rather than a primary number. Always visible
        (unlike .arrow/.nxt below, which only show once .card.has-order) --
        dose is relevant with or without a placed order. */
-    #tab-board .proj .dose-tag { font-family: var(--font-num); font-weight: 500; color: var(--ink-3); font-size: 13px; }
+    #tab-board .proj .dose-tag { font-family: var(--font-num); font-weight: normal; color: var(--ink-3); font-size: 12px; }
     #tab-board .proj .dose-arrow { color: var(--ink-3); font-size: 12px; }
     #tab-board .tier-soon .proj .cur .dl { color: var(--soon); }
     #tab-board .tier-out .proj .cur .dl { color: var(--out); }
@@ -1502,7 +1522,7 @@
       #tab-board .board.layout-compact .proj .dl .u { font-size: 9px; }
       #tab-board .board.layout-compact .proj .ro { font-size: 10px; }
       #tab-board .board.layout-compact .proj .arrow { font-size: 10px; }
-      #tab-board .board.layout-compact .proj .dose-tag { font-size: 10px; }
+      #tab-board .board.layout-compact .proj .dose-tag { font-size: 9px; }
       #tab-board .board.layout-compact .proj .dose-arrow { font-size: 9px; }
       #tab-board .card-row-break { display: block; flex-basis: 100%; height: 0; }
       #tab-board .board.layout-compact .order { flex: 0 0 auto; }
@@ -1691,6 +1711,15 @@
         <div class="settings-panel" id="settings-panel">
           <div class="settings-panel-title">Settings</div>
           <button class="settings-action-btn" id="update-ynab">Update YNAB API Key</button>
+          <div class="settings-panel-title">Item Border Legend</div>
+          <div class="settings-legend">
+            <div class="settings-legend-row"><span class="settings-swatch" style="background:#d2d9da"></span><b>Grey</b>&nbsp;— untracked, or 45+ days of supply left</div>
+            <div class="settings-legend-row"><span class="settings-swatch" style="background:#70c4bb"></span><b>Teal</b>&nbsp;— 10–45 days left</div>
+            <div class="settings-legend-row"><span class="settings-swatch" style="background:#e08a3c"></span><b>Orange</b>&nbsp;— 1–9 days left</div>
+            <div class="settings-legend-row"><span class="settings-swatch" style="background:#d6504a"></span><b>Red</b>&nbsp;— out of stock (0 days)</div>
+          </div>
+          <div class="settings-panel-title">Keyboard Shortcuts</div>
+          <div class="settings-shortcut-row"><kbd>/</kbd> Focus the search bar</div>
         </div>
       </div>
     </span>
@@ -3629,6 +3658,18 @@
       input.value = '';
       applyToAllMonths('');
       input.blur();
+    });
+    // "/" jumps to the search box, same convention as GitHub/Slack/etc --
+    // only when nothing else is already capturing keystrokes (typing "/"
+    // into a notes field or an item name shouldn't get hijacked).
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const ae = document.activeElement;
+      const isTyping = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA'
+        || ae.tagName === 'SELECT' || ae.isContentEditable);
+      if (isTyping) return;
+      e.preventDefault();
+      input.focus();
     });
   })();
 
