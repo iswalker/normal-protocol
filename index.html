@@ -56,17 +56,15 @@
     }
 
     .brand { display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 0; }
-    /* Same border treatment as #tab-board .month (1px #dde3e4, 14px radius)
-       -- on a 26px box that radius exceeds half the width, so the browser
-       clamps it to a full circle; that's expected, not a bug, since the
-       ask was to match the month styling exactly rather than hit a
-       specific corner radius. overflow:hidden clips the square PNG (which
-       already has its own transparent-cornered rounding baked in) to the
-       CSS radius so it reads as one clean edge instead of two mismatched
-       roundings layered on top of each other. */
+    /* Same border color/weight as #tab-board .month (1px #dde3e4); radius
+       backed off from the month's own 14px to 5px, since 14px on this
+       26px box clamped to a full circle. overflow:hidden clips the square
+       PNG (which already has its own transparent-cornered rounding baked
+       in) to the CSS radius so it reads as one clean edge instead of two
+       mismatched roundings layered on top of each other. */
     .brand img {
       width: 26px; height: 26px; box-sizing: border-box;
-      border: 1px solid #dde3e4; border-radius: 14px; overflow: hidden;
+      border: 1px solid #dde3e4; border-radius: 5px; overflow: hidden;
     }
     .brand h1 {
       font-size: 16px;
@@ -389,16 +387,6 @@
     #inv-table .inv-del-btn { background: none; border: none; cursor: pointer; color: var(--ink-60); font-size: 14px; padding: 2px 4px; border-radius: 4px; opacity: 0; transition: opacity 0.1s, color 0.1s; line-height: 1; }
     #inv-table tr:hover .inv-del-btn { opacity: 1; }
     #inv-table .inv-del-btn:hover { color: #d6504a; }
-    #inv-table .inv-filters th { padding: 3px 8px 6px; }
-    #inv-table .inv-filters input[type=search] {
-      width: 100%; box-sizing: border-box; padding: 3px 6px;
-      border: 1px solid var(--border); border-radius: 4px;
-      font-size: 12px; font-family: inherit;
-      background: var(--surface); color: var(--ink);
-    }
-    #inv-table .inv-filters input[type=search]:focus { outline: none; border-color: var(--teal); }
-    #inv-table .inv-filters input[type=search]::-webkit-search-cancel-button { cursor: pointer; }
-
     /* "+ Add [item]" affordance appended while filtering the Item column, mirroring
        the "+ Add" option in the board's "+ Item" and scan search pickers. */
     #inv-table .inv-add-cell {
@@ -1713,15 +1701,6 @@
           <th>Annual Sale</th>
           <th>Off-Cycle</th>
           <th>Anyday</th>
-          <th></th>
-        </tr>
-        <tr class="inv-filters">
-          <th></th>
-          <th></th>
-          <th></th><th></th><th></th><th></th><th></th><th></th>
-          <th><input id="inv-filter-annual" type="search" placeholder="Filter…" /></th>
-          <th><input id="inv-filter-offcycle" type="search" placeholder="Filter…" /></th>
-          <th><input id="inv-filter-anyday" type="search" placeholder="Filter…" /></th>
           <th></th>
         </tr>
       </thead>
@@ -5501,12 +5480,10 @@
     inp.addEventListener('blur', () => setTimeout(save, 80));
   }
 
-  const FILTER_COLS = [
-    { id: 'inv-filter-item',     colIdx: 0 },
-    { id: 'inv-filter-annual',   colIdx: 8 },
-    { id: 'inv-filter-offcycle', colIdx: 9 },
-    { id: 'inv-filter-anyday',   colIdx: 10 },
-  ].map(f => ({ el: document.getElementById(f.id), colIdx: f.colIdx })).filter(f => f.el);
+  // Columns the single shared search box matches against -- a hit on ANY
+  // one of these shows the row (was 4 separate boxes, one per column, all
+  // required to match at once; now one box, OR'd across all of them).
+  const SEARCH_COL_IDXS = [0, 8, 9, 10]; // Item, Annual Sale, Off-Cycle, Anyday
 
   let soonOnly = false;
   const soonBtn = document.getElementById('inv-soon-btn');
@@ -5523,13 +5500,13 @@
     document.getElementById('inv-add-card')?.remove();
 
     // Desktop table rows
-    const active = FILTER_COLS.map(f => ({ q: f.el.value.trim().toLowerCase(), colIdx: f.colIdx }));
+    const q = (document.getElementById('inv-filter-item')?.value || '').trim().toLowerCase();
     let visibleCount = 0;
     body.querySelectorAll('tr').forEach((tr) => {
       const cells = tr.querySelectorAll('td');
       if (!cells.length) return;
-      const passesText = active.every(({ q, colIdx }) =>
-        !q || (cells[colIdx] && cells[colIdx].textContent.toLowerCase().includes(q))
+      const passesText = !q || SEARCH_COL_IDXS.some((colIdx) =>
+        cells[colIdx] && cells[colIdx].textContent.toLowerCase().includes(q)
       );
       const passesSoon = !soonOnly || (cells[1] && (cells[1].classList.contains('inv-soon') || cells[1].classList.contains('inv-empty')));
       const show = passesText && passesSoon;
@@ -5555,7 +5532,7 @@
     }
 
     // Mobile cards -- same shared #inv-filter-item input as the desktop
-    // table's Item column filter (see FILTER_COLS above); both loops run
+    // table's search (see SEARCH_COL_IDXS above); both loops run
     // unconditionally regardless of which view is actually visible, CSS
     // decides that per viewport.
     const cardQ = (document.getElementById('inv-filter-item')?.value || '').trim().toLowerCase();
@@ -5588,7 +5565,7 @@
     if (searchClearBtn) searchClearBtn.style.display = itemQRaw ? 'block' : 'none';
   }
 
-  FILTER_COLS.forEach(f => f.el.addEventListener('input', applyFilters));
+  document.getElementById('inv-filter-item')?.addEventListener('input', applyFilters);
 
   // Clearing the search does NOT refocus the input -- on mobile, focusing a
   // text input re-opens the on-screen keyboard and zooms the page right
@@ -5598,6 +5575,11 @@
     if (!input) return;
     input.value = '';
     applyFilters();
+    // Tapping a <button> doesn't reliably blur a currently-focused text
+    // input on its own (iOS Safari in particular never focuses the button
+    // itself on tap, so nothing naturally steals focus away) -- explicit
+    // blur() is what actually dismisses the keyboard/undoes the zoom.
+    input.blur();
   });
 
 
