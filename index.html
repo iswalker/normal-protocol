@@ -784,14 +784,15 @@
       color: var(--ink-3); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
     }
     #tab-board .month-search-clear:hover { color: var(--ink); background: var(--accent-tint); }
-    /* Desktop keeps the original placement -- Notes shares the search box,
-       taking the other half of the room the search input used to have all
-       to itself. #tab-board .month-notes-row (mobile's own separate row,
-       below) is desktop-hidden entirely; only mobile relocates the field
-       out of .month-head, since only mobile ever complained about an
-       editable field being glued to a position:sticky header while the
-       list under it scrolls -- a sticky ancestor drags every descendant
-       along as it pins. */
+    /* Desktop keeps the original placement -- a plain-text field (same
+       treatment as item/shipment notes, no box/border of its own) sitting
+       beside the search box, each taking half the room the search input
+       used to have all to itself. #tab-board .month-notes-row (mobile's
+       own separate row, below) is desktop-hidden entirely; only mobile
+       relocates the field out of .month-head, since only mobile ever
+       complained about an editable field being glued to a position:sticky
+       header while the list under it scrolls -- a sticky ancestor drags
+       every descendant along as it pins. */
     #tab-board .month-notes-row { display: none; }
     #tab-board .month-notes {
       display: block; font-size: 12px; color: #222;
@@ -800,10 +801,7 @@
     }
     #tab-board .month-notes:empty::before { content: attr(placeholder); opacity: .35; pointer-events: none; }
     #tab-board .month-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; white-space: normal; }
-    #tab-board .month-notes--desktop {
-      flex: 1 1 0; min-width: 0; padding-left: 8px; margin-left: 2px;
-      border-left: 1px solid var(--line);
-    }
+    #tab-board .month-notes--desktop { flex: 1 1 0; min-width: 0; }
     /* Cards/shipments hidden by an active month search */
     #tab-board .month-list > .search-hide,
     #tab-board .ship-body > .search-hide { display: none !important; }
@@ -1051,15 +1049,11 @@
        content width didn't match the one width this math was tuned for.
        They now just sit in the header's normal flex order, per shipmentHTML:
        min-date right after "+ Item", total right after the stage buttons. */
-    /* Hidden unless the shipment already has saved notes (.notes-open, set
-       at render time -- see shipmentHTML) or the "Add Notes" context-menu
-       action opens it (right-click on desktop, tap the grip on mobile --
-       both already route through the same contextmenu handler). Unlike
-       cards/months there's no tap icon for shipments; the context menu
-       already exists and is reachable on both platforms, so it doubles as
-       the reveal mechanism instead of adding a second, redundant control. */
-    #tab-board .ship-notes { display: none; }
-    #tab-board .shipment.notes-open .ship-notes {
+    /* Desktop: always visible, right of the $ total -- the original
+       placement/behavior, same treatment as item/month notes. Mobile hides
+       it by default instead (own row below the header, revealed by the
+       "Add Notes" context-menu action) -- see the max-width:680px block. */
+    #tab-board .ship-notes {
       display: block; font-size: 12px; color: #222; flex: 1 1 0; min-width: 0;
       outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       cursor: text;
@@ -1387,12 +1381,14 @@
          the name. Now that ship-id can grow, keep notes on row 2 anyway so
          the name always gets the full row instead of splitting it with
          notes turn by turn depending on notes length. */
-      /* Specificity note: the visible-state rule (.shipment.notes-open
-         .ship-notes, in the base CSS) sets its own "flex: 1 1 0" -- 3
-         classes there beats this rule's 1, so without matching that
-         specificity here, flex-basis:100% would lose the cascade and never
-         actually apply despite being declared later in the file. */
-      #tab-board .shipment.notes-open .ship-notes { flex-basis: 100%; }
+      /* Hidden by default on mobile (unlike desktop, which always shows it
+         -- see the base .ship-notes rule) unless it already has a saved
+         value (.notes-open, set at render time) or the "Add Notes" context-
+         menu action opens it (mobile-only, see the contextmenu handler).
+         flex-basis:100% needs to match .shipment.notes-open .ship-notes's
+         own specificity (3 classes) to actually win the cascade here. */
+      #tab-board .ship-notes { display: none; }
+      #tab-board .shipment.notes-open .ship-notes { display: block; flex-basis: 100%; }
       /* Same fix as the card-end delete button below: with notes forced to
          row 2, the × (last in flex order, after notes) got pushed along
          with it onto row 2/3 depending on wrap instead of staying at the
@@ -2282,8 +2278,8 @@
           ${ICON.search}
           <input type="text" class="month-search-input" placeholder="Search…" autocomplete="off" />
           <button class="month-search-clear" data-act="clear-month-search" title="Clear search" style="display:none">×</button>
-          <span class="month-notes month-notes--desktop" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
         </div>
+        <span class="month-notes month-notes--desktop" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
         <button class="notes-toggle month-notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         <div class="month-metrics">
           <div class="metric spent" data-act="jump-spent" title="Jump to completed orders">
@@ -4241,12 +4237,15 @@
       recalcAll(); persist();
     }
 
-    // Once there's saved text the field is already showing (auto-open, see
-    // shipmentHTML's .notes-open), so the entry would be a no-op redundant
-    // with what's already visible -- only offer it while genuinely blank.
+    // Desktop always shows the notes field now (like item/month notes) --
+    // this reveal action is only meaningful on mobile, where it's hidden by
+    // default. Once there's saved text the field is already showing there
+    // too (auto-open, see shipmentHTML's .notes-open), so the entry would
+    // be a no-op redundant with what's already visible either way.
     const shipHasNotes = !!shipEl.querySelector('.ship-notes')?.textContent.trim();
+    const isMobile = window.matchMedia('(pointer: coarse)').matches;
     buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
-      if (!shipHasNotes) {
+      if (isMobile && !shipHasNotes) {
         menu.appendChild(ctxItem('Add Notes', false, () => {
           shipEl.classList.add('notes-open');
           requestAnimationFrame(() => shipEl.querySelector('.ship-notes')?.focus());
