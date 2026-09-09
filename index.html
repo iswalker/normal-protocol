@@ -1865,6 +1865,13 @@
         background: var(--cream);
       }
       .inv-card-val input:focus { outline: none; border-color: var(--teal); }
+      .inv-card-nextorder {
+        font-size: 11px;
+        color: var(--ink-60);
+        flex: none;
+        white-space: nowrap;
+        line-height: 1.5;
+      }
       .inv-card-suppliers {
         font-size: 11px;
         color: var(--ink-60);
@@ -5964,6 +5971,7 @@
               '<span class="inv-card-name inv-name-edit" data-key="' + key + '" title="Tap to rename">' + escHtml(name) + '</span>' +
               '<span class="inv-card-runout ' + (ro ? ro.cls : 'inv-no-data') + '">' + (ro ? ro.text + roBars : 'No data') + '</span>' +
             '</div>' +
+            (nextOrder ? '<span class="inv-card-nextorder">' + escHtml(nextOrder) + '</span>' : '') +
             (suppliers ? '<div class="inv-card-suppliers">' + suppliers + '</div>' : '') +
           '</div>' +
           '<div class="inv-card-pair">' +
