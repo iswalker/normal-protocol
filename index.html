@@ -1463,15 +1463,22 @@
       /* 3-way toggle -> single dropdown, to save the width 3 separate
          buttons need side by side. */
       #tab-board .ship-stage { display: none; }
+      /* Same size/formatting as the "+ Item" button next to it (.ship-head
+         .add-btn above) so the two read as a matched pair in the header. */
       #tab-board .ship-stage-select {
-        display: flex; align-items: center; gap: 3px; flex: none; font: 500 12px var(--font-ui);
-        color: var(--ink-2); background: var(--paper); border: 1px solid var(--line);
-        border-radius: 6px; padding: 1px 3px; max-width: 100px; cursor: pointer;
+        display: flex; align-items: center; gap: 5px; flex: none;
+        height: 22px; padding: 0 7px; max-width: 100px; box-sizing: border-box;
+        font-size: 11.5px; font-family: var(--font-ui); font-weight: 500;
+        color: var(--ink-2); background: rgba(255, 255, 255, .7); border: 1px solid #c4cdd0;
+        border-radius: 8px; cursor: pointer;
         /* field-sizing:content (Chrome/Edge 123+) shrinks the box to the
            current label's actual text -- "Status" no longer reserves
            "Received"-width space it doesn't need. max-width above is just
            the fallback cap for browsers that don't support the property. */
         field-sizing: content;
+      }
+      #tab-board .ship-stage-select:hover {
+        border-color: var(--accent); color: var(--accent-deep); background: #fff;
       }
       #tab-board .ship-stage-select::after {
         content: '▾'; font-size: 9px; color: var(--ink-3);
