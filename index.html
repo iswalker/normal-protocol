@@ -3267,6 +3267,7 @@
     const currentStage = STATE.shipmentData[shipEl.dataset.id]?.stage || '';
     const menu = document.createElement('div');
     menu.className = 'ship-ctx-menu';
+    menu._forBtn = btn; // tags this menu as the hover-openable stage dropdown, see hover handling below
     ['', 'ordered', 'entered', 'received'].forEach((st) => {
       const item = document.createElement('div');
       item.className = 'ship-ctx-item' + (st === currentStage ? ' ctx-active' : '');
@@ -3289,6 +3290,46 @@
       const mr = menu.getBoundingClientRect();
       if (mr.right > window.innerWidth - 8) menu.style.left = Math.max(8, window.innerWidth - mr.width - 8) + 'px';
       if (mr.bottom > window.innerHeight - 8) menu.style.top = Math.max(8, r.top - mr.height - 4) + 'px';
+    });
+  }
+
+  // Hover-to-open for the stage dropdown -- only for mice/trackpads (a
+  // touch tap already opens it via the click delegation below; hover events
+  // on touch devices are unreliable/synthetic, so this is opt-in per device
+  // rather than assumed from the button just being visible). A short close
+  // delay lets the pointer travel from the button down into the menu
+  // without it vanishing first, same idea as any hover dropdown.
+  const HOVER_CAPABLE = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  let stageHoverCloseTimer = null;
+  function cancelStageHoverClose() {
+    if (stageHoverCloseTimer) { clearTimeout(stageHoverCloseTimer); stageHoverCloseTimer = null; }
+  }
+  function scheduleStageHoverClose() {
+    cancelStageHoverClose();
+    stageHoverCloseTimer = setTimeout(() => { closeCtxMenu(); stageHoverCloseTimer = null; }, 200);
+  }
+  if (HOVER_CAPABLE) {
+    board.addEventListener('mouseover', (e) => {
+      const btn = e.target.closest('.ship-stage-select');
+      if (!btn) return;
+      cancelStageHoverClose();
+      if (activeCtxMenu && activeCtxMenu._forBtn === btn) return;
+      openStageMenu(btn);
+    });
+    board.addEventListener('mouseout', (e) => {
+      const btn = e.target.closest('.ship-stage-select');
+      if (!btn || (e.relatedTarget && e.relatedTarget.closest('.ship-ctx-menu'))) return;
+      scheduleStageHoverClose();
+    });
+    document.addEventListener('mouseover', (e) => {
+      if (!activeCtxMenu || !activeCtxMenu._forBtn || e.target.closest('.ship-ctx-menu') !== activeCtxMenu) return;
+      cancelStageHoverClose();
+    });
+    document.addEventListener('mouseout', (e) => {
+      if (!activeCtxMenu || !activeCtxMenu._forBtn || e.target.closest('.ship-ctx-menu') !== activeCtxMenu) return;
+      const rt = e.relatedTarget;
+      if (rt && (rt.closest('.ship-ctx-menu') === activeCtxMenu || rt === activeCtxMenu._forBtn)) return;
+      scheduleStageHoverClose();
     });
   }
 
