@@ -3774,9 +3774,11 @@
     if (a === 'toggle-include') {
       e.preventDefault();
       const cardEl = act.closest('.card');
-      const c = STATE.cardData[cardEl.dataset.id];
+      const id = cardEl.dataset.id;
+      const c = STATE.cardData[id];
       c.includeInMonthTotal = !c.includeInMonthTotal;
       cardEl.classList.toggle('counted', c.includeInMonthTotal);
+      if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, 'includeInMonthTotal', c.includeInMonthTotal);
       recalcAll();
       persist();
       return;
