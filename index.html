@@ -171,12 +171,20 @@
       gap: 0; min-width: 0; overflow: hidden; padding-left: 70px;
     }
     .month-strip-cell {
-      display: flex; flex-direction: column; align-items: center;
+      position: relative; display: flex; flex-direction: column; align-items: center;
       padding: 0px 7px; line-height: 1.15; white-space: nowrap;
       cursor: pointer; border-radius: 6px; transition: background .12s;
     }
     .month-strip-cell:hover { background: rgba(121,189,177,0.12); }
-    .month-strip-cell + .month-strip-cell { border-left: 1px solid var(--ink-12); }
+    /* A straight ::before line rather than border-left -- border-left follows
+       the box's own border-radius, which clips it into a curved nub at the
+       top/bottom on desktop (the rounded corners exist for the hover
+       highlight, not meant to apply to the divider). Absolute + inset top/
+       bottom keeps it a plain vertical line regardless of that radius. */
+    .month-strip-cell + .month-strip-cell::before {
+      content: ''; position: absolute; top: 0; bottom: 0; left: 0;
+      width: 1px; background: var(--ink-12);
+    }
     .month-strip-amt {
       font-size: 14px; font-weight: 600; color: var(--ink);
       font-variant-numeric: tabular-nums;
