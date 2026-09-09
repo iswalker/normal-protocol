@@ -1183,11 +1183,15 @@
        these -- see the ship-notes comment above for why that's the fix
        that was missing the last time pixel-positioning this was tried. */
     @media (min-width: 681px) {
-      /* Fixed, not max -- so .scount lands at a predictable x regardless of
-         actual name length (short names leave trailing space, long ones
-         ellipsis-truncate), which .month-title's own matching fixed width
-         relies on to align .mcount with it -- see that rule. */
+      /* Fixed-width box (not max), with .scount pushed to its right edge
+         via margin-left:auto -- same pairing as .month-title/.mcount below,
+         so .scount lands at the same x for every shipment regardless of
+         actual name length (a short name like "iHerb" no longer leaves the
+         count hugging it while a long one pushes its count out near the
+         ellipsis cutoff). .month-title's matching fixed width is what
+         aligns .mcount with this. */
       #tab-board .ship-id { width: 100px; }
+      #tab-board .ship-id .scount { margin-left: auto; }
       /* .mname stays flush left at its natural position (unlike .ship-name,
          which shifts as a unit with its badge) -- only .mcount moves,
          pushed via margin-left:auto to the fixed-width box's right edge so
