@@ -1180,45 +1180,28 @@
          ellipsis-truncate), which .month-title's own matching fixed width
          relies on to align .mcount with it -- see that rule. */
       #tab-board .ship-id { width: 100px; }
-      /* Aligns .mcount with .ship-id's .scount below it, and (as a side
-         effect of both sharing the same flow) "+ Order" with "+ Item" --
-         same fixed-width treatment as .ship-id, offset by a spacer to
-         compensate for month-head lacking .ship-head's truck icon and
-         having a wider left padding. Tuned empirically against real
-         rendered positions; adjust the margin-left here if either header's
-         own padding/gap ever changes. */
-      #tab-board .month-title {
-        width: 100px; min-width: 0; margin-left: 73px;
-      }
+      /* .mname stays flush left at its natural position (unlike .ship-name,
+         which shifts as a unit with its badge) -- only .mcount moves,
+         pushed via margin-left:auto to the fixed-width box's right edge so
+         it lands under .scount regardless of the (always-short, "Sep"/"Oct"
+         style) month name's actual width. Width tuned empirically so that
+         edge matches .scount's x. */
+      #tab-board .month-title { width: 134px; min-width: 0; }
       #tab-board .month-title .mname {
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
       }
-      /* "+ Order" doesn't follow .month-title by the same offset that
-         aligned .mcount above -- ship-head's own gap before "+ Item" is
-         smaller relative to its content start than month-head's is, so this
-         pulls it back by the difference. Tuned empirically like the rest of
-         this block. */
-      #tab-board .month-head .add-btn { margin-left: -41px; }
-      /* PLANNED moves to align with the item/shipment $ totals below it
-         (see .ship-total), pulled out of the SPENT|PLANNED|MAX cluster to
-         do so -- SPENT and MAX stay exactly where they were (pinned via
-         `right` at their own current offset from .month-head's edge, so
-         removing PLANNED from the flex flow doesn't shift them). All three
-         positioned directly against .month-head (already a positioned
-         element via position:sticky) rather than .month-metrics, which is
-         left as a plain, now emptied, flex container. Targets measured
-         empirically off a real rendered card, same approach as the
-         ship-head alignment above. */
-      #tab-board .metric.spent {
-        position: absolute; top: 50%; transform: translateY(-50%); right: 120px;
-      }
-      #tab-board .metric.is-max {
-        position: absolute; top: 50%; transform: translateY(-50%); right: 5px;
-      }
-      #tab-board .metric.is-total {
-        position: absolute; top: 50%; transform: translateY(-50%); right: 456px;
-        border-left: 0; padding-left: 0;
-      }
+      #tab-board .month-title .mcount { margin-left: auto; }
+      /* "+ Order" aligned with "+ Item" -- tuned empirically like the rest
+         of this block. */
+      #tab-board .month-head .add-btn { margin-left: -2px; }
+      /* The SPENT|PLANNED|MAX cluster (unchanged internally -- still one
+         flex row, still right-flush via margin-left:auto) is nudged left as
+         a whole via a JS-computed transform so PLANNED's right edge lands
+         on the item/shipment $ totals below it (see .ship-total) -- see
+         alignMonthMetrics(), called wherever the *v spans' text is set.
+         A static px offset can't do this since it depends on SPENT's own
+         rendered width, which varies with its content. */
+      #tab-board .month-metrics { will-change: transform; }
       /* Swapped from its old spot right after "+ Order" to the right side,
          left-aligned with an item's own notes field (.card-notes) below --
          same target-measurement approach as .ship-notes. */
@@ -2916,6 +2899,7 @@
       monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
       monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
+      alignMonthMetrics(monthEl);
     });
     updateMonthVisibility();
     updateMonthStrip();
@@ -3684,6 +3668,32 @@
     }
   });
 
+  // Nudges the SPENT|PLANNED|MAX cluster (still one flex row internally,
+  // still right-flush via margin-left:auto) left as a whole so PLANNED's
+  // right edge lands on the item/shipment $ totals below it (see
+  // .ship-total) -- a static CSS offset can't do this since it depends on
+  // SPENT's own rendered width, which varies with its content. Desktop
+  // only; the whole cluster is a different flex layout on mobile so this
+  // is a no-op (transform cleared) there.
+  function alignMonthMetrics(monthEl) {
+    const metricsEl = monthEl.querySelector('.month-metrics');
+    const plannedEl = monthEl.querySelector('.metric.is-total');
+    const monthHead = monthEl.querySelector('.month-head');
+    if (!metricsEl || !plannedEl || !monthHead) return;
+    if (!window.matchMedia('(min-width: 681px)').matches) {
+      metricsEl.style.transform = '';
+      return;
+    }
+    metricsEl.style.transform = 'none';
+    const headLeft = monthHead.getBoundingClientRect().left;
+    const plannedRight = plannedEl.getBoundingClientRect().right;
+    // 502px is the item/shipment $ total's own right edge, measured
+    // empirically off a real rendered card relative to .month-head's own
+    // left edge (same approach as the .ship-total/.ship-notes targets).
+    const targetRight = headLeft + 502;
+    metricsEl.style.transform = `translateX(${targetRight - plannedRight}px)`;
+  }
+
   function recalcTotalsFor(node) {
     const monthEl = node.closest('.month');
     if (!monthEl) return;
@@ -3735,6 +3745,7 @@
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
     monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
     monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
+    alignMonthMetrics(monthEl);
     updateMonthStrip();
   }
 
