@@ -3312,7 +3312,7 @@
       const itemMeta = (window._INV_ITEM_MAP || {})[(src.name || '').trim().toLowerCase()];
       if (itemMeta?.autoshipNextDate) {
         const newDate = toISODate(addMonthsToDate(SB.parseDate(itemMeta.autoshipNextDate), firstMi - sourceMi));
-        window.InventoryWriter?.writeAutoshipToTurso((src.name || '').trim().toLowerCase(), itemMeta.autoshipLink || '', newDate)
+        window.InventoryWriter?.writeAutoshipToTurso(src.name, itemMeta.autoshipLink || '', newDate)
           .then(() => recalcAll())
           .catch((e) => console.error('[Autoship] failed to advance date on promote:', e));
       }
@@ -4761,17 +4761,19 @@
           cardEl.after(el(cardHTML(did)));
           recalcAll(); persist();
         }));
-        // Only meaningful for a real, Inventory-linked item -- disabled for
-        // dividers and for a name with no matching inventory_items row (no
-        // stable id to persist against yet). Also disabled for a ghost: the
-        // Autoship date is one Inventory-item-level value owned by whichever
-        // card is the active root, same "locked until promoted" treatment
-        // as its "ev N mo" control (see cardHTML) -- a ghost only ever shows
-        // that date projected forward, never edits it directly.
+        // No actual Inventory dependency -- just a link/date/recurrence
+        // stashed on an inventory_items row keyed by name, created on save
+        // if one doesn't exist yet (see writeAutoshipToTurso), so this works
+        // for an untracked/free-text card too. Only disabled for dividers
+        // (not real items) and for a ghost: the Autoship date is one
+        // Inventory-item-level value owned by whichever card is the active
+        // root, same "locked until promoted" treatment as its "ev N mo"
+        // control (see cardHTML) -- a ghost only ever shows that date
+        // projected forward, never edits it directly.
         const cData = STATE.cardData[cardEl.dataset.id] || {};
         const itemMeta = (window._INV_ITEM_MAP || {})[(cData.name || '').trim().toLowerCase()];
         const isGhostCard = !!cData.ghostOf && !isCardLocked(cardEl.dataset.id);
-        const autoshipDisabled = !itemMeta || cData.name === '__divider__' || isGhostCard;
+        const autoshipDisabled = !cData.name || cData.name === '__divider__' || isGhostCard;
         menu.appendChild(ctxDivider());
         menu.appendChild(ctxItem(
           itemMeta?.autoshipLink ? 'Edit Autoship Link' : 'Add Autoship Link',
@@ -5399,17 +5401,35 @@
     window._INV_BARCODE_MAP[barcode.trim()] = key;
   }
 
-  async function writeAutoshipToTurso(key, link, nextDate) {
+  async function writeAutoshipToTurso(name, link, nextDate) {
+    const key = (name || '').trim().toLowerCase();
     const item = (window._INV_ITEM_MAP || {})[key];
-    if (!item || !item._id) throw new Error('Item not in Turso yet — refresh first');
-    const r = await fetch('/api/inventory-items?id=' + item._id, {
-      method: 'PATCH',
+    if (item && item._id) {
+      const r = await fetch('/api/inventory-items?id=' + item._id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoship_link: link, autoship_next_date: nextDate }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      item.autoshipLink = link;
+      item.autoshipNextDate = nextDate;
+      return;
+    }
+    // No inventory_items row for this name yet (untracked/free-text card) --
+    // create a minimal one carrying just the name + autoship fields. Safe to
+    // use the upserting POST endpoint here specifically because the lookup
+    // above just confirmed there's no existing row to clobber -- a tracked
+    // item always has an _id already and takes the PATCH branch instead.
+    const trimmedName = (name || '').trim();
+    if (!trimmedName) throw new Error('No item name to save against');
+    const r = await fetch('/api/inventory-items', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ autoship_link: link, autoship_next_date: nextDate }),
+      body: JSON.stringify({ name: trimmedName, autoship_link: link, autoship_next_date: nextDate }),
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    item.autoshipLink = link;
-    item.autoshipNextDate = nextDate;
+    const fresh = await fetch('/api/inventory-items').then((x) => x.json());
+    buildMapsFromItems(fresh);
   }
 
   async function addItemToTurso(fields, barcode) {
@@ -5636,16 +5656,22 @@
     </div>`;
   document.body.appendChild(autoshipOv);
 
-  let _autoshipKey = null;
+  // Keyed by the card's real name, not a lowercased map key -- an untracked/
+  // free-text item has no Inventory row (and no _INV_ITEM_MAP entry) to read
+  // that from, but the link/date/recurrence here have no actual dependency
+  // on Inventory at all, so there's nothing stopping it from working for
+  // one too (see writeAutoshipToTurso, which creates a minimal row on save
+  // if one doesn't already exist).
+  let _autoshipName = null;
   function openAutoshipModal(name) {
-    const key = (name || '').trim().toLowerCase();
+    if (!name || !name.trim()) return;
+    const key = name.trim().toLowerCase();
     const item = (window._INV_ITEM_MAP || {})[key];
-    if (!item || !item._id) return; // menu entry is disabled in this case; belt-and-suspenders
-    _autoshipKey = key;
-    document.getElementById('autoship-item-name').textContent = item.name || name;
-    document.getElementById('autoship-link').value = item.autoshipLink || '';
-    document.getElementById('autoship-date').value = item.autoshipNextDate || '';
-    document.getElementById('autoship-clear-btn').style.display = item.autoshipLink ? '' : 'none';
+    _autoshipName = name;
+    document.getElementById('autoship-item-name').textContent = (item && item.name) || name;
+    document.getElementById('autoship-link').value = (item && item.autoshipLink) || '';
+    document.getElementById('autoship-date').value = (item && item.autoshipNextDate) || '';
+    document.getElementById('autoship-clear-btn').style.display = (item && item.autoshipLink) ? '' : 'none';
     document.getElementById('autoship-status-msg').textContent = '';
     autoshipOv.style.display = 'flex';
     setTimeout(() => {
@@ -5653,7 +5679,7 @@
       inp?.focus(); inp?.select();
     }, 50);
   }
-  function closeAutoshipModal() { autoshipOv.style.display = 'none'; _autoshipKey = null; }
+  function closeAutoshipModal() { autoshipOv.style.display = 'none'; _autoshipName = null; }
 
   document.getElementById('autoship-close-btn').addEventListener('click', closeAutoshipModal);
   document.getElementById('autoship-cancel-btn').addEventListener('click', closeAutoshipModal);
@@ -5667,14 +5693,14 @@
     document.getElementById('autoship-save-btn').click();
   });
   document.getElementById('autoship-save-btn').addEventListener('click', async () => {
-    if (!_autoshipKey) return;
+    if (!_autoshipName) return;
     const btn = document.getElementById('autoship-save-btn');
     const statusEl = document.getElementById('autoship-status-msg');
     const link = document.getElementById('autoship-link').value.trim();
     const nextDate = document.getElementById('autoship-date').value;
     btn.disabled = true;
     try {
-      await writeAutoshipToTurso(_autoshipKey, link, nextDate);
+      await writeAutoshipToTurso(_autoshipName, link, nextDate);
       closeAutoshipModal();
       window.SupplementBoard?.recalc();
     } catch (e) {
@@ -5684,12 +5710,12 @@
     }
   });
   document.getElementById('autoship-clear-btn').addEventListener('click', async () => {
-    if (!_autoshipKey) return;
+    if (!_autoshipName) return;
     const btn = document.getElementById('autoship-clear-btn');
     const statusEl = document.getElementById('autoship-status-msg');
     btn.disabled = true;
     try {
-      await writeAutoshipToTurso(_autoshipKey, '', '');
+      await writeAutoshipToTurso(_autoshipName, '', '');
       closeAutoshipModal();
       window.SupplementBoard?.recalc();
     } catch (e) {
