@@ -394,6 +394,7 @@
        Cols map 1-to-1 with <col> elements in <colgroup> below.          */
     #inv-table col.ci-item     { width: 160px; }
     #inv-table col.ci-runout   { width: 180px; }
+    #inv-table col.ci-nextorder { width: 90px; }
     #inv-table col.ci-bottles  { width:  130px; }
     #inv-table col.ci-onhand   { width:  72px; }
     #inv-table col.ci-bs       { width:  84px; }
@@ -428,6 +429,7 @@
     #inv-table .inv-bottles:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table .inv-num { font-variant-numeric: tabular-nums; color: var(--ink-60); }
     #inv-table .inv-runout { font-size: 12px; }
+    #inv-table .inv-next-order { font-size: 12px; color: var(--ink-60); }
     .inv-bars { display: inline-flex; gap: 1px; align-items: center; vertical-align: middle; margin-left: 4px; }
     .inv-bar { display: block; flex-shrink: 0; width: 10px; height: 5px; border-radius: 1px; background: #3f8f87; opacity: 0.5; }
     @keyframes inv-pulse {
@@ -1972,6 +1974,7 @@
       <colgroup>
         <col class="ci-item">
         <col class="ci-runout">
+        <col class="ci-nextorder">
         <col class="ci-bottles">
         <col class="ci-onhand">
         <col class="ci-bs">
@@ -1987,6 +1990,7 @@
         <tr>
           <th>Item</th>
           <th>Est. Run-Out</th>
+          <th>Next Order</th>
           <th>Bottles</th>
           <th>On Hand</th>
           <th>Bottle Size</th>
@@ -2000,7 +2004,7 @@
         </tr>
       </thead>
       <tbody id="inv-body">
-        <tr><td colspan="12" class="loading">Open the Inventory tab to load data.</td></tr>
+        <tr><td colspan="13" class="loading">Open the Inventory tab to load data.</td></tr>
       </tbody>
     </table>
   </div>
@@ -5838,6 +5842,33 @@
     return count;
   }
 
+  // Soonest month (current or future) that has an actual board card for this
+  // item -- a plain DOM scan of the board's already-rendered months rather
+  // than anything cross-module, since months render in chronological order
+  // already. Ghosts count too (they're planned future occurrences, exactly
+  // what "next order" means for a recurring item); dividers never carry a
+  // .card-name so they're naturally skipped. Past months (before the
+  // current one) are skipped even if still in the DOM -- a non-empty past
+  // month stays rendered (see updateMonthVisibility), but an order in it
+  // already happened, it isn't "next".
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function nextOrderMonth(key) {
+    const today = new Date(isoToday() + 'T00:00:00');
+    const curMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    for (const m of document.querySelectorAll('#board .month')) {
+      const head = m.querySelector('.month-head');
+      const mname = head?.querySelector('.mname')?.textContent.trim();
+      const year = parseInt(head?.querySelector('.msub')?.textContent.trim(), 10);
+      const mIdx = mname ? MONTH_ABBR.indexOf(mname) : -1;
+      if (mIdx < 0 || !year) continue;
+      if (new Date(year, mIdx, 1) < curMonthStart) continue;
+      const hasItem = [...m.querySelectorAll('.card-name')]
+        .some((el) => el.textContent.trim().toLowerCase() === key);
+      if (hasItem) return mname;
+    }
+    return null;
+  }
+
   function barsHtml(fullCount, partialFraction) {
     const n = Math.min(Math.floor(fullCount), 6);
     if (n <= 0 && !(partialFraction > 0.05)) return '';
@@ -5854,14 +5885,14 @@
     _rendering = true;
     // Show loading only on first load (table is empty); otherwise keep existing rows visible
     const isEmpty = !body.querySelector('tr[data-key]');
-    if (isEmpty) body.innerHTML = '<tr><td colspan="10" class="loading">Loading…</td></tr>';
+    if (isEmpty) body.innerHTML = '<tr><td colspan="13" class="loading">Loading…</td></tr>';
     let invLogRows = [];
     try {
       const r = await fetch('/api/inventory');
       if (!r.ok) throw new Error('HTTP ' + r.status);
       invLogRows = await r.json();
     } catch (e) {
-      body.innerHTML = '<tr><td colspan="12" class="loading" style="color:#d6504a">Failed to load: ' + e.message + '</td></tr>';
+      body.innerHTML = '<tr><td colspan="13" class="loading" style="color:#d6504a">Failed to load: ' + e.message + '</td></tr>';
       _rendering = false;
       return;
     }
@@ -5871,7 +5902,7 @@
     const allKeys = [...new Set([...Object.keys(itemMap), ...Object.keys(onHand)])].sort();
 
     if (!allKeys.length) {
-      body.innerHTML = '<tr><td colspan="12" class="loading">No items found — click Refresh or open the board to load.</td></tr>';
+      body.innerHTML = '<tr><td colspan="13" class="loading">No items found — click Refresh or open the board to load.</td></tr>';
       _rendering = false;
       return;
     }
@@ -5899,6 +5930,7 @@
       const roMonths = ro && ro.date ? countCoveredMonths(ro.date) : 0;
       const roBars = ro ? barsHtml(roMonths, 0) : '';
       const name   = meta.name || amt.name || key;
+      const nextOrder = nextOrderMonth(key);
 
       // Table row (desktop)
       const tr = document.createElement('tr');
@@ -5907,6 +5939,7 @@
       tr.innerHTML =
         '<td class="inv-name inv-name-edit" data-key="' + key + '" title="Click to rename">' + escHtml(name) + '</td>' +
         '<td class="inv-runout'     + (ro ? (' ' + ro.cls) : ' inv-no-data') + '">' + (ro ? ro.text : '—') + roBars + '</td>' +
+        '<td class="inv-next-order' + (nextOrder ? '' : ' inv-no-data') + '">' + (nextOrder || '—') + '</td>' +
         '<td class="inv-bottles" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit bottles">' + bottles + bottleBars + '</td>' +
         '<td class="inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit caps">' + Math.round(currentAmount) + '</td>' +
         '<td class="inv-num inv-bs" data-key="' + key + '" title="Click to edit bottle size">' + (bs || '—') + '</td>' +
