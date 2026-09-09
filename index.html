@@ -1121,7 +1121,11 @@
        missed exactly this case (the "—, —" placeholder report). */
     #tab-board .board.layout-compact .card.no-proj .proj { display: none; }
     #tab-board .board.layout-compact .card.no-proj .card-body {
-      grid-template-columns: 321px 82px 84px 317px;
+      /* Last column is 1fr, same as the proj layout below, so .card-notes
+         (which lives in "del") stretches to fill the row instead of getting
+         stuck at a fixed width and ellipsis-truncating with visible space
+         still to its right. */
+      grid-template-columns: 321px 82px 84px 1fr;
       grid-template-areas: "top order foot del";
     }
     /* lock tracked card names (cursor only; actual editing is blocked by no contenteditable) */
