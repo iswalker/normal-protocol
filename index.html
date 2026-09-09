@@ -1209,16 +1209,12 @@
       #tab-board .month-head .add-btn { margin-left: -2px; margin-bottom: -2px; }
       /* The SPENT|PLANNED|MAX cluster (unchanged internally -- still one
          flex row, still right-flush via margin-left:auto) is nudged left as
-         a whole via a JS-computed transform so PLANNED's right edge lands
-         on the item/shipment $ totals below it (see .ship-total) -- see
-         alignMonthMetrics(), called wherever the *v spans' text is set.
-         A static px offset can't do this since it depends on SPENT's own
-         rendered width, which varies with its content. */
-      /* Static fallback matching alignMonthMetrics()'s typical computed
-         value -- avoids a visible jump from the unshifted position on
-         first paint, before JS has run for this month. Once it runs, the
-         inline style it sets overrides this per-month anyway. */
-      #tab-board .month-metrics { will-change: transform; transform: translateX(-370px); }
+         a whole so PLANNED's right edge lands on the item/shipment $ totals
+         below it (see .ship-total). Static offset, tuned empirically --
+         won't track SPENT's own rendered width if its digit count changes
+         significantly, but a JS-computed version (previously here, see git
+         history) was found to fight with this value in practice. */
+      #tab-board .month-metrics { transform: translateX(-370px); }
       /* Swapped from its old spot right after "+ Order" to the right side,
          left-aligned with an item's own notes field (.card-notes) below --
          same target-measurement approach as .ship-notes. */
@@ -2916,7 +2912,6 @@
       monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
       monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
-      alignMonthMetrics(monthEl);
     });
     updateMonthVisibility();
     updateMonthStrip();
@@ -3685,32 +3680,6 @@
     }
   });
 
-  // Nudges the SPENT|PLANNED|MAX cluster (still one flex row internally,
-  // still right-flush via margin-left:auto) left as a whole so PLANNED's
-  // right edge lands on the item/shipment $ totals below it (see
-  // .ship-total) -- a static CSS offset can't do this since it depends on
-  // SPENT's own rendered width, which varies with its content. Desktop
-  // only; the whole cluster is a different flex layout on mobile so this
-  // is a no-op (transform cleared) there.
-  function alignMonthMetrics(monthEl) {
-    const metricsEl = monthEl.querySelector('.month-metrics');
-    const plannedEl = monthEl.querySelector('.metric.is-total');
-    const monthHead = monthEl.querySelector('.month-head');
-    if (!metricsEl || !plannedEl || !monthHead) return;
-    if (!window.matchMedia('(min-width: 681px)').matches) {
-      metricsEl.style.transform = '';
-      return;
-    }
-    metricsEl.style.transform = 'none';
-    const headLeft = monthHead.getBoundingClientRect().left;
-    const plannedRight = plannedEl.getBoundingClientRect().right;
-    // 502px is the item/shipment $ total's own right edge, measured
-    // empirically off a real rendered card relative to .month-head's own
-    // left edge (same approach as the .ship-total/.ship-notes targets).
-    const targetRight = headLeft + 502;
-    metricsEl.style.transform = `translateX(${targetRight - plannedRight}px)`;
-  }
-
   function recalcTotalsFor(node) {
     const monthEl = node.closest('.month');
     if (!monthEl) return;
@@ -3762,7 +3731,6 @@
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
     monthEl.querySelector('.plannedv').textContent = SB.fmtMoney(spent + plannedItems);
     monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
-    alignMonthMetrics(monthEl);
     updateMonthStrip();
   }
 
