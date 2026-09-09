@@ -304,6 +304,24 @@
       background: #f7f9f9; padding: 1px 6px; color: var(--ink);
     }
     .settings-action-btn:hover { border-color: var(--teal); background: rgba(121,189,177,0.06); color: #3f8f87; }
+    .settings-toggle-row {
+      appearance: none; border: 0; background: transparent; padding: 4px;
+      font-family: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      border-radius: 7px; transition: background 0.15s;
+    }
+    .settings-toggle-row:hover { background: rgba(121,189,177,0.06); }
+    .settings-toggle {
+      flex: none; width: 30px; height: 17px; border-radius: 20px; background: #d2d9da;
+      position: relative; transition: background .15s;
+    }
+    .settings-toggle i {
+      position: absolute; top: 2px; left: 2px; width: 13px; height: 13px;
+      border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2);
+      transition: transform .15s;
+    }
+    .settings-toggle-row[aria-pressed="true"] .settings-toggle { background: var(--teal); }
+    .settings-toggle-row[aria-pressed="true"] .settings-toggle i { transform: translateX(13px); }
 
     /* refresh inventory button */
     .refresh-inv-btn {
@@ -624,7 +642,7 @@
          much bigger share of the divider's height -- enough to read as a
          curved line instead of straight. Square them off here specifically
          rather than removing the radius everywhere. */
-      .month-strip-cell { padding: 2px 10px; flex: 0 0 auto; border-radius: 0; }
+      .month-strip-cell { padding: 2px 3px; flex: 0 0 auto; border-radius: 0; }
       .month-strip-amt { font-size: 12.5px; }
       .month-strip-mon { font-size: 9.5px; }
       /* Keep the "Search Inventory" label on mobile too -- an icon-only button
@@ -1727,6 +1745,10 @@
         <div class="settings-panel" id="settings-panel">
           <div class="settings-panel-title">Settings</div>
           <button class="settings-action-btn" id="update-ynab">Update YNAB API Key</button>
+          <button class="settings-toggle-row" id="show-cents-toggle" type="button" aria-pressed="false">
+            <span>Show cents</span>
+            <span class="settings-toggle"><i></i></span>
+          </button>
           <div class="settings-panel-title">Item Border Legend</div>
           <div class="settings-legend">
             <div class="settings-legend-row"><span class="settings-swatch" style="background:#d2d9da"></span><b>Grey:</b> untracked, or 45+ days left</div>
@@ -2056,8 +2078,18 @@
   // metrics, every time it runs.
   const MONEY_FMT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const MONEY_FMT0 = new Intl.NumberFormat('en-US');
+  const SHOW_CENTS_KEY = 'np_show_cents';
+  // Settings > "Show cents" toggle, defaulted OFF. Off truncates (never
+  // rounds up) so $129.89 reads as $129, not a misleadingly-rounded $130.
+  let showCents = (() => { try { return localStorage.getItem(SHOW_CENTS_KEY) === '1'; } catch { return false; } })();
+  function getShowCents() { return showCents; }
+  function setShowCents(v) {
+    showCents = !!v;
+    try { localStorage.setItem(SHOW_CENTS_KEY, showCents ? '1' : '0'); } catch {}
+  }
   function fmtMoney(n) {
-    return '$' + MONEY_FMT.format(Number(n) || 0);
+    const v = Number(n) || 0;
+    return showCents ? '$' + MONEY_FMT.format(v) : '$' + MONEY_FMT0.format(Math.trunc(v));
   }
   function fmtMoney0(n) {
     return '$' + MONEY_FMT0.format(Math.round(Number(n) || 0));
@@ -2076,7 +2108,24 @@
   window.SB = {
     DAY, today, parseDate, addDays, daysBetween,
     calc, fmtDate, fmtDateShort, fmtMoney, fmtMoney0, fmtUnits, tier,
+    getShowCents, setShowCents,
   };
+
+  // "Show cents" Settings toggle -- lives in <header>, outside the board
+  // module, but only needs SB.fmtMoney's own state plus a re-render of
+  // whatever's already on screen (window.SupplementBoard.recalc, exposed by
+  // the board module below -- not called until the board has booted, since
+  // it's only reachable from a user click).
+  (function initShowCentsToggle() {
+    const toggle = document.getElementById('show-cents-toggle');
+    if (!toggle) return;
+    toggle.setAttribute('aria-pressed', String(showCents));
+    toggle.addEventListener('click', () => {
+      setShowCents(!showCents);
+      toggle.setAttribute('aria-pressed', String(showCents));
+      window.SupplementBoard?.recalc();
+    });
+  })();
 })();
 </script>
 
@@ -4679,6 +4728,10 @@
       if (matched) { recalcAll(); persist(); }
       return matched;
     },
+    // Re-render every displayed money figure -- used by the "Show cents"
+    // Settings toggle, which lives outside this module and only touches
+    // SB.fmtMoney's own behavior, not the DOM it's already been baked into.
+    recalc() { recalcAll(); },
   };
 
   const resetBtn = document.getElementById('board-reset');

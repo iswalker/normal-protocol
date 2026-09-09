@@ -109,6 +109,11 @@ try {
   });
   await page.waitForFunction(() => document.fonts && document.fonts.status === 'loaded').catch(() => {});
 
+  // This suite's assertions check exact cent values -- force "Show cents" on
+  // so they keep validating full-precision math regardless of the app's own
+  // default for that Settings toggle.
+  await page.evaluate(() => { window.SB?.setShowCents(true); window.SupplementBoard?.recalc(); });
+
   // Inject Inventory data so run-out dates render — enables visual inspection of date alignment
   await page.evaluate(() => {
     if (!window.SupplementBoard || !window.SupplementBoard.applyInventory) return;
