@@ -38,20 +38,17 @@ function toItem(row) {
     anyday:        cell(row[6]) || '',
     barcode:       cell(row[7]) || '',
     sort_order:    cell(row[8]) != null ? Number(cell(row[8])) : 0,
-    autoship_link:      cell(row[9])  || '',
-    autoship_next_date: cell(row[10]) || '',
   };
 }
 
-const SEL = 'SELECT id,name,bottle_size,daily_dose,annual_sale,off_cycle_sale,anyday,barcode,sort_order,autoship_link,autoship_next_date FROM inventory_items';
+const SEL = 'SELECT id,name,bottle_size,daily_dose,annual_sale,off_cycle_sale,anyday,barcode,sort_order FROM inventory_items';
 const UPSERT = `
-  INSERT INTO inventory_items (name,bottle_size,daily_dose,annual_sale,off_cycle_sale,anyday,barcode,sort_order,autoship_link,autoship_next_date)
-  VALUES (?,?,?,?,?,?,?,?,?,?)
+  INSERT INTO inventory_items (name,bottle_size,daily_dose,annual_sale,off_cycle_sale,anyday,barcode,sort_order)
+  VALUES (?,?,?,?,?,?,?,?)
   ON CONFLICT(name) DO UPDATE SET
     bottle_size=excluded.bottle_size, daily_dose=excluded.daily_dose,
     annual_sale=excluded.annual_sale, off_cycle_sale=excluded.off_cycle_sale,
-    anyday=excluded.anyday, barcode=excluded.barcode, sort_order=excluded.sort_order,
-    autoship_link=excluded.autoship_link, autoship_next_date=excluded.autoship_next_date`;
+    anyday=excluded.anyday, barcode=excluded.barcode, sort_order=excluded.sort_order`;
 
 export async function onRequestGet({ env }) {
   const r = await pipeline(env, [
@@ -74,8 +71,7 @@ export async function onRequestPost({ request, env }) {
         sql: UPSERT,
         args: [T(item.name), F(item.bottle_size), F(item.daily_dose),
                T(item.annual_sale), T(item.off_cycle_sale), T(item.anyday),
-               T(item.barcode), I(item.sort_order ?? i),
-               T(item.autoship_link), T(item.autoship_next_date)],
+               T(item.barcode), I(item.sort_order ?? i)],
       },
     }));
     await pipeline(env, [...stmts, { type: 'close' }]);
@@ -83,9 +79,9 @@ export async function onRequestPost({ request, env }) {
     return Response.json({ ok: true, count: items.length, updated_at });
   }
 
-  const { name, bottle_size, daily_dose, annual_sale, off_cycle_sale, anyday, barcode, sort_order, autoship_link, autoship_next_date } = body;
+  const { name, bottle_size, daily_dose, annual_sale, off_cycle_sale, anyday, barcode, sort_order } = body;
   await pipeline(env, [
-    { type: 'execute', stmt: { sql: UPSERT, args: [T(name), F(bottle_size), F(daily_dose), T(annual_sale), T(off_cycle_sale), T(anyday), T(barcode), I(sort_order ?? 0), T(autoship_link), T(autoship_next_date)] } },
+    { type: 'execute', stmt: { sql: UPSERT, args: [T(name), F(bottle_size), F(daily_dose), T(annual_sale), T(off_cycle_sale), T(anyday), T(barcode), I(sort_order ?? 0)] } },
     { type: 'close' },
   ]);
   const updated_at = await touchSyncMeta(env);
@@ -98,7 +94,7 @@ export async function onRequestPatch({ request, env }) {
   if (!id) return Response.json({ error: 'id required' }, { status: 400 });
 
   const body    = await request.json();
-  const allowed = ['name','bottle_size','daily_dose','annual_sale','off_cycle_sale','anyday','barcode','sort_order','autoship_link','autoship_next_date'];
+  const allowed = ['name','bottle_size','daily_dose','annual_sale','off_cycle_sale','anyday','barcode','sort_order'];
   const entries = Object.entries(body).filter(([k]) => allowed.includes(k));
   if (!entries.length) return Response.json({ error: 'no valid fields' }, { status: 400 });
 

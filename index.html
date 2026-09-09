@@ -2402,6 +2402,8 @@
         notes: it.notes || '',
         recur: it.recur ? Number(it.recur) : null,
         ghostOf: it.recur_source || null,
+        autoshipLink: it.autoship_link || '',
+        autoshipNextDate: it.autoship_next_date || '',
       };
     });
     orders.forEach((o) => {
@@ -2740,24 +2742,30 @@
       const n = span.querySelector('.n'), u = span.querySelector('.u');
       if (n) { n.textContent = '—'; if (u) u.textContent = ''; } else { span.textContent = '—'; }
     };
-    // Autoship next-ship date -- no actual dependency on Inventory (see
-    // writeAutoshipToTurso), so this is computed the same way whether or
-    // not the card has a run-out projection to show, just DISPLAYED
-    // differently: slotted between the current/new run-out dates when
-    // there's a projection (e.g. "48d, 10/26 → 11/15 → 108d, 12/25"), or as
-    // its own small badge next to the name when there isn't (no .proj
-    // column to embed it in there -- see .no-proj .proj{display:none}).
-    // Either way only meaningful alongside an actual placed order, so
-    // gated on r.hasOrder same as .arrow/.nxt (see the has-order CSS).
-    // A ghost has no editable Autoship date of its own (there's one
-    // Inventory-item-level date, owned by whichever card is the active
-    // root) -- it shows that same date projected forward by however many
-    // "ev N mo" cycles separate it from the root, same cadence the ghost's
-    // own month placement already uses (see syncGhosts).
-    const itemMeta = (window._INV_ITEM_MAP || {})[(c.name || '').trim().toLowerCase()];
+    // Autoship next-ship date -- lives on the card itself (STATE.cardData),
+    // scoped to this one specific board item and its own recurring ghosts,
+    // NOT shared with some other unrelated card that just happens to
+    // reference the same Inventory item by name (no actual dependency on
+    // Inventory at all -- see saveCardAutoship). Computed the same way
+    // whether or not the card has a run-out projection to show, just
+    // DISPLAYED differently: slotted between the current/new run-out dates
+    // when there's a projection (e.g. "48d, 10/26 → 11/15 → 108d, 12/25"),
+    // or as its own small badge next to the name when there isn't (no
+    // .proj column to embed it in there -- see .no-proj .proj{display:none}).
+    // Either way only meaningful alongside an actual placed order, so gated
+    // on r.hasOrder same as .arrow/.nxt (see the has-order CSS).
+    // A ghost's own autoshipNextDate is a straight copy of its root's value
+    // as of whenever the ghost was created (see syncGhosts) -- displayed
+    // instead as that date projected forward by however many "ev N mo"
+    // cycles separate it from the root, same cadence the ghost's own month
+    // placement already uses. The root's OWN card is the source of truth
+    // for a ghost's base date/link, not the ghost's own (possibly stale)
+    // copy, so a link/date edited on the root after a ghost's creation is
+    // still reflected on that ghost's display.
+    const rootData = c.ghostOf ? (STATE.cardData[c.ghostOf] || c) : c;
     let autoshipDate = null;
-    if (r.hasOrder && itemMeta?.autoshipNextDate) {
-      const baseDate = SB.parseDate(itemMeta.autoshipNextDate);
+    if (r.hasOrder && rootData.autoshipNextDate) {
+      const baseDate = SB.parseDate(rootData.autoshipNextDate);
       if (c.ghostOf) {
         const { monthIdx: ghostMi } = findCardLocation(cardEl.dataset.id);
         const { monthIdx: rootMi } = findCardLocation(c.ghostOf);
@@ -2783,11 +2791,11 @@
       cardEl.querySelector('.bsize').textContent = String(r.bottle);
       if (autoshipDateEl) {
         autoshipDateEl.style.display = autoshipDate ? '' : 'none';
-        autoshipDateEl.classList.toggle('has-link', !!(autoshipDate && itemMeta?.autoshipLink));
-        autoshipDateEl.title = autoshipDate && itemMeta?.autoshipLink ? 'Open Autoship link' : '';
+        autoshipDateEl.classList.toggle('has-link', !!(autoshipDate && rootData.autoshipLink));
+        autoshipDateEl.title = autoshipDate && rootData.autoshipLink ? 'Open Autoship link' : '';
         if (autoshipDate) {
           autoshipDateEl.textContent = df(autoshipDate);
-          autoshipDateEl.dataset.link = itemMeta?.autoshipLink || '';
+          autoshipDateEl.dataset.link = rootData.autoshipLink || '';
         }
       }
       if (autoshipArrowEl) autoshipArrowEl.style.display = autoshipDate ? '' : 'none';
@@ -2804,11 +2812,11 @@
       if (autoshipArrowEl) autoshipArrowEl.style.display = 'none';
       if (autoshipBadgeEl) {
         autoshipBadgeEl.style.display = autoshipDate ? '' : 'none';
-        autoshipBadgeEl.classList.toggle('has-link', !!(autoshipDate && itemMeta?.autoshipLink));
-        autoshipBadgeEl.title = autoshipDate && itemMeta?.autoshipLink ? 'Open Autoship link' : '';
+        autoshipBadgeEl.classList.toggle('has-link', !!(autoshipDate && rootData.autoshipLink));
+        autoshipBadgeEl.title = autoshipDate && rootData.autoshipLink ? 'Open Autoship link' : '';
         if (autoshipDate) {
           autoshipBadgeEl.textContent = df(autoshipDate);
-          autoshipBadgeEl.dataset.link = itemMeta?.autoshipLink || '';
+          autoshipBadgeEl.dataset.link = rootData.autoshipLink || '';
         }
       }
     }
@@ -3300,6 +3308,7 @@
         includeInMonthTotal: src.includeInMonthTotal !== false,
         notes: '', untracked: !!src.untracked,
         dose: src.dose, amount: src.amount, bottleSize: src.bottleSize, loggedOn: src.loggedOn,
+        autoshipLink: src.autoshipLink || '', autoshipNextDate: src.autoshipNextDate || '',
         ghostOf: sourceId, recur: N,
       };
 
@@ -3353,20 +3362,14 @@
     });
     if (!firstId) return;
 
-    // Advance the item's Autoship date by however many "ev N mo" cycles the
-    // promoted ghost sits ahead of the outgoing root -- the same projection
-    // updateCard already shows on that ghost, now becoming the real,
-    // editable value going forward (there's one Inventory-item-level date,
-    // owned by whichever card is the active root). Best-effort: a failed
-    // write here shouldn't block the promotion itself.
-    if (sourceMi >= 0 && firstMi > sourceMi) {
-      const itemMeta = (window._INV_ITEM_MAP || {})[(src.name || '').trim().toLowerCase()];
-      if (itemMeta?.autoshipNextDate) {
-        const newDate = toISODate(addMonthsToDate(SB.parseDate(itemMeta.autoshipNextDate), firstMi - sourceMi));
-        window.InventoryWriter?.writeAutoshipToTurso(src.name, itemMeta.autoshipLink || '', newDate)
-          .then(() => recalcAll())
-          .catch((e) => console.error('[Autoship] failed to advance date on promote:', e));
-      }
+    // Advance the promoted ghost's own Autoship date by however many
+    // "ev N mo" cycles it sits ahead of the outgoing root -- the same
+    // projection updateCard already showed on it as a ghost, now becoming
+    // its real, editable value as the new root. Link carries over as-is
+    // (re-synced from src in case it changed after this ghost was created).
+    if (sourceMi >= 0 && firstMi > sourceMi && src.autoshipNextDate) {
+      STATE.cardData[firstId].autoshipNextDate = toISODate(addMonthsToDate(SB.parseDate(src.autoshipNextDate), firstMi - sourceMi));
+      STATE.cardData[firstId].autoshipLink = src.autoshipLink || '';
     }
 
     // Promote: clear ghostOf on the new root...
@@ -3473,6 +3476,8 @@
       notes: c.notes || '',
       recur: domRecur || c.recur || null,
       recur_source: domGhostOf !== null ? domGhostOf : (c.ghostOf || null),
+      autoship_link: c.autoshipLink || null,
+      autoship_next_date: c.autoshipNextDate || null,
     });
   }
   function toApi() {
@@ -4812,24 +4817,31 @@
           cardEl.after(el(cardHTML(did)));
           recalcAll(); persist();
         }));
-        // No actual Inventory dependency -- just a link/date/recurrence
-        // stashed on an inventory_items row keyed by name, created on save
-        // if one doesn't exist yet (see writeAutoshipToTurso), so this works
-        // for an untracked/free-text card too. Only disabled for dividers
-        // (not real items) and for a ghost: the Autoship date is one
-        // Inventory-item-level value owned by whichever card is the active
-        // root, same "locked until promoted" treatment as its "ev N mo"
-        // control (see cardHTML) -- a ghost only ever shows that date
-        // projected forward, never edits it directly.
+        // Lives on this specific card (STATE.cardData), not on the
+        // Inventory item it happens to be named after -- two unrelated
+        // cards for the same item never share a link, and this one's own
+        // recurring ghosts inherit it via syncGhosts, same as price/qty/
+        // notes. No actual Inventory dependency, so this works for an
+        // untracked/free-text card too. Only disabled for dividers (not
+        // real items) and for a ghost: a ghost's Autoship date/link is a
+        // straight copy from its root as of whenever it was created (see
+        // syncGhosts), same "locked until promoted" treatment as its
+        // "ev N mo" control (see cardHTML) -- it only ever shows that
+        // value (projected forward for the date) never edits it directly.
         const cData = STATE.cardData[cardEl.dataset.id] || {};
-        const itemMeta = (window._INV_ITEM_MAP || {})[(cData.name || '').trim().toLowerCase()];
         const isGhostCard = !!cData.ghostOf && !isCardLocked(cardEl.dataset.id);
+        const rootData = cData.ghostOf ? (STATE.cardData[cData.ghostOf] || cData) : cData;
         const autoshipDisabled = !cData.name || cData.name === '__divider__' || isGhostCard;
         menu.appendChild(ctxDivider());
         menu.appendChild(ctxItem(
-          itemMeta?.autoshipLink ? 'Edit Autoship Link' : 'Add Autoship Link',
+          rootData.autoshipLink ? 'Edit Autoship Link' : 'Add Autoship Link',
           autoshipDisabled,
-          () => window.InventoryWriter?.openAutoshipModal(cData.name)
+          () => window.InventoryWriter?.openAutoshipModal({
+            id: cardEl.dataset.id,
+            name: cData.name,
+            link: cData.autoshipLink || '',
+            nextDate: cData.autoshipNextDate || '',
+          })
         ));
       });
       return;
@@ -5063,6 +5075,20 @@
     // Settings toggle, which lives outside this module and only touches
     // SB.fmtMoney's own behavior, not the DOM it's already been baked into.
     recalc() { recalcAll(); },
+    // Save/clear one card's own Autoship link + date (called from the
+    // Autoship modal, which lives outside this module and only has the
+    // card id it was opened with -- STATE/persist live here). Returns
+    // false if the card no longer exists (e.g. deleted while the modal was
+    // open) so the caller can surface that instead of silently no-op'ing.
+    saveCardAutoship(id, link, nextDate) {
+      const c = STATE.cardData[id];
+      if (!c) return false;
+      c.autoshipLink = link;
+      c.autoshipNextDate = nextDate;
+      recalcAll();
+      persist();
+      return true;
+    },
   };
 
   const resetBtn = document.getElementById('board-reset');
@@ -5415,8 +5441,6 @@
         offCycleSale: item.off_cycle_sale || '',
         anyday:       item.anyday        || '',
         barcode:      item.barcode       || '',
-        autoshipLink:     item.autoship_link      || '',
-        autoshipNextDate: item.autoship_next_date || '',
         _id:          item.id,
       };
       if (item.barcode) barcodeMap[item.barcode.trim()] = key;
@@ -5450,37 +5474,6 @@
     item.barcode = barcode;
     window._INV_BARCODE_MAP = window._INV_BARCODE_MAP || {};
     window._INV_BARCODE_MAP[barcode.trim()] = key;
-  }
-
-  async function writeAutoshipToTurso(name, link, nextDate) {
-    const key = (name || '').trim().toLowerCase();
-    const item = (window._INV_ITEM_MAP || {})[key];
-    if (item && item._id) {
-      const r = await fetch('/api/inventory-items?id=' + item._id, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autoship_link: link, autoship_next_date: nextDate }),
-      });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      item.autoshipLink = link;
-      item.autoshipNextDate = nextDate;
-      return;
-    }
-    // No inventory_items row for this name yet (untracked/free-text card) --
-    // create a minimal one carrying just the name + autoship fields. Safe to
-    // use the upserting POST endpoint here specifically because the lookup
-    // above just confirmed there's no existing row to clobber -- a tracked
-    // item always has an _id already and takes the PATCH branch instead.
-    const trimmedName = (name || '').trim();
-    if (!trimmedName) throw new Error('No item name to save against');
-    const r = await fetch('/api/inventory-items', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: trimmedName, autoship_link: link, autoship_next_date: nextDate }),
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const fresh = await fetch('/api/inventory-items').then((x) => x.json());
-    buildMapsFromItems(fresh);
   }
 
   async function addItemToTurso(fields, barcode) {
@@ -5707,22 +5700,22 @@
     </div>`;
   document.body.appendChild(autoshipOv);
 
-  // Keyed by the card's real name, not a lowercased map key -- an untracked/
-  // free-text item has no Inventory row (and no _INV_ITEM_MAP entry) to read
-  // that from, but the link/date/recurrence here have no actual dependency
-  // on Inventory at all, so there's nothing stopping it from working for
-  // one too (see writeAutoshipToTurso, which creates a minimal row on save
-  // if one doesn't already exist).
-  let _autoshipName = null;
-  function openAutoshipModal(name) {
-    if (!name || !name.trim()) return;
-    const key = name.trim().toLowerCase();
-    const item = (window._INV_ITEM_MAP || {})[key];
-    _autoshipName = name;
-    document.getElementById('autoship-item-name').textContent = (item && item.name) || name;
-    document.getElementById('autoship-link').value = (item && item.autoshipLink) || '';
-    document.getElementById('autoship-date').value = (item && item.autoshipNextDate) || '';
-    document.getElementById('autoship-clear-btn').style.display = (item && item.autoshipLink) ? '' : 'none';
+  // This card's own data (STATE.cardData lives in the board module, not
+  // here), passed in directly by the caller rather than looked up from
+  // _INV_ITEM_MAP -- the link/date belong to this specific board item, not
+  // to whatever Inventory item it happens to be named after, so there's no
+  // shared record to read from. Saving calls back into the board module
+  // (window.SupplementBoard.saveCardAutoship), which is the one with access
+  // to STATE/persist -- this modal is otherwise just a dumb UI over
+  // whatever { id, name, link, nextDate } it was opened with.
+  let _autoshipCardId = null;
+  function openAutoshipModal({ id, name, link, nextDate } = {}) {
+    if (!id) return;
+    _autoshipCardId = id;
+    document.getElementById('autoship-item-name').textContent = name || '';
+    document.getElementById('autoship-link').value = link || '';
+    document.getElementById('autoship-date').value = nextDate || '';
+    document.getElementById('autoship-clear-btn').style.display = link ? '' : 'none';
     document.getElementById('autoship-status-msg').textContent = '';
     autoshipOv.style.display = 'flex';
     setTimeout(() => {
@@ -5730,7 +5723,7 @@
       inp?.focus(); inp?.select();
     }, 50);
   }
-  function closeAutoshipModal() { autoshipOv.style.display = 'none'; _autoshipName = null; }
+  function closeAutoshipModal() { autoshipOv.style.display = 'none'; _autoshipCardId = null; }
 
   document.getElementById('autoship-close-btn').addEventListener('click', closeAutoshipModal);
   document.getElementById('autoship-cancel-btn').addEventListener('click', closeAutoshipModal);
@@ -5743,41 +5736,25 @@
     e.preventDefault();
     document.getElementById('autoship-save-btn').click();
   });
-  document.getElementById('autoship-save-btn').addEventListener('click', async () => {
-    if (!_autoshipName) return;
-    const btn = document.getElementById('autoship-save-btn');
+  document.getElementById('autoship-save-btn').addEventListener('click', () => {
+    if (!_autoshipCardId) return;
     const statusEl = document.getElementById('autoship-status-msg');
     const link = document.getElementById('autoship-link').value.trim();
     const nextDate = document.getElementById('autoship-date').value;
-    btn.disabled = true;
-    try {
-      await writeAutoshipToTurso(_autoshipName, link, nextDate);
-      closeAutoshipModal();
-      window.SupplementBoard?.recalc();
-    } catch (e) {
-      statusEl.textContent = 'Save failed: ' + e.message;
-    } finally {
-      btn.disabled = false;
-    }
+    const ok = window.SupplementBoard?.saveCardAutoship(_autoshipCardId, link, nextDate);
+    if (ok === false) { statusEl.textContent = 'Save failed — card not found, try refreshing.'; return; }
+    closeAutoshipModal();
   });
-  document.getElementById('autoship-clear-btn').addEventListener('click', async () => {
-    if (!_autoshipName) return;
-    const btn = document.getElementById('autoship-clear-btn');
+  document.getElementById('autoship-clear-btn').addEventListener('click', () => {
+    if (!_autoshipCardId) return;
     const statusEl = document.getElementById('autoship-status-msg');
-    btn.disabled = true;
-    try {
-      await writeAutoshipToTurso(_autoshipName, '', '');
-      closeAutoshipModal();
-      window.SupplementBoard?.recalc();
-    } catch (e) {
-      statusEl.textContent = 'Clear failed: ' + e.message;
-    } finally {
-      btn.disabled = false;
-    }
+    const ok = window.SupplementBoard?.saveCardAutoship(_autoshipCardId, '', '');
+    if (ok === false) { statusEl.textContent = 'Clear failed — card not found, try refreshing.'; return; }
+    closeAutoshipModal();
   });
 
   // Exposed so the board's set-stage handler and Inventory tab can use these
-  window.InventoryWriter = { writeShipment, run, writeBarcodeToTurso, addItemToTurso, syncBoard, confirmReceive, writeAutoshipToTurso, openAutoshipModal };
+  window.InventoryWriter = { writeShipment, run, writeBarcodeToTurso, addItemToTurso, syncBoard, confirmReceive, openAutoshipModal };
 })();
 </script>
 

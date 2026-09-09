@@ -61,6 +61,8 @@ async function ensureSchema(env) {
     "ALTER TABLE order_items ADD COLUMN recur INTEGER",
     "ALTER TABLE order_items ADD COLUMN recur_source TEXT",
     "ALTER TABLE order_months ADD COLUMN notes TEXT",
+    "ALTER TABLE order_items ADD COLUMN autoship_link TEXT",
+    "ALTER TABLE order_items ADD COLUMN autoship_next_date TEXT",
   ]) {
     try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
   }
@@ -76,7 +78,7 @@ export async function onRequestGet({ env }) {
       exec(
         `SELECT order_item_id, order_id, month, block_position, item_position, supplement,
                 price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
-                recur, recur_source
+                recur, recur_source, autoship_link, autoship_next_date
          FROM order_items ORDER BY block_position, item_position`
       ),
     ]);
@@ -96,6 +98,8 @@ export async function onRequestGet({ env }) {
       untracked: num(it.untracked) ? true : false,
       recur: it.recur ? num(it.recur) : null,
       recur_source: it.recur_source || null,
+      autoship_link: it.autoship_link || null,
+      autoship_next_date: it.autoship_next_date || null,
     }));
     return Response.json({ months, orders, items }, {
       headers: { "Access-Control-Allow-Origin": "*" },
@@ -137,12 +141,13 @@ export async function onRequestPut({ request, env }) {
       `INSERT INTO order_items
          (order_item_id, order_id, month, block_position, item_position, supplement,
           price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
-          recur, recur_source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          recur, recur_source, autoship_link, autoship_next_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [T(it.order_item_id), T(it.order_id), T(it.month), I(it.block_position), I(it.item_position),
        T(it.supplement), F(it.price_per_bottle), F(it.order_qty_bottles), I(it.include_in_total ? 1 : 0),
        T(it.notes), I(it.untracked ? 1 : 0),
-       it.recur ? I(it.recur) : { type: "null" }, it.recur_source ? T(it.recur_source) : { type: "null" }]
+       it.recur ? I(it.recur) : { type: "null" }, it.recur_source ? T(it.recur_source) : { type: "null" },
+       T(it.autoship_link), T(it.autoship_next_date)]
     ));
   }
   reqs.push(exec("COMMIT"));
