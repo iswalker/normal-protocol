@@ -850,7 +850,9 @@
     }
     /* Inline in the header's natural flex order (see shipmentHTML): sits right
        after "+ Item", so it moves with the row instead of needing a pixel
-       offset that only lined up for one particular header width. */
+       offset that only lined up for one particular header width. Desktop
+       repositions this pixel-precisely instead -- see the min-width:681px
+       block below. */
     #tab-board .ship-min-date {
       font-family: var(--font-num); font-size: 12px; color: var(--accent-deep);
       white-space: nowrap; flex: 0 0 auto;
@@ -894,7 +896,7 @@
     }
     #tab-board .ship-head {
       display: flex; align-items: center; gap: 8px; padding: 5px 9px 0px 6px;
-      background: transparent;
+      background: transparent; position: relative;
     }
     #tab-board .ship-head .truck {
       width: 22px; height: 22px; border-radius: 6px; flex: none;
@@ -1139,12 +1141,15 @@
 
        Loose cards lack ship-border(1)+ship-body-padding(6)=7px per side;
        margin:0 7px gives them the same card content width and alignment.             */
-    /* ship-min-date, ship-stage, ship-total and ship-notes are no longer pixel-
+    /* ship-min-date, ship-stage, ship-total and ship-notes used to be pixel-
        positioned to line up with a card column below — that broke (floated,
        sometimes overlapping the stage buttons) whenever the header's actual
        content width didn't match the one width this math was tuned for.
-       They now just sit in the header's normal flex order, per shipmentHTML:
-       min-date right after "+ Item", total right after the stage buttons. */
+       They sit in the header's normal flex order here (mobile always, and
+       desktop as the base this cascades from); desktop then repositions
+       ship-min-date/ship-total/ship-notes pixel-precisely instead, this time
+       with .ship-id's width actually capped so growing the name can't
+       reproduce that old overlap -- see the min-width:681px block below. */
     /* Desktop: always visible, right of the $ total -- the original
        placement/behavior, same treatment as item/month notes. Mobile hides
        it by default instead (own row below the header, revealed by the
@@ -1156,6 +1161,38 @@
     }
     #tab-board .ship-notes:empty::before { content: attr(placeholder); opacity: .4; pointer-events: none; }
     #tab-board .ship-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
+    /* Desktop only: pin ship-min-date/ship-total/ship-notes to the exact
+       pixel positions an item's own run-out date / $ total / notes field
+       sit at in .card-body below, so the two rows actually line up as
+       columns instead of each just flowing independently. All three
+       targets were measured empirically off a real rendered card (not
+       derived from the grid math alone, since .card-end's toggle/recur-ctl
+       children shift .card-notes well past where its grid column starts)
+       and are relative to .ship-head's own left edge, which is what
+       position:absolute's left:0 resolves to here (.ship-head is the
+       positioned ancestor, see the base rule above). .ship-id gets a
+       max-width so a long name ellipsis-truncates instead of growing into
+       these -- see the ship-notes comment above for why that's the fix
+       that was missing the last time pixel-positioning this was tried. */
+    @media (min-width: 681px) {
+      #tab-board .ship-id { max-width: 100px; }
+      #tab-board .ship-min-date {
+        position: absolute; top: 50%; transform: translateY(-50%);
+        left: 0; width: 339px; text-align: right;
+      }
+      #tab-board .ship-total {
+        position: absolute; top: 50%; transform: translateY(-50%);
+        left: 0; width: 490px;
+      }
+      #tab-board .ship-notes {
+        position: absolute; top: 50%; transform: translateY(-50%);
+        left: 586px; right: 32px;
+      }
+      /* Was static (inline right after ship-notes in flex order); now
+         pinned to the row's own right edge since ship-notes is absolutely
+         positioned here and no longer guarantees this sits right after it. */
+      #tab-board .ship-head .del { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); }
+    }
     /* month metrics: fixed-width columns so the alignment column is stable.
        PLANNED right edge = 14px (month-head pad) + 96px (MAX box) = 110px from month inner right.
        SPENT gets min-width only (auto-size for short values, grow for large). */
@@ -1789,7 +1826,7 @@
   <div class="month-strip" id="month-strip"></div>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
-      <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m228 504v336c0 35.008 13.906 68.582 38.66 93.34 24.758 24.754 58.332 38.66 93.34 38.66h480c35.008 0 68.582-13.906 93.34-38.66 24.754-24.758 38.66-58.332 38.66-93.34v-336c0-35.008-13.906-68.582-38.66-93.34-24.758-24.754-58.332-38.66-93.34-38.66h-96v72h96c15.914 0 31.176 6.3203 42.426 17.574 11.254 11.25 17.574 26.512 17.574 42.426v336c0 15.914-6.3203 31.176-17.574 42.426-11.25 11.254-26.512 17.574-42.426 17.574h-480c-15.914 0-31.176-6.3203-42.426-17.574-11.254-11.25-17.574-26.512-17.574-42.426v-336c0-15.914 6.3203-31.176 17.574-42.426 11.25-11.254 26.512-17.574 42.426-17.574h177.12l-96 96 50.879 50.879 157.44-157.44c6.7383-6.75 10.527-15.902 10.527-25.441s-3.7891-18.691-10.527-25.441l-157.44-157.44-50.879 50.879 96 96h-177.12c-35.008 0-68.582 13.906-93.34 38.66-24.754 24.758-38.66 58.332-38.66 93.34z"/></svg> Autoship</button>
+      <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m1087.2 506.4c-12-12-31.199-12-43.199 0l-144 146.4c0-16.801 2.3984-31.199 2.3984-45.602 0-225.6-182.4-408-408-408-225.6 0-408 182.4-408 408 0 225.6 182.4 408 408 408 108 0 211.2-43.199 288-120 12-12 12-31.199 0-43.199s-31.199-12-43.199 0c-64.801 64.801-153.6 100.8-244.8 100.8-192 0-348-156-348-348s156-348 348-348 348 156 348 348c0 16.801-2.3984 38.398-2.3984 60l-163.2-160.8c-12-12-31.199-12-43.199 0s-12 31.199 0 43.199l208.8 208.8c2.3984 0 2.3984 2.3984 4.8008 2.3984 2.3984 0 4.8008 2.3984 4.8008 2.3984h4.8008 2.3984 2.3984 4.8008 4.8008c2.3984 0 4.8008-2.3984 4.8008-2.3984 2.3984 0 2.3984-2.3984 4.8008-2.3984h2.3984l204-204c12-14.395 12-33.598 0-45.598z"/></svg> Autoship</button>
       <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
       <div class="settings-wrap">
         <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
