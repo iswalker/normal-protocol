@@ -1302,14 +1302,35 @@
     #tab-board .board.layout-compact .card:hover .card-end .del { opacity: 1; }
     #tab-board .board.layout-compact .card-notes { padding-right: 22px; }
 
-    /* ── shipment stage toggle ── */
-    #tab-board .ship-stage {
-      display: flex; border: 1px solid var(--line); border-radius: 6px;
-      overflow: hidden; flex: none;
+    /* ── shipment stage toggle ──
+       The 3-way button row this used to be is gone -- one control (this
+       dropdown) instead of two ways to do the same thing. .ship-stage and
+       .stage-btn below still exist and still drive the actual set-stage
+       logic (openStageMenu just clicks the equivalent hidden button), just
+       never shown anymore; see openStageMenu's own comment. */
+    #tab-board .ship-stage { display: none; }
+    /* Same size/formatting as the "+ Item" button next to it (.ship-head
+       .add-btn) so the two read as a matched pair in the header. Opens on
+       click (all pointers) or hover (mouse/trackpad only, see
+       HOVER_CAPABLE) -- see openStageMenu. */
+    #tab-board .ship-stage-select {
+      display: flex; align-items: center; gap: 5px; flex: none;
+      height: 22px; padding: 0 7px; max-width: 100px; box-sizing: border-box;
+      font-size: 11.5px; font-family: var(--font-ui); font-weight: 500;
+      color: var(--ink-2); background: rgba(255, 255, 255, .7); border: 1px solid #c4cdd0;
+      border-radius: 8px; cursor: pointer;
+      /* field-sizing:content (Chrome/Edge 123+) shrinks the box to the
+         current label's actual text -- "Status" no longer reserves
+         "Received"-width space it doesn't need. max-width above is just
+         the fallback cap for browsers that don't support the property. */
+      field-sizing: content;
     }
-    /* Mobile-only <select> equivalent of the button row above -- see the
-       max-width:680px block for what shows it. */
-    #tab-board .ship-stage-select { display: none; }
+    #tab-board .ship-stage-select:hover {
+      border-color: var(--accent); color: var(--accent-deep); background: #fff;
+    }
+    #tab-board .ship-stage-select::after {
+      content: '▾'; font-size: 9px; color: var(--ink-3);
+    }
     #tab-board .stage-btn {
       font: 500 10.5px/1 var(--font-ui); padding: 4px 8px;
       background: var(--paper); color: var(--ink-3);
@@ -1504,29 +1525,6 @@
       #tab-board .ship-head { position: relative; }
       #tab-board .ship-head .del {
         position: absolute; top: 7px; right: 2px; margin: 0;
-      }
-      /* 3-way toggle -> single dropdown, to save the width 3 separate
-         buttons need side by side. */
-      #tab-board .ship-stage { display: none; }
-      /* Same size/formatting as the "+ Item" button next to it (.ship-head
-         .add-btn above) so the two read as a matched pair in the header. */
-      #tab-board .ship-stage-select {
-        display: flex; align-items: center; gap: 5px; flex: none;
-        height: 22px; padding: 0 7px; max-width: 100px; box-sizing: border-box;
-        font-size: 11.5px; font-family: var(--font-ui); font-weight: 500;
-        color: var(--ink-2); background: rgba(255, 255, 255, .7); border: 1px solid #c4cdd0;
-        border-radius: 8px; cursor: pointer;
-        /* field-sizing:content (Chrome/Edge 123+) shrinks the box to the
-           current label's actual text -- "Status" no longer reserves
-           "Received"-width space it doesn't need. max-width above is just
-           the fallback cap for browsers that don't support the property. */
-        field-sizing: content;
-      }
-      #tab-board .ship-stage-select:hover {
-        border-color: var(--accent); color: var(--accent-deep); background: #fff;
-      }
-      #tab-board .ship-stage-select::after {
-        content: '▾'; font-size: 9px; color: var(--ink-3);
       }
       /* One more thing to save space on: the shipment's own min-order-date
          isn't as load-bearing as the per-item run-out dates below it. */
