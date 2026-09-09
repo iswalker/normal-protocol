@@ -271,6 +271,10 @@
     .inv-controls.show { display: flex; }
     .inv-soon-btn { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #e08a3c; color: #e08a3c; background: transparent; cursor: pointer; white-space: nowrap; flex: none; }
     .inv-soon-btn.active { background: #e08a3c; color: #fff; }
+    /* Independent of Soon -- own neutral color so the two read as separate,
+       stackable filters rather than variants of the same "warning" idea. */
+    .inv-noorder-btn { border-color: var(--ink-12); color: var(--ink-60); }
+    .inv-noorder-btn.active { background: var(--ink-60); color: #fff; }
     /* settings gear popout */
     .settings-wrap { position: relative; }
     .settings-btn {
@@ -429,7 +433,9 @@
     #inv-table .inv-bottles:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     #inv-table .inv-num { font-variant-numeric: tabular-nums; color: var(--ink-60); }
     #inv-table .inv-runout { font-size: 12px; }
-    #inv-table .inv-next-order { font-size: 12px; color: var(--ink-60); }
+    #inv-table .inv-next-order { font-size: 12px; cursor: default; border-radius: 4px; transition: background 0.12s; text-align: center; }
+    #inv-table .inv-next-order.inv-clickable { cursor: pointer; }
+    #inv-table .inv-next-order.inv-clickable:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
     .inv-bars { display: inline-flex; gap: 1px; align-items: center; vertical-align: middle; margin-left: 4px; }
     .inv-bar { display: block; flex-shrink: 0; width: 10px; height: 5px; border-radius: 1px; background: #3f8f87; opacity: 0.5; }
     @keyframes inv-pulse {
@@ -610,6 +616,15 @@
       font-family: inherit; cursor: pointer; transition: color .15s, border-color .15s;
     }
     .snm-cancel:hover { color: var(--ink); border-color: var(--ink-60); }
+    /* Destructive confirm (mobile inventory-card delete) -- same shape as
+       .snm-confirm, red instead of teal so it reads as irreversible. */
+    .snm-danger {
+      appearance: none; border: 1.5px solid #d6504a; background: #d6504a;
+      color: #fff; border-radius: 7px; padding: 8px 14px; font-size: 13px;
+      font-family: inherit; cursor: pointer; font-weight: 500; white-space: nowrap;
+    }
+    .snm-danger:hover { filter: brightness(0.93); }
+    .snm-danger:disabled { opacity: 0.45; cursor: default; filter: none; }
     /* Bottom-left "Clear Link" in the Autoship modal footer -- margin-right:
        auto pushes it flush left while Cancel/Save (no special margin) still
        land at the far right via .snm-footer's own justify-content:flex-end,
@@ -1800,6 +1815,16 @@
 
       /* Inventory tab: hide table, show cards */
       #tab-inventory .table-wrap { display: none; }
+      /* Header bar (title/count/search/No Order/Soon/close) is a fixed-width
+         flex row tuned for desktop -- on a phone it doesn't fit in one line
+         and the close button (margin-left:auto) gets pushed off the right
+         edge entirely, forcing the whole tab to scroll sideways just to
+         reach it. Wrap onto a second row instead, same fix as the board's
+         month-head/ship-head above. */
+      .inv-modal-head { flex-wrap: wrap; row-gap: 8px; }
+      .inv-modal-search { flex: 1 1 100%; order: 3; }
+      .inv-noorder-btn, #inv-soon-btn { order: 4; }
+      .inv-modal-close { order: 2; }
       #inv-cards {
         display: flex !important;
         flex-direction: column;
@@ -1812,13 +1837,36 @@
         border-radius: var(--radius);
         padding: 7px 12px 5px 12px;
         font-size: 13px;
+        position: relative;
       }
       .inv-card-header {
         display: flex;
         align-items: flex-start;
         gap: 8px;
         margin-bottom: 1px;
+        /* clearance for .inv-card-del-btn, absolutely positioned in this
+           corner -- the suppliers list (this row's trailing, right-aligned
+           item) needs to stop short of it rather than running underneath. */
+        padding-right: 22px;
       }
+      .inv-card-del-btn {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 20px;
+        height: 20px;
+        border: none;
+        background: transparent;
+        color: var(--ink-60);
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .inv-card-del-btn:active { background: rgba(214,80,74,0.14); color: #d6504a; }
       .inv-card-name-group {
         flex: 0 1 auto;
         min-width: 0;
@@ -1882,7 +1930,10 @@
         flex: none;
         white-space: nowrap;
         line-height: 1.5;
+        cursor: pointer;
+        border-radius: 4px;
       }
+      .inv-card-nextorder:active { background: rgba(112,196,187,0.18); }
       .inv-card-suppliers {
         font-size: 11px;
         color: var(--ink-60);
@@ -1890,6 +1941,13 @@
         flex: 1 1 0;
         min-width: 0;
         line-height: 1.4;
+        /* Was unbounded -- a card with several suppliers could spill on
+           indefinitely. Two lines is enough to show it's a multi-supplier
+           item without letting one card dwarf the rest of the list. */
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
       }
     }
 
@@ -1983,6 +2041,7 @@
       <input id="inv-filter-item" type="search" placeholder="Search…" autocomplete="off" />
       <button class="inv-search-clear" id="inv-search-clear" title="Clear search" style="display:none">×</button>
     </div>
+    <button class="inv-soon-btn inv-noorder-btn" id="inv-noorder-btn" title="Show only items with no upcoming order">No Order</button>
     <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
     <button class="inv-modal-close" id="inv-modal-close" title="Close" aria-label="Close">&times;</button>
   </div>
@@ -4028,6 +4087,7 @@
     }
     if (a === 'open-stage-menu') {
       e.stopPropagation();
+      if (activeCtxMenu && activeCtxMenu._forBtn === act) { closeCtxMenu(); return; }
       openStageMenu(act);
       return;
     }
@@ -4746,15 +4806,16 @@
   //    this reconstructed click is what actually fixed it). Same fix here:
   //    track the touch ourselves and fire the click by hand. Covers the
   //    notes icon, the include-in-total toggle, "+ Item"/"+ Order", the
-  //    mobile Status menu button, and the open-in-Inventory item name
-  //    shortcut. Scoped to [data-act="open-inv-item"] specifically, not
-  //    bare .card-name -- an untracked item's name is a plain
-  //    contenteditable there instead (no data-act), and this fix's own
-  //    .click()+preventDefault() would otherwise swallow the tap needed to
-  //    place a cursor and start editing it. ──
+  //    mobile Status menu button, the open-in-Inventory item name
+  //    shortcut, and the inline Autoship date. Scoped to
+  //    [data-act="open-inv-item"] specifically, not bare .card-name -- an
+  //    untracked item's name is a plain contenteditable there instead (no
+  //    data-act), and this fix's own .click()+preventDefault() would
+  //    otherwise swallow the tap needed to place a cursor and start
+  //    editing it. ──
   (function initTapFix() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
-    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"]';
+    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"], .autoship-date, .autoship-date-badge';
     const MOVE_TOLERANCE = 10;
     let startX = 0, startY = 0, target = null, moved = false;
     board.addEventListener('touchstart', (e) => {
@@ -5880,7 +5941,9 @@
   // .card-name so they're naturally skipped. Past months (before the
   // current one) are skipped even if still in the DOM -- a non-empty past
   // month stays rendered (see updateMonthVisibility), but an order in it
-  // already happened, it isn't "next".
+  // already happened, it isn't "next". Returns the matched card's own id
+  // too (not just the month name) so a click can jump straight to it --
+  // see wireNextOrderClick.
   const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   function nextOrderMonth(key) {
     const today = new Date(isoToday() + 'T00:00:00');
@@ -5892,11 +5955,25 @@
       const mIdx = mname ? MONTH_ABBR.indexOf(mname) : -1;
       if (mIdx < 0 || !year) continue;
       if (new Date(year, mIdx, 1) < curMonthStart) continue;
-      const hasItem = [...m.querySelectorAll('.card-name')]
-        .some((el) => el.textContent.trim().toLowerCase() === key);
-      if (hasItem) return mname;
+      const cardEl = [...m.querySelectorAll('.card-name')]
+        .find((el) => el.textContent.trim().toLowerCase() === key)
+        ?.closest('.card[data-id]');
+      if (cardEl) return { month: mname, cardId: cardEl.dataset.id };
     }
     return null;
+  }
+  // Closes the Inventory modal and scrolls the board to the card
+  // nextOrderMonth found, with a brief highlight pulse so it's obvious
+  // which one just got scrolled to.
+  function jumpToNextOrder(cardId) {
+    const cardEl = document.querySelector(`#board .card[data-id="${cardId}"]`);
+    if (!cardEl) return;
+    document.getElementById('inv-modal-close')?.click();
+    cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    cardEl.classList.remove('inv-highlight');
+    void cardEl.offsetWidth; // restart the animation if it's already mid-pulse
+    cardEl.classList.add('inv-highlight');
+    setTimeout(() => cardEl.classList.remove('inv-highlight'), 1600);
   }
 
   function barsHtml(fullCount, partialFraction) {
@@ -5969,7 +6046,9 @@
       tr.innerHTML =
         '<td class="inv-name inv-name-edit" data-key="' + key + '" title="Click to rename">' + escHtml(name) + '</td>' +
         '<td class="inv-runout'     + (ro ? (' ' + ro.cls) : ' inv-no-data') + '">' + (ro ? ro.text : '—') + roBars + '</td>' +
-        '<td class="inv-next-order' + (nextOrder ? '' : ' inv-no-data') + '">' + (nextOrder || '—') + '</td>' +
+        '<td class="inv-next-order' + (nextOrder ? ' inv-clickable' : ' inv-no-data') + '"'
+          + (nextOrder ? ' data-card-id="' + nextOrder.cardId + '" title="Jump to this order"' : '') + '>'
+          + (nextOrder ? escHtml(nextOrder.month) : '—') + '</td>' +
         '<td class="inv-bottles" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit bottles">' + bottles + bottleBars + '</td>' +
         '<td class="inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit caps">' + Math.round(currentAmount) + '</td>' +
         '<td class="inv-num inv-bs" data-key="' + key + '" title="Click to edit bottle size">' + (bs || '—') + '</td>' +
@@ -5989,12 +6068,13 @@
         card.className = 'inv-card';
         card.dataset.key = key;
         card.innerHTML =
+          '<button class="inv-card-del-btn" data-key="' + key + '" data-id="' + (meta._id || '') + '" data-name="' + name.replace(/"/g, '&quot;') + '" title="Delete item" aria-label="Delete item">✕</button>' +
           '<div class="inv-card-header">' +
             '<div class="inv-card-name-group">' +
               '<span class="inv-card-name inv-name-edit" data-key="' + key + '" title="Tap to rename">' + escHtml(name) + '</span>' +
               '<span class="inv-card-runout ' + (ro ? ro.cls : 'inv-no-data') + '">' + (ro ? ro.text + roBars : 'No data') + '</span>' +
             '</div>' +
-            (nextOrder ? '<span class="inv-card-nextorder">' + escHtml(nextOrder) + '</span>' : '') +
+            (nextOrder ? '<span class="inv-card-nextorder" data-card-id="' + nextOrder.cardId + '" title="Tap to jump to this order">' + escHtml(nextOrder.month) + '</span>' : '') +
             (suppliers ? '<div class="inv-card-suppliers">' + suppliers + '</div>' : '') +
           '</div>' +
           '<div class="inv-card-pair">' +
@@ -6327,13 +6407,26 @@
   // Columns the single shared search box matches against -- a hit on ANY
   // one of these shows the row (was 4 separate boxes, one per column, all
   // required to match at once; now one box, OR'd across all of them).
-  const SEARCH_COL_IDXS = [0, 8, 9, 10]; // Item, Annual Sale, Off-Cycle, Anyday
+  // Indices shifted by 1 once "Next Order" was inserted after "Est.
+  // Run-Out" -- these were [0,8,9,10] before that column existed.
+  const SEARCH_COL_IDXS = [0, 9, 10, 11]; // Item, Annual Sale, Off-Cycle, Anyday
 
   let soonOnly = false;
   const soonBtn = document.getElementById('inv-soon-btn');
   if (soonBtn) soonBtn.addEventListener('click', () => {
     soonOnly = !soonOnly;
     soonBtn.classList.toggle('active', soonOnly);
+    applyFilters();
+  });
+
+  // Stacks with Soon (both ANDed in below) rather than replacing it --
+  // "items running low AND with nothing already on order" is exactly the
+  // combination someone reordering would want to see.
+  let noOrderOnly = false;
+  const noOrderBtn = document.getElementById('inv-noorder-btn');
+  if (noOrderBtn) noOrderBtn.addEventListener('click', () => {
+    noOrderOnly = !noOrderOnly;
+    noOrderBtn.classList.toggle('active', noOrderOnly);
     applyFilters();
   });
 
@@ -6353,7 +6446,8 @@
         cells[colIdx] && cells[colIdx].textContent.toLowerCase().includes(q)
       );
       const passesSoon = !soonOnly || (cells[1] && (cells[1].classList.contains('inv-soon') || cells[1].classList.contains('inv-empty')));
-      const show = passesText && passesSoon;
+      const passesNoOrder = !noOrderOnly || (cells[2] && cells[2].classList.contains('inv-no-data'));
+      const show = passesText && passesSoon && passesNoOrder;
       tr.style.display = show ? '' : 'none';
       if (show) visibleCount++;
     });
@@ -6385,7 +6479,8 @@
       const name = (card.querySelector('.inv-card-name')?.textContent || '').toLowerCase();
       const roEl = card.querySelector('.inv-card-runout');
       const passesSoon = !soonOnly || (roEl && (roEl.classList.contains('inv-soon') || roEl.classList.contains('inv-empty')));
-      const show = (!cardQ || name.includes(cardQ)) && passesSoon;
+      const passesNoOrder = !noOrderOnly || !card.querySelector('.inv-card-nextorder');
+      const show = (!cardQ || name.includes(cardQ)) && passesSoon && passesNoOrder;
       card.style.display = show ? '' : 'none';
       if (show) visibleCardCount++;
     });
@@ -6427,27 +6522,91 @@
   });
 
 
+  // Shared by both the desktop row's ✕ and the mobile card's ✕ -- deletes
+  // the item's history (inventory_log) and its catalog row (inventory_items),
+  // then drops it from local state and both rendered views.
+  async function deleteInventoryItem(name, itemId, btn) {
+    btn.disabled = true;
+    try {
+      await fetch('/api/inventory?' + new URLSearchParams({ item: name }), { method: 'DELETE' });
+      if (itemId) await fetch('/api/inventory-items?id=' + itemId, { method: 'DELETE' });
+      const key = name.trim().toLowerCase();
+      if (window._INV_ITEM_MAP) delete window._INV_ITEM_MAP[key];
+      document.getElementById('inv-body')?.querySelector('tr[data-key="' + CSS.escape(key) + '"]')?.remove();
+      document.getElementById('inv-cards')?.querySelector('[data-key="' + CSS.escape(key) + '"]')?.remove();
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
+      btn.disabled = false;
+    }
+  }
+
+  // Mobile-only confirmation modal (native confirm() on desktop is fine --
+  // this reuses the app's own .scan-overlay/.scan-modal chrome instead of
+  // the OS confirm() dialog, which reads inconsistently across mobile
+  // browsers). Resolves true (Delete) or false (Cancel / backdrop / ×).
+  const invDelOv = document.createElement('div');
+  invDelOv.id = 'inv-del-confirm-overlay'; invDelOv.className = 'scan-overlay'; invDelOv.style.display = 'none';
+  invDelOv.innerHTML = `
+    <div class="scan-modal">
+      <div class="scan-modal-head">
+        <span>Delete Item?</span>
+        <button class="scan-close-btn" id="inv-del-confirm-close-btn">×</button>
+      </div>
+      <div class="scan-status-msg" id="inv-del-confirm-msg" style="margin-top:0"></div>
+      <div class="snm-footer">
+        <button class="snm-cancel" id="inv-del-confirm-cancel-btn">Cancel</button>
+        <button class="snm-danger" id="inv-del-confirm-delete-btn">Delete</button>
+      </div>
+    </div>`;
+  document.body.appendChild(invDelOv);
+
+  function confirmDeleteInventoryItem(name) {
+    return new Promise((resolve) => {
+      document.getElementById('inv-del-confirm-msg').textContent =
+        'Delete "' + name + '" and all its inventory log rows? This cannot be undone.';
+      invDelOv.style.display = 'flex';
+      const cleanup = (result) => {
+        invDelOv.style.display = 'none';
+        closeBtn.removeEventListener('click', onCancel);
+        cancelBtn.removeEventListener('click', onCancel);
+        deleteBtn.removeEventListener('click', onDelete);
+        invDelOv.removeEventListener('click', onBackdrop);
+        resolve(result);
+      };
+      const closeBtn = document.getElementById('inv-del-confirm-close-btn');
+      const cancelBtn = document.getElementById('inv-del-confirm-cancel-btn');
+      const deleteBtn = document.getElementById('inv-del-confirm-delete-btn');
+      const onCancel = () => cleanup(false);
+      const onDelete = () => cleanup(true);
+      const onBackdrop = (e) => { if (e.target === invDelOv) cleanup(false); };
+      closeBtn.addEventListener('click', onCancel);
+      cancelBtn.addEventListener('click', onCancel);
+      deleteBtn.addEventListener('click', onDelete);
+      invDelOv.addEventListener('click', onBackdrop);
+    });
+  }
+
   if (body) body.addEventListener('click', async (e) => {
+    const nextOrderCell = e.target.closest('.inv-next-order.inv-clickable');
+    if (nextOrderCell) { jumpToNextOrder(nextOrderCell.dataset.cardId); return; }
     const btn = e.target.closest('.inv-del-btn');
     if (!btn) return;
     const name = btn.dataset.name;
     const itemId = btn.dataset.id;
     if (!confirm('Delete "' + name + '" and all its inventory log rows?\nThis cannot be undone.')) return;
-    btn.disabled = true;
-    try {
-      // Delete from inventory_log (history)
-      await fetch('/api/inventory?' + new URLSearchParams({ item: name }), { method: 'DELETE' });
-      // Delete from inventory_items (definition)
-      if (itemId) await fetch('/api/inventory-items?id=' + itemId, { method: 'DELETE' });
-      // Remove from local maps
-      const key = name.trim().toLowerCase();
-      if (window._INV_ITEM_MAP) delete window._INV_ITEM_MAP[key];
-      btn.closest('tr').remove();
-      document.getElementById('inv-cards')?.querySelector('[data-key="' + key + '"]')?.remove();
-    } catch (err) {
-      alert('Delete failed: ' + err.message);
-      btn.disabled = false;
-    }
+    await deleteInventoryItem(name, itemId, btn);
+  });
+
+  document.getElementById('inv-cards')?.addEventListener('click', async (e) => {
+    const nextOrderEl = e.target.closest('.inv-card-nextorder');
+    if (nextOrderEl) { jumpToNextOrder(nextOrderEl.dataset.cardId); return; }
+    const delBtn = e.target.closest('.inv-card-del-btn');
+    if (!delBtn) return;
+    const name = delBtn.dataset.name;
+    const itemId = delBtn.dataset.id;
+    const ok = await confirmDeleteInventoryItem(name);
+    if (!ok) return;
+    await deleteInventoryItem(name, itemId, delBtn);
   });
 
   // Render when the Inventory tab is activated (click or programmatic restore)
