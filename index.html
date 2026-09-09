@@ -168,11 +168,11 @@
     /* ── Per-month Planned totals across the middle of the top bar ── */
     .month-strip {
       flex: 0 1 auto; display: flex; align-items: center;
-      gap: 0; min-width: 0; overflow: hidden;
+      gap: 0; min-width: 0; overflow: hidden; padding-left: 70px;
     }
     .month-strip-cell {
       display: flex; flex-direction: column; align-items: center;
-      padding: 0 14px; line-height: 1.15; white-space: nowrap;
+      padding: 0px 7px; line-height: 1.15; white-space: nowrap;
       cursor: pointer; border-radius: 6px; transition: background .12s;
     }
     .month-strip-cell:hover { background: rgba(121,189,177,0.12); }
@@ -329,6 +329,8 @@
     }
     .ship-ctx-item:hover { background: var(--cream); color: #3f8f87; }
     .ship-ctx-item.ctx-disabled { color: var(--ink-60); cursor: default; pointer-events: none; }
+    /* Current selection in the mobile Status menu (see openStageMenu). */
+    .ship-ctx-item.ctx-active { color: #3f8f87; font-weight: 600; }
     .ship-ctx-divider { height: 1px; background: var(--ink-12); margin: 3px 4px; }
     /* "Move/Copy to [month]" — the row is a label plus an inline month picker */
     .ship-ctx-pick {
@@ -615,7 +617,7 @@
       .month-strip {
         display: flex; order: 3; flex: 1 1 100%;
         overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
-        padding-bottom: 6px; margin-bottom: -6px;
+        padding-bottom: 6px; margin-bottom: -6px; padding-left: 0;
       }
       /* Same fixed 6px radius as desktop, but these cells are noticeably
          shorter here (smaller font, tighter padding) so that radius eats a
@@ -1458,14 +1460,17 @@
          buttons need side by side. */
       #tab-board .ship-stage { display: none; }
       #tab-board .ship-stage-select {
-        display: block; flex: none; font: 500 12px var(--font-ui);
+        display: flex; align-items: center; gap: 3px; flex: none; font: 500 12px var(--font-ui);
         color: var(--ink-2); background: var(--paper); border: 1px solid var(--line);
-        border-radius: 6px; padding: 1px 3px; max-width: 100px;
+        border-radius: 6px; padding: 1px 3px; max-width: 100px; cursor: pointer;
         /* field-sizing:content (Chrome/Edge 123+) shrinks the box to the
-           selected option's actual text -- "Status" no longer reserves
+           current label's actual text -- "Status" no longer reserves
            "Received"-width space it doesn't need. max-width above is just
            the fallback cap for browsers that don't support the property. */
         field-sizing: content;
+      }
+      #tab-board .ship-stage-select::after {
+        content: '▾'; font-size: 9px; color: var(--ink-3);
       }
       /* One more thing to save space on: the shipment's own min-order-date
          isn't as load-bearing as the per-item run-out dates below it. */
@@ -2215,8 +2220,8 @@
     shipEl.querySelectorAll('.stage-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.stage === stage);
     });
-    const select = shipEl.querySelector(':scope > .ship-head > .ship-stage-select');
-    if (select) select.value = stage || '';
+    const stageMenuBtn = shipEl.querySelector(':scope > .ship-head > .ship-stage-select');
+    if (stageMenuBtn) stageMenuBtn.textContent = stage ? stage[0].toUpperCase() + stage.slice(1) : 'Status';
     shipEl.querySelectorAll('.ship-body input[data-field="price"], .ship-body input[data-field="qty"]').forEach((inp) => {
       inp.disabled = locked;
     });
@@ -2322,14 +2327,17 @@
     const stageBtns = ['ordered', 'entered', 'received']
       .map((st) => `<button class="stage-btn${stage === st ? ' active' : ''}" data-act="set-stage" data-stage="${st}">${st[0].toUpperCase() + st.slice(1)}</button>`)
       .join('');
-    // Mobile-only equivalent of the 3-way toggle above -- a <select> instead
-    // of 3 buttons side by side. "Status" (empty value) is the same state as
-    // all three buttons being unselected. Driven through the exact same
-    // set-stage action as the buttons (see the 'change' listener below), not
-    // a separate code path, so promote/demote/confirm-receive all still run.
-    const stageOptions = ['', 'ordered', 'entered', 'received']
-      .map((st) => `<option value="${st}"${stage === (st || null) ? ' selected' : ''}>${st ? st[0].toUpperCase() + st.slice(1) : 'Status'}</option>`)
-      .join('');
+    // Mobile-only equivalent of the 3-way toggle above -- a button that
+    // opens a small custom dropdown (see openStageMenu) instead of 3
+    // buttons side by side. Used to be a native <select>, but that turned
+    // out to need two taps on iOS regardless of what was tried to fix it
+    // (every iOS browser is WebKit under the hood, and its native picker
+    // behavior for an unfocused <select> isn't something JS can reliably
+    // override) -- a custom menu sidesteps native picker quirks entirely.
+    // Its items still route through the exact same set-stage action as the
+    // 3-way toggle buttons (see openStageMenu), not a separate code path,
+    // so promote/demote/confirm-receive all still run.
+    const stageLabel = stage ? stage[0].toUpperCase() + stage.slice(1) : 'Status';
     return `
     <div class="shipment${locked ? ' is-locked' : ''}${s.notes && s.notes.trim() ? ' notes-open' : ''}" data-id="${block.id}" data-kind="shipment">
       <div class="ship-head">
@@ -2341,7 +2349,7 @@
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <span class="ship-min-date"></span>
         <div class="ship-stage">${stageBtns}</div>
-        <select class="ship-stage-select" data-act="set-stage-select" aria-label="Status">${stageOptions}</select>
+        <button class="ship-stage-select" data-act="open-stage-menu" aria-label="Status" aria-haspopup="true">${stageLabel}</button>
         <span class="ship-row-break" aria-hidden="true"></span>
         <div class="ship-total"><span class="amt">$0.00</span></div>
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
@@ -2414,6 +2422,12 @@
     observeSentinels();
   }
 
+  // Items are compact enough that a leading "0" before the decimal point is
+  // just noise (".5" reads just as clearly as "0.5" at this width) -- unlike
+  // Inventory's own fields, which have the room to spare and keep it.
+  // Board-tab only, so this never touches Inventory's formatting.
+  function fmtCompact(n) { return String(n).replace(/^(-?)0\./, '$1.'); }
+
   // ── per-card update ──
   function setDays(span, val) {
     const n = span.querySelector('.n'), u = span.querySelector('.u');
@@ -2464,13 +2478,13 @@
       // dose that's obviously wrong (0x, or way off from what's actually
       // being taken) is visible for a sanity check right on the card
       // instead of only in the Inventory table's own Dose/Day column.
-      doseTag.textContent = String(+r.dose.toFixed(1)) + 'x';
+      doseTag.textContent = fmtCompact(+r.dose.toFixed(1)) + 'x';
       setDays(curDl, r.curDaysLeft);
       setDays(nxtDl, r.newDaysLeft);
       curRo.textContent = df(r.curRunOut);
       nxtRo.textContent = df(r.newRunOut);
       cardEl.querySelector('.onhand').textContent = SB.fmtUnits(r.onHand);
-      cardEl.querySelector('.dose').textContent = String(+r.dose.toFixed(1));
+      cardEl.querySelector('.dose').textContent = fmtCompact(+r.dose.toFixed(1));
       cardEl.querySelector('.bsize').textContent = String(r.bottle);
     } else {
       doseTag.textContent = '—';
@@ -3235,28 +3249,44 @@
     }));
   }
 
-  // Mobile stage dropdown -- routes through the exact same set-stage click
-  // handling as the desktop 3-way toggle (promote/demote, the Received
-  // confirm gate, InventoryWriter, persist) rather than a parallel code
-  // path, by just clicking the equivalent button. The select's displayed
-  // value updates natively the instant a user picks an option, ahead of
-  // whether that stage change actually commits (e.g. cancelling the
-  // Received confirm dialog) -- reverted here immediately and only moved
-  // forward once applyShipmentStage() runs for real, so a cancelled pick
-  // doesn't leave the dropdown showing something that didn't happen.
-  board.addEventListener('change', (e) => {
-    const sel = e.target.closest('.ship-stage-select');
-    if (!sel) return;
-    const shipEl = sel.closest('.shipment');
-    const newVal = sel.value;
-    const oldVal = shipEl.querySelector('.stage-btn.active')?.dataset.stage || '';
-    sel.value = oldVal;
-    if (newVal === oldVal) return;
-    const targetBtn = newVal
-      ? shipEl.querySelector(`.stage-btn[data-stage="${newVal}"]`)
-      : shipEl.querySelector('.stage-btn.active');
-    targetBtn?.click();
-  });
+  // Mobile stage dropdown -- a small custom popup (not a native <select>,
+  // see the comment on the button's markup in shipmentHTML for why) that
+  // routes through the exact same set-stage click handling as the desktop
+  // 3-way toggle (promote/demote, the Received confirm gate, InventoryWriter,
+  // persist) rather than a parallel code path, by just clicking the
+  // equivalent hidden button. Its own label only updates once
+  // applyShipmentStage() runs for real, so a cancelled pick (e.g. the
+  // Received confirm dialog) never shows something that didn't happen.
+  function openStageMenu(btn) {
+    closeCtxMenu();
+    const shipEl = btn.closest('.shipment');
+    const currentStage = STATE.shipmentData[shipEl.dataset.id]?.stage || '';
+    const menu = document.createElement('div');
+    menu.className = 'ship-ctx-menu';
+    ['', 'ordered', 'entered', 'received'].forEach((st) => {
+      const item = document.createElement('div');
+      item.className = 'ship-ctx-item' + (st === currentStage ? ' ctx-active' : '');
+      item.textContent = st ? st[0].toUpperCase() + st.slice(1) : 'Status (clear)';
+      item.addEventListener('click', () => {
+        closeCtxMenu();
+        const targetBtn = st
+          ? shipEl.querySelector(`.stage-btn[data-stage="${st}"]`)
+          : shipEl.querySelector('.stage-btn.active');
+        targetBtn?.click();
+      });
+      menu.appendChild(item);
+    });
+    const r = btn.getBoundingClientRect();
+    menu.style.left = r.left + 'px';
+    menu.style.top = (r.bottom + 4) + 'px';
+    document.body.appendChild(menu);
+    activeCtxMenu = menu;
+    requestAnimationFrame(() => {
+      const mr = menu.getBoundingClientRect();
+      if (mr.right > window.innerWidth - 8) menu.style.left = Math.max(8, window.innerWidth - mr.width - 8) + 'px';
+      if (mr.bottom > window.innerHeight - 8) menu.style.top = Math.max(8, r.top - mr.height - 4) + 'px';
+    });
+  }
 
   // ── editing ──
   board.addEventListener('input', (e) => {
@@ -3576,6 +3606,11 @@
       if (activePicker) { closeItemPicker(); return; }
       const monthEl = act.closest('.month');
       showMerchantPicker(act, monthEl);
+      return;
+    }
+    if (a === 'open-stage-menu') {
+      e.stopPropagation();
+      openStageMenu(act);
       return;
     }
     if (a === 'toggle-notes') {
@@ -4096,7 +4131,7 @@
       // legitimately fractional (half a bottle, .5), same as Price.
       val = Math.round(val * 100) / 100;
       c[field] = val;
-      t.value = String(val);
+      t.value = field === 'qty' ? fmtCompact(val) : String(val);
       if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, field, val);
       recalcAll();
       persist();
@@ -4246,21 +4281,21 @@
   //    above, on a handful of other controls that live inside a draggable
   //    card/shipment -- Sortable's touch handling on the item they sit
   //    inside eats the first tap's synthetic click, so a real device needed
-  //    a first tap to "focus" and a second to actually register. Same fix:
+  //    a first tap to "focus" and a second to actually register (true even
+  //    though these are all <button>s and COMMON.filter above already lists
+  //    "button" -- filter alone isn't reliably enough on touch in practice,
+  //    this reconstructed click is what actually fixed it). Same fix here:
   //    track the touch ourselves and fire the click by hand. Covers the
-  //    notes icon, the include-in-total toggle, "+ Item"/"+ Order", and the
-  //    open-in-Inventory item name shortcut. Scoped to
-  //    [data-act="open-inv-item"] specifically, not bare .card-name -- an
-  //    untracked item's name is a plain contenteditable there instead (no
-  //    data-act), and this fix's own .click()+preventDefault() would
-  //    otherwise swallow the tap needed to place a cursor and start editing
-  //    it. The mobile Status <select> used to be in this list too, but
-  //    .click() on a <select> doesn't open its native picker on most mobile
-  //    browsers -- that one's fixed at the source instead (COMMON.filter
-  //    now excludes select from Sortable's own touch handling entirely). ──
+  //    notes icon, the include-in-total toggle, "+ Item"/"+ Order", the
+  //    mobile Status menu button, and the open-in-Inventory item name
+  //    shortcut. Scoped to [data-act="open-inv-item"] specifically, not
+  //    bare .card-name -- an untracked item's name is a plain
+  //    contenteditable there instead (no data-act), and this fix's own
+  //    .click()+preventDefault() would otherwise swallow the tap needed to
+  //    place a cursor and start editing it. ──
   (function initTapFix() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
-    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .card-name[data-act="open-inv-item"]';
+    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"]';
     const MOVE_TOLERANCE = 10;
     let startX = 0, startY = 0, target = null, moved = false;
     board.addEventListener('touchstart', (e) => {
@@ -4280,32 +4315,6 @@
       e.preventDefault();
       el.click();
     }, { passive: false });
-  })();
-
-  // ── mobile: the Status <select> is no longer swallowed by Sortable (see
-  //    COMMON.filter above), but a <select> that isn't already focused still
-  //    needs two separate taps on most mobile browsers -- the first only
-  //    focuses it (standard focus-shift behavior), the picker itself opens
-  //    on a second tap now that it's focused. showPicker() (where supported:
-  //    Safari 16.4+, recent Chrome/Android) opens it immediately within this
-  //    same trusted touch gesture instead of waiting for a second tap.
-  //    Passive/no preventDefault -- native focus still happens normally,
-  //    this just also asks for the picker on top of it. ──
-  (function initSelectOneTap() {
-    if (!window.matchMedia('(pointer: coarse)').matches) return;
-    // iOS is WebKit under the hood regardless of browser chrome (Chrome,
-    // Safari, etc. -- Apple requires it), and WebKit only honors
-    // showPicker()'s user-activation requirement when it's called
-    // synchronously inside the event that granted it. touchend deferred via
-    // requestAnimationFrame lost that window there, even though it worked
-    // fine in Blink/Chromium (tested locally, but that's not what iOS
-    // actually runs). focusin fires synchronously as part of the tap's own
-    // focus-processing, still inside the same gesture, no deferral needed.
-    board.addEventListener('focusin', (e) => {
-      const sel = e.target;
-      if (!sel.classList?.contains('ship-stage-select') || typeof sel.showPicker !== 'function') return;
-      try { sel.showPicker(); } catch {}
-    });
   })();
 
   board.addEventListener('contextmenu', (e) => {
