@@ -668,6 +668,13 @@
         overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
         padding-bottom: 6px; margin-bottom: -6px; padding-left: 0;
       }
+      /* Centering only reads right while every cell actually fits -- once
+         there's more than the viewport width (is-overflowing, see
+         updateStripOverflow), centered content starts mid-way through the
+         row at the natural scrollLeft:0 position, hiding the first cell's
+         start behind the left edge instead of showing it flush. Left-align
+         instead whenever there's something to actually scroll to. */
+      .month-strip.is-overflowing { justify-content: flex-start; }
       /* Same fixed 6px radius as desktop, but these cells are noticeably
          shorter here (smaller font, tighter padding) so that radius eats a
          much bigger share of the divider's height -- enough to read as a
@@ -3024,8 +3031,24 @@
       );
     });
     strip.innerHTML = cells.join('');
+    updateStripOverflow();
     updateCurrentMonthFromScroll();
   }
+  // Mobile centers the strip's cells when they all fit (see .month-strip's
+  // own mobile rule) but that reads oddly once they don't -- the natural
+  // scroll position (scrollLeft 0) then sits mid-way through the centered
+  // row, hiding the start of the first cell behind the left edge instead of
+  // showing it flush. is-overflowing switches back to flex-start (left-
+  // aligned, first cell flush at scrollLeft 0) whenever there's actually
+  // something to scroll to. Re-measured on resize too, not just on
+  // content changes, since a fit/no-fit call can flip either way as the
+  // viewport itself resizes (e.g. rotation).
+  function updateStripOverflow() {
+    const strip = document.getElementById('month-strip');
+    if (!strip) return;
+    strip.classList.toggle('is-overflowing', strip.scrollWidth > strip.clientWidth + 1);
+  }
+  window.addEventListener('resize', updateStripOverflow);
   // Scrolls #tab-board so targetEl's leading edge sits flush against the
   // scroller's edge, with the same gap the board already uses between
   // months -- scrollIntoView pins flush with no breathing room, so the
