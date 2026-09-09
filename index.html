@@ -1222,13 +1222,20 @@
         position: absolute; top: 55%; transform: translateY(-50%);
         left: 607px; right: 14px;
       }
+      /* pointer-events:none -- this box's left edge starts at 0, the same
+         as the row itself, so it sits directly on top of "+ Item"/Status
+         (only its right-aligned text renders further right, out of their
+         way) and would otherwise swallow clicks/hover meant for them. It's
+         plain display text, nothing here is ever itself clickable. */
       #tab-board .ship-min-date {
         position: absolute; top: 50%; transform: translateY(-50%);
-        left: 0; width: 339px; text-align: right;
+        left: 0; width: 339px; text-align: right; pointer-events: none;
       }
+      /* Same overlap/pointer-events issue as .ship-min-date above -- this
+         box also starts at left:0, covering "+ Item"/Status. */
       #tab-board .ship-total {
         position: absolute; top: 50%; transform: translateY(-50%);
-        left: 0; width: 490px;
+        left: 0; width: 490px; pointer-events: none;
       }
       #tab-board .ship-notes {
         position: absolute; top: 50%; transform: translateY(-50%);
