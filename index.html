@@ -1175,7 +1175,57 @@
        these -- see the ship-notes comment above for why that's the fix
        that was missing the last time pixel-positioning this was tried. */
     @media (min-width: 681px) {
-      #tab-board .ship-id { max-width: 100px; }
+      /* Fixed, not max -- so .scount lands at a predictable x regardless of
+         actual name length (short names leave trailing space, long ones
+         ellipsis-truncate), which .month-title's own matching fixed width
+         relies on to align .mcount with it -- see that rule. */
+      #tab-board .ship-id { width: 100px; }
+      /* Aligns .mcount with .ship-id's .scount below it, and (as a side
+         effect of both sharing the same flow) "+ Order" with "+ Item" --
+         same fixed-width treatment as .ship-id, offset by a spacer to
+         compensate for month-head lacking .ship-head's truck icon and
+         having a wider left padding. Tuned empirically against real
+         rendered positions; adjust the margin-left here if either header's
+         own padding/gap ever changes. */
+      #tab-board .month-title {
+        width: 100px; min-width: 0; margin-left: 73px;
+      }
+      #tab-board .month-title .mname {
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+      }
+      /* "+ Order" doesn't follow .month-title by the same offset that
+         aligned .mcount above -- ship-head's own gap before "+ Item" is
+         smaller relative to its content start than month-head's is, so this
+         pulls it back by the difference. Tuned empirically like the rest of
+         this block. */
+      #tab-board .month-head .add-btn { margin-left: -41px; }
+      /* PLANNED moves to align with the item/shipment $ totals below it
+         (see .ship-total), pulled out of the SPENT|PLANNED|MAX cluster to
+         do so -- SPENT and MAX stay exactly where they were (pinned via
+         `right` at their own current offset from .month-head's edge, so
+         removing PLANNED from the flex flow doesn't shift them). All three
+         positioned directly against .month-head (already a positioned
+         element via position:sticky) rather than .month-metrics, which is
+         left as a plain, now emptied, flex container. Targets measured
+         empirically off a real rendered card, same approach as the
+         ship-head alignment above. */
+      #tab-board .metric.spent {
+        position: absolute; top: 50%; transform: translateY(-50%); right: 120px;
+      }
+      #tab-board .metric.is-max {
+        position: absolute; top: 50%; transform: translateY(-50%); right: 5px;
+      }
+      #tab-board .metric.is-total {
+        position: absolute; top: 50%; transform: translateY(-50%); right: 456px;
+        border-left: 0; padding-left: 0;
+      }
+      /* Swapped from its old spot right after "+ Order" to the right side,
+         left-aligned with an item's own notes field (.card-notes) below --
+         same target-measurement approach as .ship-notes. */
+      #tab-board .month-notes--desktop {
+        position: absolute; top: 50%; transform: translateY(-50%);
+        left: 598px; right: 14px;
+      }
       #tab-board .ship-min-date {
         position: absolute; top: 50%; transform: translateY(-50%);
         left: 0; width: 339px; text-align: right;
@@ -1529,7 +1579,9 @@
         display: inline-flex; align-items: center; justify-content: center;
         width: 20px; height: 20px; flex: none; padding: 0; border: 0;
         background: transparent; color: var(--ink-3); cursor: pointer;
+        margin: 0 -8px 0px -4px;
       }
+      #tab-board .metric { padding: 0px 4px; }
       #tab-board .month-notes-toggle svg { width: 13px; height: 13px; }
       /* Desktop's in-search-box notes field hidden here; mobile uses its
          own separate below-header row instead (see .month-notes-row). */
