@@ -215,11 +215,15 @@
       background: var(--cream-dark); flex-shrink: 0;
     }
     .inv-modal-title { font-size: 15px; font-weight: 600; }
-    /* Matches the month/shipment count pills on the board. Their --font-num and
-       --ink-2 are scoped to #tab-board, so the values are repeated here. */
+    /* Opacity-based instead of a fixed grey -- a flat #dbe2e3 fill read fine
+       against the modal's own cream-dark header but would go low-contrast
+       (or just look wrong) against a different backdrop, e.g. the board's
+       green shipment tint. A translucent black darkens whatever's behind it
+       by the same relative amount either way, so contrast holds up
+       regardless of context. */
     .inv-count-badge {
       font-family: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
-      font-size: 10px; color: #51606a; background: #dbe2e3;
+      font-size: 10px; color: rgba(0,0,0,0.62); background: rgba(0,0,0,0.09);
       padding: 1px 7px; border-radius: 20px;
     }
     .inv-modal-close {
@@ -800,9 +804,13 @@
     .month-sentinel { height: 0; }
     #tab-board .month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
     #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
-    /* Hidden, not removed -- .msub still carries the year text that several
-       places (jump-to-month, month sort/lookup) read via textContent. */
-    #tab-board .month-title .msub { display: none; }
+    /* Hidden by default (mobile) -- shown again on desktop, see the
+       min-width:681px block below. Either way .msub still carries the year
+       text that several places (jump-to-month, month sort/lookup) read via
+       textContent, so it's display:none here, not removed. */
+    #tab-board .month-title .msub {
+      display: none; font-family: var(--font-num); font-size: 11px; color: var(--ink-3);
+    }
     #tab-board .month-title .mcount {
       font-family: var(--font-num); font-size: 10px;
       color: var(--ink-2); background: #dbe2e3; padding: 1px 7px; border-radius: 20px;
@@ -1191,6 +1199,7 @@
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
       }
       #tab-board .month-title .mcount { margin-left: auto; }
+      #tab-board .month-title .msub { display: inline; }
       /* "+ Order" aligned with "+ Item" -- tuned empirically like the rest
          of this block. */
       #tab-board .month-head .add-btn { margin-left: -2px; }
