@@ -1214,7 +1214,11 @@
          alignMonthMetrics(), called wherever the *v spans' text is set.
          A static px offset can't do this since it depends on SPENT's own
          rendered width, which varies with its content. */
-      #tab-board .month-metrics { will-change: transform; }
+      /* Static fallback matching alignMonthMetrics()'s typical computed
+         value -- avoids a visible jump from the unshifted position on
+         first paint, before JS has run for this month. Once it runs, the
+         inline style it sets overrides this per-month anyway. */
+      #tab-board .month-metrics { will-change: transform; transform: translateX(-370px); }
       /* Swapped from its old spot right after "+ Order" to the right side,
          left-aligned with an item's own notes field (.card-notes) below --
          same target-measurement approach as .ship-notes. */
