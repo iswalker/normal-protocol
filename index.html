@@ -3194,7 +3194,17 @@
   }
   const COMMON = {
     animation: 160, easing: 'cubic-bezier(.2,.7,.3,1)',
-    filter: 'input,[contenteditable],button',
+    // select wasn't filtered -- Sortable's touch handling treated a tap on
+    // the mobile Status <select> as a potential drag start (it lives inside
+    // a draggable .shipment) and called preventDefault on touchstart,
+    // swallowing the synthetic click that opens a select's native picker.
+    // The tap-fix elsewhere in this file worked around the same class of
+    // bug for buttons by firing a manual .click(), but that trick doesn't
+    // apply here: calling .click() on a <select> doesn't open its picker in
+    // most mobile browsers (only a genuine, untouched user gesture does) --
+    // so the real fix is keeping Sortable off it entirely, not reconstructing
+    // the click by hand.
+    filter: 'input,select,[contenteditable],button',
     preventOnFilter: false,
     ghostClass: 'sb-ghost', chosenClass: 'sb-chosen', dragClass: 'sb-drag',
     // forceFallback: pointer-driven drag clone for consistent cross-browser behavior.
@@ -4238,18 +4248,19 @@
   //    inside eats the first tap's synthetic click, so a real device needed
   //    a first tap to "focus" and a second to actually register. Same fix:
   //    track the touch ourselves and fire the click by hand. Covers the
-  //    notes icon, the include-in-total toggle, "+ Item"/"+ Order", the
-  //    mobile Status <select> (a real .click() from inside a genuine
-  //    touchend handler still counts as user activation for opening its
-  //    native picker, same as a trusted tap would), and the open-in-
-  //    Inventory item name shortcut. Scoped to [data-act="open-inv-item"]
-  //    specifically, not bare .card-name -- an untracked item's name is a
-  //    plain contenteditable there instead (no data-act), and this fix's
-  //    own .click()+preventDefault() would otherwise swallow the tap
-  //    needed to place a cursor and start editing it. ──
+  //    notes icon, the include-in-total toggle, "+ Item"/"+ Order", and the
+  //    open-in-Inventory item name shortcut. Scoped to
+  //    [data-act="open-inv-item"] specifically, not bare .card-name -- an
+  //    untracked item's name is a plain contenteditable there instead (no
+  //    data-act), and this fix's own .click()+preventDefault() would
+  //    otherwise swallow the tap needed to place a cursor and start editing
+  //    it. The mobile Status <select> used to be in this list too, but
+  //    .click() on a <select> doesn't open its native picker on most mobile
+  //    browsers -- that one's fixed at the source instead (COMMON.filter
+  //    now excludes select from Sortable's own touch handling entirely). ──
   (function initTapFix() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
-    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"]';
+    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .card-name[data-act="open-inv-item"]';
     const MOVE_TOLERANCE = 10;
     let startX = 0, startY = 0, target = null, moved = false;
     board.addEventListener('touchstart', (e) => {
