@@ -462,9 +462,14 @@
       appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
       cursor: pointer; padding: 5px 10px; border-radius: 7px; font-family: inherit;
       font-size: 12px; color: var(--ink-60); white-space: nowrap;
-      transition: color 0.15s, border-color 0.15s;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
     }
     .inv-scan-btn:hover { color: var(--teal); border-color: var(--teal); }
+    /* Header "Autoship" filter button while its board-wide filter is on --
+       same on/active treatment as .inv-soon-btn.active, teal instead of
+       orange since it's a board filter, not an Inventory run-out warning. */
+    .inv-scan-btn.active { background: var(--teal); border-color: var(--teal); color: #fff; }
+    .inv-scan-btn.active:hover { color: #fff; }
 
     /* Filters every month at once (see the 'global-search-input' input
        handler) -- lives right after the Inventory button, left-aligned,
@@ -976,6 +981,11 @@
     #tab-board .tier-soon .proj .cur .dl { color: var(--soon); }
     #tab-board .tier-out .proj .cur .dl { color: var(--out); }
     #tab-board .proj .arrow { color: var(--ink-3); font-size: 12px; opacity: 0; width: 0; transition: opacity .15s; }
+    /* Item's Autoship next-ship date, shown between the current and new
+       run-out dates when set (see updateCard) -- same orange as the
+       Inventory popover's "Soon" tag (--soon / #e08a3c), bold so it reads
+       as a distinct marker slotted into the middle of the arrow chain. */
+    #tab-board .proj .autoship-date { color: var(--soon); font-weight: 700; font-size: 12px; white-space: nowrap; }
     #tab-board .proj .nxt { opacity: 0; width: 0; overflow: hidden; color: var(--accent-deep); }
     #tab-board .proj .nxt .dl { font-size: 19px; line-height: 1; letter-spacing: -.02em; color: var(--accent-deep); }
     #tab-board .proj .nxt .dl .u { font-size: 11px; color: var(--accent); }
@@ -1595,6 +1605,7 @@
       #tab-board .board.layout-compact .proj .dl .u { font-size: 9px; }
       #tab-board .board.layout-compact .proj .ro { font-size: 10px; }
       #tab-board .board.layout-compact .proj .arrow { font-size: 10px; }
+      #tab-board .board.layout-compact .proj .autoship-date { font-size: 10px; }
       #tab-board .board.layout-compact .proj .dose-tag { font-size: 9px; }
       #tab-board .board.layout-compact .proj .dose-arrow { font-size: 9px; }
       #tab-board .card-row-break { display: block; flex-basis: 100%; height: 0; }
@@ -1888,16 +1899,13 @@
   }
 
   const invOv = document.getElementById('inv-modal-ov');
-  function openInventory(opts) {
+  function openInventory() {
     if (!invOv) return;
     invOv.classList.add('open');
     const mf = document.getElementById('mob-inv-fab');
     if (mf) mf.classList.add('show');
-    // The table only renders its rows on this event. detail carries one-shot
-    // filter requests (e.g. the header "Autoship" button) -- the Inventory
-    // tab's own listener resets that filter on every firing that doesn't
-    // request it, so it never lingers past whichever open triggered it.
-    document.dispatchEvent(new CustomEvent('inventoryActivated', { detail: opts || {} }));
+    // The table only renders its rows on this event.
+    document.dispatchEvent(new CustomEvent('inventoryActivated'));
     // Land the cursor in the Item filter so you can type straight away. Deferred
     // so it runs after the rows render, which would otherwise steal focus back.
     // Desktop only -- on mobile this pops the on-screen keyboard and zooms
@@ -1922,8 +1930,7 @@
     if (window._INV_LOG_ROWS) window.InventoryWriter?.syncBoard(window._INV_LOG_ROWS);
     window.InventoryWriter?.run().catch(() => {});
   }
-  document.getElementById('inv-search-link')?.addEventListener('click', () => openInventory());
-  document.getElementById('inv-autoship-btn')?.addEventListener('click', () => openInventory({ autoshipOnly: true }));
+  document.getElementById('inv-search-link')?.addEventListener('click', openInventory);
   document.getElementById('inv-modal-close')?.addEventListener('click', closeInventory);
   invOv?.addEventListener('click', (e) => { if (e.target === invOv) closeInventory(); });
   document.addEventListener('keydown', (e) => {
@@ -2220,6 +2227,11 @@
   // there's no more per-month search input to read a live value from, this is
   // the one source of truth for whether a search is active and what it is.
   let globalSearchQuery = '';
+  // Set by the header "Autoship" button -- an alternate filter mode along the
+  // same path as globalSearchQuery (see applyMonthSearch/initGlobalSearch),
+  // matching everything with a saved Autoship link instead of a text query.
+  // Mutually exclusive with it: turning one on clears the other.
+  let globalAutoshipOnly = false;
   let INV_MAP = {};     // lowercased-name -> Inventory row (set by applyInventory)
   let SPENT_BY_MONTH = {}; // month name -> $ amount (set by YNAB sync)
   let PROJ_MAP = {};    // lowercased-name -> { daysLeft, runOut } after all board orders
@@ -2401,6 +2413,8 @@
               <span class="ro">—</span>
             </span>
             <span class="arrow">→</span>
+            <span class="autoship-date" style="display:none"></span>
+            <span class="arrow autoship-arrow" style="display:none">→</span>
             <span class="nxt">
               <span class="dl"><span class="n">0</span><span class="u">d</span></span>
               <span class="sep">,</span>
@@ -2583,6 +2597,8 @@
     const nxtDl = proj.querySelector('.nxt .dl');
     const curRo = proj.querySelector('.cur .ro');
     const nxtRo = proj.querySelector('.nxt .ro');
+    const autoshipDateEl = proj.querySelector('.autoship-date');
+    const autoshipArrowEl = proj.querySelector('.autoship-arrow');
     const dash = (span) => {
       const n = span.querySelector('.n'), u = span.querySelector('.u');
       if (n) { n.textContent = '—'; if (u) u.textContent = ''; } else { span.textContent = '—'; }
@@ -2601,6 +2617,15 @@
       cardEl.querySelector('.onhand').textContent = SB.fmtUnits(r.onHand);
       cardEl.querySelector('.dose').textContent = fmtCompact(+r.dose.toFixed(1));
       cardEl.querySelector('.bsize').textContent = String(r.bottle);
+      // Autoship next-ship date slotted between the current and new run-out
+      // dates (e.g. "48d, 10/26 → 11/15 → 108d, 12/25") -- only meaningful
+      // alongside an actual new-run-out projection, so gated on r.hasOrder
+      // the same as .arrow/.nxt themselves (see the has-order CSS above).
+      const itemMeta = (window._INV_ITEM_MAP || {})[(c.name || '').trim().toLowerCase()];
+      const autoshipDate = r.hasOrder && itemMeta?.autoshipNextDate ? SB.parseDate(itemMeta.autoshipNextDate) : null;
+      if (autoshipDateEl) autoshipDateEl.style.display = autoshipDate ? '' : 'none';
+      if (autoshipArrowEl) autoshipArrowEl.style.display = autoshipDate ? '' : 'none';
+      if (autoshipDateEl && autoshipDate) autoshipDateEl.textContent = df(autoshipDate);
     } else {
       doseTag.textContent = '—';
       [curDl, nxtDl].forEach(dash);
@@ -2609,6 +2634,8 @@
       cardEl.querySelector('.onhand').textContent = '—';
       cardEl.querySelector('.dose').textContent = '—';
       cardEl.querySelector('.bsize').textContent = '—';
+      if (autoshipDateEl) autoshipDateEl.style.display = 'none';
+      if (autoshipArrowEl) autoshipArrowEl.style.display = 'none';
     }
     cardEl.querySelector('.ototal .amt').textContent = SB.fmtMoney(r.cost);
 
@@ -2715,7 +2742,7 @@
       // unrelated to which items happen to match the query) would mix an
       // always-present figure into a number that's supposed to represent
       // only the filtered results.
-      const searchActive = !!globalSearchQuery.trim();
+      const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly;
       let plannedItems = 0, maxItems = 0, itemCount = 0;
 
       [...list.children].forEach((node) => {
@@ -3564,7 +3591,7 @@
     // While searching, monthSpent drops the unattributable YNAB base but
     // keeps matching "Ordered" shipment totals -- a completed order that
     // matches the search still counts toward Spent.
-    const searchActive = !!globalSearchQuery.trim();
+    const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly;
     const spent = monthSpent(monthEl, searchActive);
     const spentEl = monthEl.querySelector('.spentv');
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
@@ -3799,34 +3826,48 @@
     }
   });
 
-  // Filters one month's shipments/loose cards to `q` (case-insensitive). A
-  // shipment whose own name matches keeps every item visible; otherwise only
-  // its individually-matching items show (with the shipment itself staying
-  // visible to hold them). Dividers hide during an active search since
-  // they're not real content to match against.
+  // Filters one month's shipments/loose cards to `q` (case-insensitive), or
+  // -- when globalAutoshipOnly is set instead -- to items with a saved
+  // Autoship link, ignoring `q` entirely. Same shape either way: a shipment
+  // whose own name matches (text mode only; a shipment has no autoship link
+  // of its own) keeps every item visible, otherwise only its individually-
+  // matching items show (shipment stays visible to hold them). Dividers hide
+  // whenever a filter is active, in both modes, since they're not real
+  // content to match against.
+  function itemMatchesActiveFilter(name) {
+    if (globalAutoshipOnly) {
+      const key = (name || '').trim().toLowerCase();
+      return !!(window._INV_ITEM_MAP || {})[key]?.autoshipLink;
+    }
+    return true; // text mode: caller already handled the `q` check
+  }
   function applyMonthSearch(monthEl, q) {
     const lq = q.trim().toLowerCase();
+    const filterActive = globalAutoshipOnly || !!lq;
     const list = monthEl.querySelector('.month-list');
     if (!list) return;
     [...list.children].forEach((node) => {
       if (node.classList.contains('shipment')) {
         const shipName = (node.querySelector('.ship-name')?.textContent || '').toLowerCase();
-        const shipMatches = !lq || shipName.includes(lq);
+        const shipMatches = globalAutoshipOnly ? false : (!lq || shipName.includes(lq));
         let anyItemMatches = false;
         node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
-          const itemName = (cardEl.querySelector('.card-name')?.textContent || '').toLowerCase();
-          const itemMatches = !lq || shipMatches || itemName.includes(lq);
+          const itemName = cardEl.querySelector('.card-name')?.textContent || '';
+          const itemMatches = !filterActive || shipMatches
+            || (globalAutoshipOnly ? itemMatchesActiveFilter(itemName) : itemName.toLowerCase().includes(lq));
           cardEl.classList.toggle('search-hide', !itemMatches);
           if (itemMatches) anyItemMatches = true;
         });
-        node.classList.toggle('search-hide', !!lq && !shipMatches && !anyItemMatches);
+        node.classList.toggle('search-hide', filterActive && !shipMatches && !anyItemMatches);
       } else if (node.classList.contains('card')) {
         if (node.classList.contains('card--divider')) {
-          node.classList.toggle('search-hide', !!lq);
+          node.classList.toggle('search-hide', filterActive);
           return;
         }
-        const itemName = (node.querySelector('.card-name')?.textContent || '').toLowerCase();
-        node.classList.toggle('search-hide', !!lq && !itemName.includes(lq));
+        const itemName = node.querySelector('.card-name')?.textContent || '';
+        const itemMatches = !filterActive
+          || (globalAutoshipOnly ? itemMatchesActiveFilter(itemName) : itemName.toLowerCase().includes(lq));
+        node.classList.toggle('search-hide', !itemMatches);
       }
     });
     recalcTotalsFor(monthEl);
@@ -3841,11 +3882,19 @@
     const input = document.getElementById('global-search-input');
     const clearBtn = document.getElementById('global-search-clear');
     const box = document.querySelector('.global-search-box');
+    const autoshipBtn = document.getElementById('inv-autoship-btn');
     if (!input || !box) return;
+    function refresh() {
+      board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
+      clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly) ? 'block' : 'none';
+      autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
+    }
+    // Any text-search entry point turns the Autoship filter back off -- the
+    // two are mutually exclusive views over the same board.
     function applyToAllMonths(q) {
       globalSearchQuery = q;
-      board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, q));
-      clearBtn.style.display = q ? 'block' : 'none';
+      globalAutoshipOnly = false;
+      refresh();
     }
     box.addEventListener('click', (e) => {
       if (e.target.closest('.global-search-clear')) return;
@@ -3859,6 +3908,15 @@
       input.value = '';
       applyToAllMonths('');
       input.blur();
+    });
+    // Header "Autoship" button -- same board-wide filtering path as the
+    // search box, just matched on a saved Autoship link instead of text.
+    // Toggles: clicking again while already active turns it back off.
+    autoshipBtn?.addEventListener('click', () => {
+      globalAutoshipOnly = !globalAutoshipOnly;
+      input.value = '';
+      globalSearchQuery = '';
+      refresh();
     });
     // "/" jumps to the search box, same convention as GitHub/Slack/etc --
     // only when nothing else is already capturing keystrokes (typing "/"
@@ -5466,6 +5524,7 @@
     try {
       await writeAutoshipToTurso(_autoshipKey, link, nextDate);
       closeAutoshipModal();
+      window.SupplementBoard?.recalc();
     } catch (e) {
       statusEl.textContent = 'Save failed: ' + e.message;
     } finally {
@@ -5480,6 +5539,7 @@
     try {
       await writeAutoshipToTurso(_autoshipKey, '', '');
       closeAutoshipModal();
+      window.SupplementBoard?.recalc();
     } catch (e) {
       statusEl.textContent = 'Clear failed: ' + e.message;
     } finally {
@@ -6000,12 +6060,6 @@
     applyFilters();
   });
 
-  // Set by the header "Autoship" button (see openInventory's detail), reset
-  // on every other way of getting here -- a one-shot jump, not a persisted
-  // toggle, since there's no in-modal control to clear it.
-  let autoshipOnly = false;
-  function hasAutoshipLink(key) { return !!(window._INV_ITEM_MAP || {})[key]?.autoshipLink; }
-
   function applyFilters() {
     // Drop any previous "+ Add [query]" affordance before filtering, so it isn't
     // caught by the row/card loops below (re-added at the end if still wanted).
@@ -6022,8 +6076,7 @@
         cells[colIdx] && cells[colIdx].textContent.toLowerCase().includes(q)
       );
       const passesSoon = !soonOnly || (cells[1] && (cells[1].classList.contains('inv-soon') || cells[1].classList.contains('inv-empty')));
-      const passesAutoship = !autoshipOnly || hasAutoshipLink(tr.dataset.key);
-      const show = passesText && passesSoon && passesAutoship;
+      const show = passesText && passesSoon;
       tr.style.display = show ? '' : 'none';
       if (show) visibleCount++;
     });
@@ -6055,8 +6108,7 @@
       const name = (card.querySelector('.inv-card-name')?.textContent || '').toLowerCase();
       const roEl = card.querySelector('.inv-card-runout');
       const passesSoon = !soonOnly || (roEl && (roEl.classList.contains('inv-soon') || roEl.classList.contains('inv-empty')));
-      const passesAutoship = !autoshipOnly || hasAutoshipLink(card.dataset.key);
-      const show = (!cardQ || name.includes(cardQ)) && passesSoon && passesAutoship;
+      const show = (!cardQ || name.includes(cardQ)) && passesSoon;
       card.style.display = show ? '' : 'none';
       if (show) visibleCardCount++;
     });
@@ -6122,10 +6174,7 @@
   });
 
   // Render when the Inventory tab is activated (click or programmatic restore)
-  document.addEventListener('inventoryActivated', (e) => {
-    autoshipOnly = !!(e.detail && e.detail.autoshipOnly);
-    renderInventory();
-  });
+  document.addEventListener('inventoryActivated', () => renderInventory());
 
   // Re-render after boardReady finishes run() so _INV_ITEM_MAP is populated.
   // (Inventory is a modal now, not a tab — "active" was the pre-modal check and
