@@ -697,6 +697,8 @@
          than that gap and overflowing past it. */
       .global-search-box { flex: 1 1 0; min-width: 0; }
       .board-controls .refresh-inv-btn { display: none; }
+      /* Replaced by the always-on-screen circular FAB (see .mob-inv-fab). */
+      #inv-scan-btn { display: none; }
       .inv-modal-ov { padding: 0; }
       /* #tab-inventory carries both the "#tab-inventory" id (a leftover from
          when Inventory rendered as a normal in-flow tab, height:calc(100vh -
@@ -712,23 +714,25 @@
       .inv-modal { border-radius: 0; height: 100%; }
     }
 
-    /* ── Mobile floating action bar (inventory tab only) ── */
+    /* ── Mobile Scan floating action button -- always on-screen (board and
+       Inventory both), replaces the header's own Scan button on mobile
+       (see #inv-scan-btn's own max-width:680px rule further down). ── */
     .mob-inv-fab {
       display: none; /* hidden on desktop */
     }
     @media (max-width: 680px) {
       .mob-inv-fab {
         position: fixed; bottom: 24px; right: 16px;
-        display: none; z-index: 100;
+        display: flex; z-index: 100;
       }
-      .mob-inv-fab.show { display: flex; }
       .mob-fab-primary {
         appearance: none; border: none; cursor: pointer; font-family: inherit;
         background: var(--teal); color: #fff;
-        padding: 12px 22px; border-radius: 999px; font-size: 15px; font-weight: 500;
+        width: 52px; height: 52px; border-radius: 50%; flex: none;
+        display: flex; align-items: center; justify-content: center;
         box-shadow: 0 4px 18px rgba(23,26,28,0.22);
-        min-height: 48px; white-space: nowrap;
       }
+      .mob-fab-primary svg { width: 22px; height: 22px; margin: 0; }
       .mob-fab-primary:active { filter: brightness(0.9); }
     }
   </style>
@@ -2038,8 +2042,6 @@
   function openInventory() {
     if (!invOv) return;
     invOv.classList.add('open');
-    const mf = document.getElementById('mob-inv-fab');
-    if (mf) mf.classList.add('show');
     // The table only renders its rows on this event.
     document.dispatchEvent(new CustomEvent('inventoryActivated'));
     // Land the cursor in the Item filter so you can type straight away. Deferred
@@ -2060,8 +2062,6 @@
   function closeInventory() {
     if (!invOv) return;
     invOv.classList.remove('open');
-    const mf = document.getElementById('mob-inv-fab');
-    if (mf) mf.classList.remove('show');
     // Inventory edits feed the board's projections, so refresh on the way out.
     if (window._INV_LOG_ROWS) window.InventoryWriter?.syncBoard(window._INV_LOG_ROWS);
     window.InventoryWriter?.run().catch(() => {});
@@ -6898,9 +6898,9 @@
 })();
 </script>
 
-<!-- Mobile scan FAB — Inventory tab only, bottom-right -->
+<!-- Mobile scan FAB — always on-screen on mobile, bottom-right -->
 <div class="mob-inv-fab" id="mob-inv-fab">
-  <button class="mob-fab-primary" id="mob-scan-btn"><svg width="18" height="18" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:4px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
+  <button class="mob-fab-primary" id="mob-scan-btn" title="Scan a barcode" aria-label="Scan a barcode"><svg width="18" height="18" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg></button>
 </div>
 
 </body>
