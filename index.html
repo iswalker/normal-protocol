@@ -783,7 +783,9 @@
     .month-sentinel { height: 0; }
     #tab-board .month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
     #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
-    #tab-board .month-title .msub { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); }
+    /* Hidden, not removed -- .msub still carries the year text that several
+       places (jump-to-month, month sort/lookup) read via textContent. */
+    #tab-board .month-title .msub { display: none; }
     #tab-board .month-title .mcount {
       font-family: var(--font-num); font-size: 10px;
       color: var(--ink-2); background: #dbe2e3; padding: 1px 7px; border-radius: 20px;
@@ -825,7 +827,7 @@
 
     /* add buttons that live inline in the month / shipment header rows */
     #tab-board .month-head .add-btn, #tab-board .ship-head .add-btn {
-      flex: 0 0 auto; height: 22px; padding: 0 7px; gap: 5px;
+      flex: 0 0 auto; height: 22px; padding: 0 7px 1px; gap: 5px;
       border: 1px solid #c4cdd0; border-radius: 8px; background: rgba(255, 255, 255, .7);
       font-size: 11.5px; color: var(--ink-2);
     }
@@ -1315,7 +1317,7 @@
        HOVER_CAPABLE) -- see openStageMenu. */
     #tab-board .ship-stage-select {
       display: flex; align-items: center; gap: 5px; flex: none;
-      height: 22px; padding: 0 7px; max-width: 100px; box-sizing: border-box;
+      height: 22px; padding: 0 7px 1px; max-width: 100px; box-sizing: border-box;
       font-size: 11.5px; font-family: var(--font-ui); font-weight: 500;
       color: var(--ink-2); background: rgba(255, 255, 255, .7); border: 1px solid #c4cdd0;
       border-radius: 8px; cursor: pointer;
@@ -1329,7 +1331,7 @@
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     }
     #tab-board .ship-stage-select::after {
-      content: '▾'; font-size: 9px; color: var(--ink-3);
+      content: '▾'; font-size: 17px; color: var(--ink-3); margin: 0px -3px -2px -4px;
     }
     #tab-board .stage-btn {
       font: 500 10.5px/1 var(--font-ui); padding: 4px 8px;
