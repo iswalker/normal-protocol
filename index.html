@@ -172,7 +172,7 @@
     }
     .month-strip-cell {
       position: relative; display: flex; flex-direction: column; align-items: center;
-      padding: 0px 7px; line-height: 1.15; white-space: nowrap;
+      padding: 0px 8px; line-height: 1.15; white-space: nowrap;
       cursor: pointer; border-radius: 6px; transition: background .12s;
     }
     .month-strip-cell:hover { background: rgba(121,189,177,0.12); }
@@ -641,7 +641,7 @@
          restyled to fit and scrollable within itself since several months
          rarely fit a phone's width even at this size. */
       .month-strip {
-        display: flex; order: 3; flex: 1 1 100%;
+        display: flex; order: 3; flex: 1 1 100%; justify-content: center;
         overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
         padding-bottom: 6px; margin-bottom: -6px; padding-left: 0;
       }
@@ -653,6 +653,12 @@
       .month-strip-cell { padding: 2px 3px; flex: 0 0 auto; border-radius: 0; }
       .month-strip-amt { font-size: 12.5px; }
       .month-strip-mon { font-size: 9.5px; }
+      /* Cents-off amounts are shorter ("$712" vs "$712.00") -- a bit more
+         size and breathing room reads better than staying tuned for the
+         longer string. See the "Show cents" Settings toggle (SB.setShowCents),
+         which toggles body.cents-off. */
+      .cents-off .month-strip-amt { font-size: 14px; }
+      .cents-off .month-strip-cell { padding: 2px 8px; }
       /* Keep the "Search Inventory" label on mobile too -- an icon-only button
          here was a tiny tap target, and the title next to it is already
          hidden at this width so there's room. */
@@ -1129,6 +1135,12 @@
        SPENT gets min-width only (auto-size for short values, grow for large). */
     #tab-board .board.layout-compact .metric { width: 96px; }
     #tab-board .board.layout-compact .metric:last-child { padding-right: 9px; }
+    /* Cents-off amounts ($1,291 vs $1,291.00) don't need the fixed 96px this
+       column reserves for the longest cents-on case (see the alignment math
+       above) -- shrink to content instead of leaving that space empty.
+       Higher specificity than both the base rule and the mobile override
+       below (same width value there already) so this wins at any width. */
+    body.cents-off #tab-board .board.layout-compact .metric { width: auto; min-width: 0; }
     /* loose cards: add 7px margin each side so they align with shipment cards */
     #tab-board .board.layout-compact .month-list > .card { margin: 0 7px; }
 
@@ -1416,6 +1428,13 @@
       #tab-board .month-head { flex-wrap: wrap; row-gap: 4px; }
       #tab-board .month-metrics { flex: 1 1 100%; margin-left: 0; margin-right: 0; justify-content: flex-end; }
       #tab-board .board.layout-compact .metric { width: auto; min-width: 0; }
+      /* Cents-off metrics ($1,291 vs $1,291.00) are short enough to share
+         the title row instead of needing their own -- keep the header to
+         one row and let the (already width:auto) metrics sit right-aligned
+         at its end. Desktop is untouched (see the non-media cents-off rule
+         above, which only shrinks the metric column, not the row layout). */
+      body.cents-off #tab-board .month-head { flex-wrap: nowrap; }
+      body.cents-off #tab-board .month-metrics { flex: 0 0 auto; margin-left: auto; }
       /* Notes: icon replaces the always-visible inline field from desktop --
          tapping it reveals the actual field in .month-notes-row, below the
          header (outside month-head's position:sticky box, so the field
@@ -2091,9 +2110,12 @@
   // rounds up) so $129.89 reads as $129, not a misleadingly-rounded $130.
   let showCents = (() => { try { return localStorage.getItem(SHOW_CENTS_KEY) === '1'; } catch { return false; } })();
   function getShowCents() { return showCents; }
+  function applyCentsBodyClass() { document.body.classList.toggle('cents-off', !showCents); }
+  applyCentsBodyClass();
   function setShowCents(v) {
     showCents = !!v;
     try { localStorage.setItem(SHOW_CENTS_KEY, showCents ? '1' : '0'); } catch {}
+    applyCentsBodyClass();
   }
   function fmtMoney(n) {
     const v = Number(n) || 0;
