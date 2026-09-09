@@ -1729,18 +1729,13 @@
          rules above) -- this tap-to-reveal treatment is mobile-only. */
       #tab-board .board.layout-compact .card-notes { display: none; margin-top: 2px; padding-left: 0; padding-right: 0; }
       #tab-board .board.layout-compact .card.notes-open .card-notes { display: block; }
-      /* margin-left:auto pushes it to the right edge of whatever line it
-         wraps onto (card-end is display:contents here, so it's really a
-         direct flex item of card-body's row 2) instead of sitting wherever
-         it lands relative to the toggle/recur controls before it -- same
-         "always the far right" idea as the × delete button, just via the
-         flex-wrap-line trick rather than position:absolute since (unlike
-         the ×, which pins to the card's fixed top-right corner) this
-         icon's row can be at a different height depending on wrapping. */
+      /* Left-aligned, sitting right after the "ev N mo" control (its DOM
+         order, card-end is display:contents here so it's really a direct
+         flex item of card-body's row 2) -- no margin-left:auto pushing it
+         to the row's far right anymore. */
       #tab-board .board.layout-compact .card-end .notes-toggle {
         display: inline-flex; align-items: center; justify-content: center;
         width: 20px; height: 20px; flex: none; padding: 0; border: 0;
-        margin-left: auto;
         background: transparent; color: var(--ink-3); cursor: pointer;
       }
       #tab-board .board.layout-compact .card-end .notes-toggle svg { width: 13px; height: 13px; }
