@@ -986,6 +986,8 @@
        Inventory popover's "Soon" tag (--soon / #e08a3c), bold so it reads
        as a distinct marker slotted into the middle of the arrow chain. */
     #tab-board .proj .autoship-date { color: var(--soon); font-weight: 700; font-size: 12px; white-space: nowrap; }
+    #tab-board .proj .autoship-date.has-link { cursor: pointer; }
+    #tab-board .proj .autoship-date.has-link:hover { text-decoration: underline; }
     #tab-board .proj .nxt { opacity: 0; width: 0; overflow: hidden; color: var(--accent-deep); }
     #tab-board .proj .nxt .dl { font-size: 19px; line-height: 1; letter-spacing: -.02em; color: var(--accent-deep); }
     #tab-board .proj .nxt .dl .u { font-size: 11px; color: var(--accent); }
@@ -2413,7 +2415,7 @@
               <span class="ro">—</span>
             </span>
             <span class="arrow">→</span>
-            <span class="autoship-date" style="display:none"></span>
+            <span class="autoship-date" data-act="open-autoship-link" style="display:none"></span>
             <span class="arrow autoship-arrow" style="display:none">→</span>
             <span class="nxt">
               <span class="dl"><span class="n">0</span><span class="u">d</span></span>
@@ -2439,7 +2441,7 @@
         </div>
         <div class="card-end">
           <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month's Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
-          ${!isGhost ? `<span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${c.recur || ''}">mo</span>` : ''}
+          <span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${c.recur || ''}"${isGhost ? ' disabled' : ''}>mo</span>
           <button class="notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
           <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || '')}</span>
           <button class="del" data-act="del-card" title="Remove item" aria-label="Remove item">×</button>
@@ -2557,6 +2559,18 @@
   // Board-tab only, so this never touches Inventory's formatting.
   function fmtCompact(n) { return String(n).replace(/^(-?)0\./, '$1.'); }
 
+  // Calendar-month arithmetic (not +30*n days) -- used to project a ghost's
+  // Autoship date forward from its root's, the same N-month cadence "ev N
+  // mo" already schedules the ghost itself at (see syncGhosts/updateCard).
+  function addMonthsToDate(d, n) {
+    const nd = new Date(d.getTime());
+    nd.setMonth(nd.getMonth() + n);
+    return nd;
+  }
+  function toISODate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   // ── per-card update ──
   function setDays(span, val) {
     const n = span.querySelector('.n'), u = span.querySelector('.u');
@@ -2621,11 +2635,34 @@
       // dates (e.g. "48d, 10/26 → 11/15 → 108d, 12/25") -- only meaningful
       // alongside an actual new-run-out projection, so gated on r.hasOrder
       // the same as .arrow/.nxt themselves (see the has-order CSS above).
+      // A ghost has no editable Autoship date of its own (there's one
+      // Inventory-item-level date, owned by whichever card is the active
+      // root) -- it shows that same date projected forward by however many
+      // "ev N mo" cycles separate it from the root, same cadence the ghost's
+      // own month placement already uses (see syncGhosts).
       const itemMeta = (window._INV_ITEM_MAP || {})[(c.name || '').trim().toLowerCase()];
-      const autoshipDate = r.hasOrder && itemMeta?.autoshipNextDate ? SB.parseDate(itemMeta.autoshipNextDate) : null;
-      if (autoshipDateEl) autoshipDateEl.style.display = autoshipDate ? '' : 'none';
+      let autoshipDate = null;
+      if (r.hasOrder && itemMeta?.autoshipNextDate) {
+        const baseDate = SB.parseDate(itemMeta.autoshipNextDate);
+        if (c.ghostOf) {
+          const { monthIdx: ghostMi } = findCardLocation(cardEl.dataset.id);
+          const { monthIdx: rootMi } = findCardLocation(c.ghostOf);
+          const offset = (ghostMi >= 0 && rootMi >= 0) ? (ghostMi - rootMi) : 0;
+          autoshipDate = offset > 0 ? addMonthsToDate(baseDate, offset) : baseDate;
+        } else {
+          autoshipDate = baseDate;
+        }
+      }
+      if (autoshipDateEl) {
+        autoshipDateEl.style.display = autoshipDate ? '' : 'none';
+        autoshipDateEl.classList.toggle('has-link', !!(autoshipDate && itemMeta?.autoshipLink));
+        autoshipDateEl.title = autoshipDate && itemMeta?.autoshipLink ? 'Open Autoship link' : '';
+        if (autoshipDate) {
+          autoshipDateEl.textContent = df(autoshipDate);
+          autoshipDateEl.dataset.link = itemMeta?.autoshipLink || '';
+        }
+      }
       if (autoshipArrowEl) autoshipArrowEl.style.display = autoshipDate ? '' : 'none';
-      if (autoshipDateEl && autoshipDate) autoshipDateEl.textContent = df(autoshipDate);
     } else {
       doseTag.textContent = '—';
       [curDl, nxtDl].forEach(dash);
@@ -3168,6 +3205,7 @@
   function promoteFirstGhost(sourceId) {
     const src = STATE.cardData[sourceId];
     if (!src || !src.recur) return;
+    const { monthIdx: sourceMi } = findCardLocation(sourceId);
     let firstId = null, firstMi = Infinity;
     Object.keys(STATE.cardData).forEach(id => {
       const c = STATE.cardData[id];
@@ -3176,6 +3214,22 @@
       if (monthIdx >= 0 && monthIdx < firstMi) { firstMi = monthIdx; firstId = id; }
     });
     if (!firstId) return;
+
+    // Advance the item's Autoship date by however many "ev N mo" cycles the
+    // promoted ghost sits ahead of the outgoing root -- the same projection
+    // updateCard already shows on that ghost, now becoming the real,
+    // editable value going forward (there's one Inventory-item-level date,
+    // owned by whichever card is the active root). Best-effort: a failed
+    // write here shouldn't block the promotion itself.
+    if (sourceMi >= 0 && firstMi > sourceMi) {
+      const itemMeta = (window._INV_ITEM_MAP || {})[(src.name || '').trim().toLowerCase()];
+      if (itemMeta?.autoshipNextDate) {
+        const newDate = toISODate(addMonthsToDate(SB.parseDate(itemMeta.autoshipNextDate), firstMi - sourceMi));
+        window.InventoryWriter?.writeAutoshipToTurso((src.name || '').trim().toLowerCase(), itemMeta.autoshipLink || '', newDate)
+          .then(() => recalcAll())
+          .catch((e) => console.error('[Autoship] failed to advance date on promote:', e));
+      }
+    }
 
     // Promote: clear ghostOf on the new root...
     delete STATE.cardData[firstId].ghostOf;
@@ -3794,6 +3848,11 @@
     if (a === 'open-stage-menu') {
       e.stopPropagation();
       openStageMenu(act);
+      return;
+    }
+    if (a === 'open-autoship-link') {
+      const link = act.dataset.link;
+      if (link) window.open(link, '_blank', 'noopener');
       return;
     }
     if (a === 'toggle-notes') {
@@ -4615,11 +4674,15 @@
         }));
         // Only meaningful for a real, Inventory-linked item -- disabled for
         // dividers and for a name with no matching inventory_items row (no
-        // stable id to persist against yet). Label flips to "Edit" once a
-        // link is actually stored, same idea as the Status dropdown label.
+        // stable id to persist against yet). Also disabled for a ghost: the
+        // Autoship date is one Inventory-item-level value owned by whichever
+        // card is the active root, same "locked until promoted" treatment
+        // as its "ev N mo" control (see cardHTML) -- a ghost only ever shows
+        // that date projected forward, never edits it directly.
         const cData = STATE.cardData[cardEl.dataset.id] || {};
         const itemMeta = (window._INV_ITEM_MAP || {})[(cData.name || '').trim().toLowerCase()];
-        const autoshipDisabled = !itemMeta || cData.name === '__divider__';
+        const isGhostCard = !!cData.ghostOf && !isCardLocked(cardEl.dataset.id);
+        const autoshipDisabled = !itemMeta || cData.name === '__divider__' || isGhostCard;
         menu.appendChild(ctxDivider());
         menu.appendChild(ctxItem(
           itemMeta?.autoshipLink ? 'Edit Autoship Link' : 'Add Autoship Link',
