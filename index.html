@@ -71,6 +71,7 @@
       font-weight: 600;
       letter-spacing: -0.3px;
       white-space: nowrap;
+      margin-right: 10px;
     }
 
 
@@ -156,7 +157,7 @@
     .inv-search-link {
       appearance: none; background: transparent; border: 1.5px solid var(--ink-12);
       display: inline-flex; align-items: center; gap: 4px;
-      padding: 5px 9px 5px 5px; border-radius: 7px; cursor: pointer;
+      padding: 4px 9px 4px 5px; border-radius: 7px; cursor: pointer;
       /* Matches .inv-scan-btn's font styling exactly (12px, normal weight). */
       font-family: inherit; font-size: 12px; font-weight: normal;
       color: var(--ink-60); white-space: nowrap;
@@ -1775,6 +1776,7 @@
   <div class="month-strip" id="month-strip"></div>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
+      <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m228 504v336c0 35.008 13.906 68.582 38.66 93.34 24.758 24.754 58.332 38.66 93.34 38.66h480c35.008 0 68.582-13.906 93.34-38.66 24.754-24.758 38.66-58.332 38.66-93.34v-336c0-35.008-13.906-68.582-38.66-93.34-24.758-24.754-58.332-38.66-93.34-38.66h-96v72h96c15.914 0 31.176 6.3203 42.426 17.574 11.254 11.25 17.574 26.512 17.574 42.426v336c0 15.914-6.3203 31.176-17.574 42.426-11.25 11.254-26.512 17.574-42.426 17.574h-480c-15.914 0-31.176-6.3203-42.426-17.574-11.254-11.25-17.574-26.512-17.574-42.426v-336c0-15.914 6.3203-31.176 17.574-42.426 11.25-11.254 26.512-17.574 42.426-17.574h177.12l-96 96 50.879 50.879 157.44-157.44c6.7383-6.75 10.527-15.902 10.527-25.441s-3.7891-18.691-10.527-25.441l-157.44-157.44-50.879 50.879 96 96h-177.12c-35.008 0-68.582 13.906-93.34 38.66-24.754 24.758-38.66 58.332-38.66 93.34z"/></svg> Autoship</button>
       <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
       <div class="settings-wrap">
         <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
@@ -1886,13 +1888,16 @@
   }
 
   const invOv = document.getElementById('inv-modal-ov');
-  function openInventory() {
+  function openInventory(opts) {
     if (!invOv) return;
     invOv.classList.add('open');
     const mf = document.getElementById('mob-inv-fab');
     if (mf) mf.classList.add('show');
-    // The table only renders its rows on this event.
-    document.dispatchEvent(new CustomEvent('inventoryActivated'));
+    // The table only renders its rows on this event. detail carries one-shot
+    // filter requests (e.g. the header "Autoship" button) -- the Inventory
+    // tab's own listener resets that filter on every firing that doesn't
+    // request it, so it never lingers past whichever open triggered it.
+    document.dispatchEvent(new CustomEvent('inventoryActivated', { detail: opts || {} }));
     // Land the cursor in the Item filter so you can type straight away. Deferred
     // so it runs after the rows render, which would otherwise steal focus back.
     // Desktop only -- on mobile this pops the on-screen keyboard and zooms
@@ -1917,7 +1922,8 @@
     if (window._INV_LOG_ROWS) window.InventoryWriter?.syncBoard(window._INV_LOG_ROWS);
     window.InventoryWriter?.run().catch(() => {});
   }
-  document.getElementById('inv-search-link')?.addEventListener('click', openInventory);
+  document.getElementById('inv-search-link')?.addEventListener('click', () => openInventory());
+  document.getElementById('inv-autoship-btn')?.addEventListener('click', () => openInventory({ autoshipOnly: true }));
   document.getElementById('inv-modal-close')?.addEventListener('click', closeInventory);
   invOv?.addEventListener('click', (e) => { if (e.target === invOv) closeInventory(); });
   document.addEventListener('keydown', (e) => {
@@ -5994,6 +6000,12 @@
     applyFilters();
   });
 
+  // Set by the header "Autoship" button (see openInventory's detail), reset
+  // on every other way of getting here -- a one-shot jump, not a persisted
+  // toggle, since there's no in-modal control to clear it.
+  let autoshipOnly = false;
+  function hasAutoshipLink(key) { return !!(window._INV_ITEM_MAP || {})[key]?.autoshipLink; }
+
   function applyFilters() {
     // Drop any previous "+ Add [query]" affordance before filtering, so it isn't
     // caught by the row/card loops below (re-added at the end if still wanted).
@@ -6010,7 +6022,8 @@
         cells[colIdx] && cells[colIdx].textContent.toLowerCase().includes(q)
       );
       const passesSoon = !soonOnly || (cells[1] && (cells[1].classList.contains('inv-soon') || cells[1].classList.contains('inv-empty')));
-      const show = passesText && passesSoon;
+      const passesAutoship = !autoshipOnly || hasAutoshipLink(tr.dataset.key);
+      const show = passesText && passesSoon && passesAutoship;
       tr.style.display = show ? '' : 'none';
       if (show) visibleCount++;
     });
@@ -6042,7 +6055,8 @@
       const name = (card.querySelector('.inv-card-name')?.textContent || '').toLowerCase();
       const roEl = card.querySelector('.inv-card-runout');
       const passesSoon = !soonOnly || (roEl && (roEl.classList.contains('inv-soon') || roEl.classList.contains('inv-empty')));
-      const show = (!cardQ || name.includes(cardQ)) && passesSoon;
+      const passesAutoship = !autoshipOnly || hasAutoshipLink(card.dataset.key);
+      const show = (!cardQ || name.includes(cardQ)) && passesSoon && passesAutoship;
       card.style.display = show ? '' : 'none';
       if (show) visibleCardCount++;
     });
@@ -6108,7 +6122,10 @@
   });
 
   // Render when the Inventory tab is activated (click or programmatic restore)
-  document.addEventListener('inventoryActivated', () => renderInventory());
+  document.addEventListener('inventoryActivated', (e) => {
+    autoshipOnly = !!(e.detail && e.detail.autoshipOnly);
+    renderInventory();
+  });
 
   // Re-render after boardReady finishes run() so _INV_ITEM_MAP is populated.
   // (Inventory is a modal now, not a tab — "active" was the pre-modal check and
