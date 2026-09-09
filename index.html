@@ -4040,12 +4040,17 @@
   // matching items show (shipment stays visible to hold them). Dividers hide
   // whenever a filter is active, in both modes, since they're not real
   // content to match against.
-  function itemMatchesActiveFilter(name) {
-    if (globalAutoshipOnly) {
-      const key = (name || '').trim().toLowerCase();
-      return !!(window._INV_ITEM_MAP || {})[key]?.autoshipLink;
-    }
-    return true; // text mode: caller already handled the `q` check
+  // Autoship link lives on the specific card (STATE.cardData), not on the
+  // Inventory item it's named after -- two cards for the same item can
+  // have different Autoship status, so this has to check the actual card,
+  // not just its name. A ghost reads its root's own data, same as the
+  // inline date display (updateCard) does, so filtering matches what's
+  // actually shown.
+  function cardMatchesAutoshipFilter(cardEl) {
+    const c = STATE.cardData[cardEl.dataset.id];
+    if (!c) return false;
+    const rootData = c.ghostOf ? (STATE.cardData[c.ghostOf] || c) : c;
+    return !!rootData.autoshipLink;
   }
   function applyMonthSearch(monthEl, q) {
     const lq = q.trim().toLowerCase();
@@ -4060,7 +4065,7 @@
         node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           const itemName = cardEl.querySelector('.card-name')?.textContent || '';
           const itemMatches = !filterActive || shipMatches
-            || (globalAutoshipOnly ? itemMatchesActiveFilter(itemName) : itemName.toLowerCase().includes(lq));
+            || (globalAutoshipOnly ? cardMatchesAutoshipFilter(cardEl) : itemName.toLowerCase().includes(lq));
           cardEl.classList.toggle('search-hide', !itemMatches);
           if (itemMatches) anyItemMatches = true;
         });
@@ -4072,7 +4077,7 @@
         }
         const itemName = node.querySelector('.card-name')?.textContent || '';
         const itemMatches = !filterActive
-          || (globalAutoshipOnly ? itemMatchesActiveFilter(itemName) : itemName.toLowerCase().includes(lq));
+          || (globalAutoshipOnly ? cardMatchesAutoshipFilter(node) : itemName.toLowerCase().includes(lq));
         node.classList.toggle('search-hide', !itemMatches);
       }
     });
