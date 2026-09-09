@@ -4293,11 +4293,19 @@
   //    this just also asks for the picker on top of it. ──
   (function initSelectOneTap() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
-    board.addEventListener('touchend', (e) => {
-      const sel = e.target.closest('.ship-stage-select');
-      if (!sel || typeof sel.showPicker !== 'function') return;
-      requestAnimationFrame(() => { try { sel.showPicker(); } catch {} });
-    }, { passive: true });
+    // iOS is WebKit under the hood regardless of browser chrome (Chrome,
+    // Safari, etc. -- Apple requires it), and WebKit only honors
+    // showPicker()'s user-activation requirement when it's called
+    // synchronously inside the event that granted it. touchend deferred via
+    // requestAnimationFrame lost that window there, even though it worked
+    // fine in Blink/Chromium (tested locally, but that's not what iOS
+    // actually runs). focusin fires synchronously as part of the tap's own
+    // focus-processing, still inside the same gesture, no deferral needed.
+    board.addEventListener('focusin', (e) => {
+      const sel = e.target;
+      if (!sel.classList?.contains('ship-stage-select') || typeof sel.showPicker !== 'function') return;
+      try { sel.showPicker(); } catch {}
+    });
   })();
 
   board.addEventListener('contextmenu', (e) => {
