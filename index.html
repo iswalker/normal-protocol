@@ -598,6 +598,17 @@
       font-family: inherit; cursor: pointer; transition: color .15s, border-color .15s;
     }
     .snm-cancel:hover { color: var(--ink); border-color: var(--ink-60); }
+    /* Bottom-left "Clear Link" in the Autoship modal footer -- margin-right:
+       auto pushes it flush left while Cancel/Save (no special margin) still
+       land at the far right via .snm-footer's own justify-content:flex-end,
+       standard flex trick, works whether or not this button is shown at all. */
+    .autoship-clear-btn {
+      appearance: none; border: 0; background: transparent; margin-right: auto;
+      color: #d6504a; border-radius: 7px; padding: 7px 10px; font-size: 13px;
+      font-family: inherit; cursor: pointer; transition: background .15s;
+    }
+    .autoship-clear-btn:hover { background: rgba(214,80,74,0.08); }
+    .autoship-clear-btn:disabled { opacity: 0.5; cursor: default; }
 
     /* Scan success / error toast */
     .scan-toast {
@@ -4538,6 +4549,19 @@
           cardEl.after(el(cardHTML(did)));
           recalcAll(); persist();
         }));
+        // Only meaningful for a real, Inventory-linked item -- disabled for
+        // dividers and for a name with no matching inventory_items row (no
+        // stable id to persist against yet). Label flips to "Edit" once a
+        // link is actually stored, same idea as the Status dropdown label.
+        const cData = STATE.cardData[cardEl.dataset.id] || {};
+        const itemMeta = (window._INV_ITEM_MAP || {})[(cData.name || '').trim().toLowerCase()];
+        const autoshipDisabled = !itemMeta || cData.name === '__divider__';
+        menu.appendChild(ctxDivider());
+        menu.appendChild(ctxItem(
+          itemMeta?.autoshipLink ? 'Edit Autoship Link' : 'Add Autoship Link',
+          autoshipDisabled,
+          () => window.InventoryWriter?.openAutoshipModal(cData.name)
+        ));
       });
       return;
     }
@@ -5122,6 +5146,8 @@
         offCycleSale: item.off_cycle_sale || '',
         anyday:       item.anyday        || '',
         barcode:      item.barcode       || '',
+        autoshipLink:     item.autoship_link      || '',
+        autoshipNextDate: item.autoship_next_date || '',
         _id:          item.id,
       };
       if (item.barcode) barcodeMap[item.barcode.trim()] = key;
@@ -5155,6 +5181,19 @@
     item.barcode = barcode;
     window._INV_BARCODE_MAP = window._INV_BARCODE_MAP || {};
     window._INV_BARCODE_MAP[barcode.trim()] = key;
+  }
+
+  async function writeAutoshipToTurso(key, link, nextDate) {
+    const item = (window._INV_ITEM_MAP || {})[key];
+    if (!item || !item._id) throw new Error('Item not in Turso yet — refresh first');
+    const r = await fetch('/api/inventory-items?id=' + item._id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autoship_link: link, autoship_next_date: nextDate }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    item.autoshipLink = link;
+    item.autoshipNextDate = nextDate;
   }
 
   async function addItemToTurso(fields, barcode) {
@@ -5359,8 +5398,91 @@
     });
   }
 
+  // ── Autoship Link modal — reached from the card right-click menu ──
+  const autoshipOv = document.createElement('div');
+  autoshipOv.id = 'autoship-overlay'; autoshipOv.className = 'scan-overlay'; autoshipOv.style.display = 'none';
+  autoshipOv.innerHTML = `
+    <div class="scan-modal">
+      <div class="scan-modal-head">
+        <span>Autoship Link — <span id="autoship-item-name"></span></span>
+        <button class="scan-close-btn" id="autoship-close-btn">×</button>
+      </div>
+      <div class="snm-fields">
+        <div class="snm-field full"><label>Link</label><input id="autoship-link" type="text" placeholder="https://..."></div>
+        <div class="snm-field full"><label>Next Autoship Date</label><input id="autoship-date" type="date"></div>
+      </div>
+      <div class="scan-status-msg" id="autoship-status-msg"></div>
+      <div class="snm-footer">
+        <button class="autoship-clear-btn" id="autoship-clear-btn" style="display:none">Clear Link</button>
+        <button class="snm-cancel" id="autoship-cancel-btn">Cancel</button>
+        <button class="snm-confirm" id="autoship-save-btn">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(autoshipOv);
+
+  let _autoshipKey = null;
+  function openAutoshipModal(name) {
+    const key = (name || '').trim().toLowerCase();
+    const item = (window._INV_ITEM_MAP || {})[key];
+    if (!item || !item._id) return; // menu entry is disabled in this case; belt-and-suspenders
+    _autoshipKey = key;
+    document.getElementById('autoship-item-name').textContent = item.name || name;
+    document.getElementById('autoship-link').value = item.autoshipLink || '';
+    document.getElementById('autoship-date').value = item.autoshipNextDate || '';
+    document.getElementById('autoship-clear-btn').style.display = item.autoshipLink ? '' : 'none';
+    document.getElementById('autoship-status-msg').textContent = '';
+    autoshipOv.style.display = 'flex';
+    setTimeout(() => {
+      const inp = document.getElementById('autoship-link');
+      inp?.focus(); inp?.select();
+    }, 50);
+  }
+  function closeAutoshipModal() { autoshipOv.style.display = 'none'; _autoshipKey = null; }
+
+  document.getElementById('autoship-close-btn').addEventListener('click', closeAutoshipModal);
+  document.getElementById('autoship-cancel-btn').addEventListener('click', closeAutoshipModal);
+  autoshipOv.addEventListener('click', (e) => { if (e.target === autoshipOv) closeAutoshipModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && autoshipOv.style.display !== 'none') closeAutoshipModal();
+  });
+  autoshipOv.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.target.tagName === 'BUTTON') return;
+    e.preventDefault();
+    document.getElementById('autoship-save-btn').click();
+  });
+  document.getElementById('autoship-save-btn').addEventListener('click', async () => {
+    if (!_autoshipKey) return;
+    const btn = document.getElementById('autoship-save-btn');
+    const statusEl = document.getElementById('autoship-status-msg');
+    const link = document.getElementById('autoship-link').value.trim();
+    const nextDate = document.getElementById('autoship-date').value;
+    btn.disabled = true;
+    try {
+      await writeAutoshipToTurso(_autoshipKey, link, nextDate);
+      closeAutoshipModal();
+    } catch (e) {
+      statusEl.textContent = 'Save failed: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  document.getElementById('autoship-clear-btn').addEventListener('click', async () => {
+    if (!_autoshipKey) return;
+    const btn = document.getElementById('autoship-clear-btn');
+    const statusEl = document.getElementById('autoship-status-msg');
+    btn.disabled = true;
+    try {
+      await writeAutoshipToTurso(_autoshipKey, '', '');
+      closeAutoshipModal();
+    } catch (e) {
+      statusEl.textContent = 'Clear failed: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // Exposed so the board's set-stage handler and Inventory tab can use these
-  window.InventoryWriter = { writeShipment, run, writeBarcodeToTurso, addItemToTurso, syncBoard, confirmReceive };
+  window.InventoryWriter = { writeShipment, run, writeBarcodeToTurso, addItemToTurso, syncBoard, confirmReceive, writeAutoshipToTurso, openAutoshipModal };
 })();
 </script>
 
@@ -6040,7 +6162,7 @@
           <select class="snm-select" id="snm-select"></select>
         </div>
         <div class="snm-section" id="snm-new-section">
-          <label><input type="radio" name="snm-mode" value="new"> Add as new item</label>
+          <label id="snm-new-radio-label"><input type="radio" name="snm-mode" value="new"> Add as new item</label>
           <div id="snm-new-fields" style="display:none">
             <div class="snm-fields">
               <div class="snm-field full"><label>Item Name *</label><input id="snm-name" type="text" placeholder="e.g. KL Support"></div>
@@ -6357,12 +6479,17 @@
       if (startNew) {
         document.getElementById('snm-title').textContent = 'Add New Item';
         assignSection.style.display = 'none';
+        // The radio only matters when there's an "assign to existing" choice
+        // to pick between (the else branch below) -- with that section
+        // hidden, "new" is the only option, so the toggle is dead weight.
+        document.getElementById('snm-new-radio-label').style.display = 'none';
         nmOv.querySelectorAll('input[name="snm-mode"]').forEach(r => { r.checked = r.value === 'new'; });
         document.getElementById('snm-new-fields').style.display = 'block';
         document.getElementById('snm-confirm-btn').textContent = 'Add Item';
       } else {
         document.getElementById('snm-title').textContent = 'Barcode Not Recognized';
         assignSection.style.display = '';
+        document.getElementById('snm-new-radio-label').style.display = '';
         nmOv.querySelectorAll('input[name="snm-mode"]').forEach(r => { r.checked = r.value === 'assign'; });
         document.getElementById('snm-new-fields').style.display = 'none';
         document.getElementById('snm-confirm-btn').textContent = 'Assign';
