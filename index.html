@@ -4282,6 +4282,24 @@
     }, { passive: false });
   })();
 
+  // ── mobile: the Status <select> is no longer swallowed by Sortable (see
+  //    COMMON.filter above), but a <select> that isn't already focused still
+  //    needs two separate taps on most mobile browsers -- the first only
+  //    focuses it (standard focus-shift behavior), the picker itself opens
+  //    on a second tap now that it's focused. showPicker() (where supported:
+  //    Safari 16.4+, recent Chrome/Android) opens it immediately within this
+  //    same trusted touch gesture instead of waiting for a second tap.
+  //    Passive/no preventDefault -- native focus still happens normally,
+  //    this just also asks for the picker on top of it. ──
+  (function initSelectOneTap() {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    board.addEventListener('touchend', (e) => {
+      const sel = e.target.closest('.ship-stage-select');
+      if (!sel || typeof sel.showPicker !== 'function') return;
+      requestAnimationFrame(() => { try { sel.showPicker(); } catch {} });
+    }, { passive: true });
+  })();
+
   board.addEventListener('contextmenu', (e) => {
     // Card menu takes priority over shipment menu
     const cardEl = e.target.closest('.card[data-id]');
