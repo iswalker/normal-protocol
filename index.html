@@ -2115,12 +2115,20 @@
     try { localStorage.setItem(SHOW_CENTS_KEY, showCents ? '1' : '0'); } catch {}
     applyCentsBodyClass();
   }
+  // Intl puts the minus sign right against the digits ("-45.00"), so a
+  // "$" + that prefix reads as "$-45.00" -- pull the sign out and put it
+  // ahead of the $ instead ("-$45.00"), same convention as most invoices/
+  // statements.
   function fmtMoney(n) {
     const v = Number(n) || 0;
-    return showCents ? '$' + MONEY_FMT.format(v) : '$' + MONEY_FMT0.format(Math.trunc(v));
+    const sign = v < 0 ? '-' : '';
+    const abs = Math.abs(v);
+    return sign + '$' + (showCents ? MONEY_FMT.format(abs) : MONEY_FMT0.format(Math.trunc(abs)));
   }
   function fmtMoney0(n) {
-    return '$' + MONEY_FMT0.format(Math.round(Number(n) || 0));
+    const v = Number(n) || 0;
+    const sign = v < 0 ? '-' : '';
+    return sign + '$' + MONEY_FMT0.format(Math.round(Math.abs(v)));
   }
   function fmtUnits(n) {
     const r = Math.round(n);
