@@ -1605,6 +1605,15 @@
          sideways over a few stray overflow pixels. */
       body, #tab-board { overflow-x: hidden; }
 
+      /* Two scrollable surfaces existed on mobile: the intentional one
+         (content within a tab, scrolling normally) and the whole document
+         itself, which iOS/Android let rubber-band/bounce past its own top
+         and bottom. That bounce is what let the sticky header get dragged
+         down below its pinned position -- overscroll-behavior blocks the
+         bounce (and the pull-to-refresh/scroll-chaining it can trigger)
+         without touching how content scrolls normally. */
+      html, body { overscroll-behavior-y: none; }
+
       /* iOS Safari auto-zooms the whole page in whenever a focused text
          field's font-size is under 16px -- true of nearly every input/
          notes field in this app's compact mobile UI (12-14px). Bumping to
@@ -1822,9 +1831,14 @@
          reach it. Wrap onto a second row instead, same fix as the board's
          month-head/ship-head above. */
       .inv-modal-head { flex-wrap: wrap; row-gap: 8px; }
-      .inv-modal-search { flex: 1 1 100%; order: 3; }
-      .inv-noorder-btn, #inv-soon-btn { order: 4; }
       .inv-modal-close { order: 2; }
+      /* Forces the line break itself (flex-basis:100%, zero height) -- row 1
+         ends at Close, row 2 starts here with search + the two filter
+         buttons sharing it, rather than search claiming its own full-width
+         row and pushing the buttons to a third one. */
+      .inv-head-break { flex-basis: 100%; height: 0; order: 2; }
+      .inv-modal-search { flex: 1 1 0; min-width: 80px; order: 3; }
+      .inv-noorder-btn, #inv-soon-btn { order: 3; flex: none; }
       #inv-cards {
         display: flex !important;
         flex-direction: column;
@@ -2044,6 +2058,7 @@
     <button class="inv-soon-btn inv-noorder-btn" id="inv-noorder-btn" title="Show only items with no upcoming order">No Order</button>
     <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
     <button class="inv-modal-close" id="inv-modal-close" title="Close" aria-label="Close">&times;</button>
+    <div class="inv-head-break"></div>
   </div>
   <div class="inv-modal-body">
   <div class="table-wrap" style="margin: 20px 20px 20px;">
@@ -2112,18 +2127,12 @@
     document.dispatchEvent(new CustomEvent('inventoryActivated'));
     // Land the cursor in the Item filter so you can type straight away. Deferred
     // so it runs after the rows render, which would otherwise steal focus back.
-    // Desktop only -- on mobile this pops the on-screen keyboard and zooms
-    // the page in the instant Inventory opens, before the user asked for
-    // either, and made the search box read as permanently "focused" (white)
-    // instead of its normal grey resting state.
-    if (!window.matchMedia('(pointer: coarse)').matches) {
-      const focusFilter = () => {
-        const f = document.getElementById('inv-filter-item');
-        if (f && f.offsetParent !== null) { f.focus(); f.select?.(); return true; }
-        return false;
-      };
-      requestAnimationFrame(() => { if (!focusFilter()) setTimeout(focusFilter, 120); });
-    }
+    const focusFilter = () => {
+      const f = document.getElementById('inv-filter-item');
+      if (f && f.offsetParent !== null) { f.focus(); f.select?.(); return true; }
+      return false;
+    };
+    requestAnimationFrame(() => { if (!focusFilter()) setTimeout(focusFilter, 120); });
   }
   function closeInventory() {
     if (!invOv) return;
@@ -4732,7 +4741,14 @@
     requestAnimationFrame(() => {
       const r = menu.getBoundingClientRect();
       if (r.right > window.innerWidth - 8) menu.style.left = (e.clientX - r.width) + 'px';
-      if (r.bottom > window.innerHeight - 8) menu.style.top = (e.clientY - r.height) + 'px';
+      // Vertical: shift up if it would run past the bottom, same as before,
+      // but also clamp the result so a menu taller than the viewport (or
+      // one opened near the very top) never ends up with its top above 0 --
+      // it should hug the nearest edge rather than getting cut off either
+      // way, instead of always originating at the click's own y position.
+      let top = r.bottom > window.innerHeight - 8 ? (e.clientY - r.height) : e.clientY;
+      top = Math.max(8, Math.min(top, window.innerHeight - r.height - 8));
+      menu.style.top = top + 'px';
     });
   }
 
