@@ -974,12 +974,23 @@
     #tab-board .card.tier-out      { border-left-color: var(--out); }
     #tab-board .card:not(.counted) { border-style: dashed; }
     #tab-board .card-top { display: flex; align-items: flex-start; gap: 7px; }
-    /* drag handles: invisible left-border strip on cards, truck icon on shipments.
-       Also the mobile tap target for the context menu (see
-       initGripTapContextMenu) -- no callout/selection UI stealing that tap. */
-    #tab-board .card-grip { cursor: grab; flex: none; -webkit-touch-callout: none; user-select: none; }
+    /* drag handles: a circular menu-glyph button on cards, truck icon on
+       shipments. Also the mobile tap target for the context menu (see
+       initGripTapContextMenu) and, on hover-capable devices, opens the same
+       menu without needing a right-click (see the HOVER_CAPABLE wiring near
+       openCardCtxMenu) -- no callout/selection UI stealing the mobile tap. */
+    #tab-board .card-grip {
+      cursor: grab; flex: none; -webkit-touch-callout: none; user-select: none;
+      width: 20px; height: 20px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      appearance: none; padding: 0; border: 1.5px solid var(--ink-12);
+      background: var(--paper, #fff); color: var(--ink-3);
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    #tab-board .card-grip svg { width: 11px; height: 11px; display: block; }
+    #tab-board .card-grip:hover { background: var(--accent-tint); color: var(--accent-deep); border-color: var(--accent); }
     #tab-board .truck.block-grip { cursor: grab; -webkit-touch-callout: none; user-select: none; }
-    #tab-board .grip:active { cursor: grabbing; }
+    #tab-board .grip:active, #tab-board .card-grip:active { cursor: grabbing; }
     #tab-board .card-name {
       flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600;
       letter-spacing: -.01em; line-height: 1.25; outline: none;
@@ -1102,16 +1113,15 @@
       cursor: pointer; opacity: 0; transition: opacity .12s, background .12s, color .12s;
       display: grid; place-items: center; font-size: 14px; line-height: 1;
     }
-    #tab-board .card:hover .del, #tab-board .ship-head:hover .del { opacity: 1; }
+    #tab-board .ship-head:hover .del { opacity: 1; }
     #tab-board .del:hover { background: var(--out-tint); color: var(--out); }
     #tab-board .ship-head .del { position: static; opacity: 0; }
     #tab-board .shipment:hover .ship-head .del { opacity: 1; }
-    /* card-end groups incl-toggle + del; in non-compact it floats top-right like del did */
+    /* card-end groups incl-toggle/recur/notes; in non-compact it floats top-right */
     #tab-board .card-end {
       position: absolute; top: 6px; right: 8px;
       display: flex; align-items: center; gap: 5px;
     }
-    #tab-board .card-end .del { position: static; }
     #tab-board .add-btn {
       flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
       height: 34px; border: 1px dashed #c4cdd0; border-radius: 9px;
@@ -1329,9 +1339,8 @@
     #tab-board .card.card--divider { background: none; border: none; box-shadow: none; padding: 2px 0; margin: 2px 0; min-height: 0; }
     #tab-board .card.card--divider .div-inner { display: flex; align-items: center; gap: 4px; padding: 0 2px; }
     #tab-board .card.card--divider .div-line { flex: 1; border: 0; border-top: 1px solid var(--ink-12); margin: 0; }
-    #tab-board .card.card--divider .card-grip { opacity: 0.35; flex: none; }
-    #tab-board .card.card--divider .del { position: static; opacity: 0; font-size: 13px; width: 18px; height: 18px; }
-    #tab-board .card.card--divider:hover .del { opacity: 0.6; }
+    #tab-board .card.card--divider .card-grip { width: 18px; height: 18px; }
+    #tab-board .card.card--divider .card-grip svg { width: 10px; height: 10px; }
     /* .no-proj is set dynamically in updateCard() (not tied to the static
        card--untracked class) so it also covers a recurring ghost whose
        source item has no Inventory match -- ghosts never carry
@@ -1360,9 +1369,12 @@
     /* ── COMPACT layout — one dense grid row per card ── */
     #tab-board .board.layout-compact .month-list { gap: 5px; }
     #tab-board .board.layout-compact .ship-body { gap: 5px; padding: 6px; }
-    #tab-board .board.layout-compact .card { position: relative; padding: 3px 6px 3px 11px; overflow: hidden; }
+    /* Left padding widened from 11px (an invisible full-height drag strip)
+       to fit the visible circular grip/menu button, pinned to the same
+       corner but only as tall as itself now. */
+    #tab-board .board.layout-compact .card { position: relative; padding: 3px 6px 3px 28px; overflow: hidden; }
     #tab-board .board.layout-compact .card-grip {
-      position: absolute; left: 0; top: 0; bottom: 0; width: 11px;
+      position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
     }
     #tab-board .board.layout-compact .card-body {
       display: grid;
@@ -1454,7 +1466,7 @@
     #tab-board .recur-ctl-n::-webkit-inner-spin-button,
     #tab-board .recur-ctl-n::-webkit-outer-spin-button { display: none; }
     #tab-board .recur-ctl-n:focus { outline: 1px solid var(--accent); border-color: transparent; outline-offset: 0; }
-    /* card notes field — sits between toggle and × */
+    /* card notes field — sits after the toggle, at card-end's trailing edge */
     #tab-board .card-notes {
       flex: 1 1 0; min-width: 80px; font-size: 12px; color: #222; padding-left: 10px;
       outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1465,22 +1477,6 @@
        toggle icon is a mobile-only affordance. See max-width:680px block. */
     #tab-board .notes-toggle { display: none; }
     #tab-board .card-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
-    /* position:absolute, pinned to the card's own right edge, rather than
-       relying on flowing after .card-notes -- a contenteditable span with
-       overflow:hidden + white-space:nowrap doesn't reliably clip its own
-       overflowing text in every case (observed: text past the box's own
-       width visually painting into the space after it instead of getting
-       ellipsis-clipped there), which put the × wherever that overflow
-       happened to end instead of a stable position. Absolute positioning
-       makes the × immune to that regardless of whether the clipping
-       upstream ever fully holds; .card-notes gets matching right padding
-       below so its own text has clearance to stop before reaching it. */
-    #tab-board .board.layout-compact .card-end .del {
-      position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
-      width: 18px; height: 18px; opacity: .4;
-    }
-    #tab-board .board.layout-compact .card:hover .card-end .del { opacity: 1; }
-    #tab-board .board.layout-compact .card-notes { padding-right: 22px; }
 
     /* ── shipment stage toggle ──
        The 3-way button row this used to be is gone -- one control (this
@@ -1532,7 +1528,11 @@
       background: #eaecec; border-color: #d4d8d8; color: #8a9798;
     }
     #tab-board .shipment.is-locked > .ship-head > .truck.block-grip { pointer-events: none; opacity: 0.4; }
-    #tab-board .shipment.is-locked .ship-body .card-grip { pointer-events: none; opacity: 0.3; }
+    /* Dimmed (can't drag once locked -- see the Sortable .option('disabled')
+       toggle in applyShipmentStage) but NOT pointer-events:none: the same
+       button still opens the card menu, and Delete inside it needs to keep
+       working on a locked/received line item same as the old × always did. */
+    #tab-board .shipment.is-locked .ship-body .card-grip { opacity: 0.5; cursor: default; }
     #tab-board .shipment.is-locked .ship-body input[disabled] {
       background: transparent; opacity: 0.45; cursor: default;
     }
@@ -1779,25 +1779,12 @@
       #tab-board .board.layout-compact .order { flex: 0 0 auto; }
       #tab-board .board.layout-compact .card-foot { flex: 0 0 auto; }
       /* Desktop keeps card-end as a real flex box holding toggle/recur/
-         notes/delete together inline (the original design). Mobile instead
+         notes together inline (the original design). Mobile instead
          dissolves it with display:contents -- its children become direct
          flex items of .card-body itself, joining order/foot's own row (and
          letting .card-notes's flex-basis:100% below actually wrap across
          the FULL card width instead of just card-end's own narrow slice). */
       #tab-board .board.layout-compact .card-end { display: contents; }
-      /* The delete × pinned to the card's own top-right corner instead of
-         wherever it lands once card-end's former row wraps -- out of the
-         flex flow entirely so it stays put regardless of how many rows the
-         rest wraps into. Only row 1 (name + right-aligned run-out) actually
-         sits under it, so the reserved clearance goes on .proj specifically
-         rather than as padding on the whole card-body -- reserving it
-         everywhere squeezed the name down to its truncation floor on
-         nearly every card, since row 2 (price/qty/$/toggle/notes) never
-         reaches that corner at all. */
-      #tab-board .board.layout-compact .proj { margin-right: 18px; }
-      #tab-board .board.layout-compact .card-end .del {
-        position: absolute; top: 13px; right: 2px; margin: 0;
-      }
       /* Notes: hidden unless it already has a saved value (.notes-open, set
          at render time by cardHTML) or the notes-toggle icon opens it --
          collapses back if left blank on blur. Desktop keeps it inline and
@@ -2430,6 +2417,9 @@
     plus: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>`,
     search: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>`,
     notes: `<svg viewBox="0 0 1200 1200" fill="currentColor"><path d="m1087.5 131.25h-975c-10.363 0-18.75-8.3867-18.75-18.75s8.3867-18.75 18.75-18.75h975c10.363 0 18.75 8.3867 18.75 18.75s-8.3867 18.75-18.75 18.75zm18.75 176.26c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm0 194.99c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm0 195.01c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm0 194.99c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm-466.3 195.01c0-10.363-8.3867-18.75-18.75-18.75h-508.7c-10.363 0-18.75 8.3867-18.75 18.75s8.3867 18.75 18.75 18.75h508.7c10.363 0 18.75-8.3867 18.75-18.75z"/></svg>`,
+    // Hamburger/menu glyph -- the card row's combined drag-handle + "open
+    // this row's context menu" button (see .card-grip).
+    menu: `<svg viewBox="0 0 1200 1200" fill="currentColor"><path d="m240 600c0-13.266 10.734-24 24-24h672c13.266 0 24 10.734 24 24s-10.734 24-24 24h-672c-13.266 0-24-10.734-24-24zm24-216h672c13.266 0 24-10.734 24-24s-10.734-24-24-24h-672c-13.266 0-24 10.734-24 24s10.734 24 24 24zm0 480h672c13.266 0 24-10.734 24-24s-10.734-24-24-24h-672c-13.266 0-24 10.734-24 24s10.734 24 24 24z"/></svg>`,
   };
 
   let STATE; // { cardData, shipmentData }
@@ -2572,6 +2562,13 @@
       if (btn.closest('.card--ghost')) return; // ghost toggles always enabled
       btn.disabled = locked;
     });
+    // Reordering is off-limits once locked, but the grip button that used
+    // to ALSO be the drag handle now doubles as the menu opener (Delete
+    // included) -- disabling it via Sortable's own option keeps drag off
+    // without the pointer-events:none that used to block clicks/hover too.
+    const shipBody = shipEl.querySelector(':scope > .ship-body');
+    const sortableInst = shipBody && window.Sortable?.get(shipBody);
+    if (sortableInst) sortableInst.option('disabled', locked);
   }
 
   function isoToday() {
@@ -2591,9 +2588,8 @@
     if (c.name === '__divider__') {
       return `<div class="card card--divider" data-id="${id}" data-kind="card">
         <div class="div-inner">
-          <span class="card-grip block-grip" aria-hidden="true"></span>
+          <button type="button" class="card-grip block-grip" data-act="open-card-menu" title="Drag to reorder, or open menu" aria-label="Row menu">${ICON.menu}</button>
           <hr class="div-line">
-          <button class="del" data-act="del-card" title="Remove divider" aria-label="Remove divider">×</button>
         </div>
       </div>`;
     }
@@ -2610,7 +2606,7 @@
     <div class="card${isGhost ? ' card--ghost' : ''}${untracked && !isGhost ? ' card--untracked' : ''}${c.notes && c.notes.trim() ? ' notes-open' : ''}" data-id="${id}" data-kind="card" data-recur="${c.recur || ''}" data-ghost-of="${c.ghostOf || ''}">
       <div class="card-body">
         <div class="card-top">
-          <span class="card-grip block-grip" aria-hidden="true"></span>
+          <button type="button" class="card-grip block-grip" data-act="open-card-menu" title="Drag to reorder, or open menu" aria-label="Card menu">${ICON.menu}</button>
           <div class="card-name" ${untracked && !isGhost ? 'contenteditable="true" spellcheck="false"' : 'data-act="open-inv-item" title="Open in Inventory"'} data-field="name">${esc(c.name)}</div>
           <span class="badge loose-tag">Loose</span>
           <span class="badge status">OK</span>
@@ -2656,7 +2652,6 @@
           <span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${c.recur || ''}"${isGhost ? ' disabled' : ''}>mo</span>
           <button class="notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
           <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || '')}</span>
-          <button class="del" data-act="del-card" title="Remove item" aria-label="Remove item">×</button>
         </div>
       </div>
     </div>`;
@@ -3353,6 +3348,20 @@
     removeCards(unlockedGhostsOf(sourceId));
   }
 
+  // Shared by the card context menu's "Delete" item (formerly the standalone
+  // × button in card-end) -- same recurring-ghost confirm/cascade as before.
+  function deleteCard(cardEl) {
+    const id = cardEl.dataset.id;
+    const c = STATE.cardData[id];
+    if (c && !c.ghostOf && c.recur) {
+      const ghostCount = unlockedGhostsOf(id).length;
+      if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
+      cleanGhostsForSource(id);
+    }
+    removeCards([id]);
+    recalcAll(); persist();
+  }
+
   // Shared by the manual "x" delete and the auto-delete-on-Received
   // automation -- a recurring root living in the shipment has projections
   // scattered across other months as ghosts, which a plain DOM removal here
@@ -3677,7 +3686,13 @@
     // most mobile browsers (only a genuine, untouched user gesture does) --
     // so the real fix is keeping Sortable off it entirely, not reconstructing
     // the click by hand.
-    filter: 'input,select,[contenteditable],button',
+    // .card-grip is now a real <button> (menu-opener doubling as the drag
+    // handle -- see handle: '.card-grip' below), so it'd otherwise get
+    // caught by the plain "button" filter here same as any other button.
+    // Excluding it specifically keeps the filter's real job (stopping a
+    // click on incl-toggle/notes-toggle/etc from accidentally starting a
+    // drag) while not disabling dragging via its own designated handle.
+    filter: 'input,select,[contenteditable],button:not(.card-grip)',
     preventOnFilter: false,
     ghostClass: 'sb-ghost', chosenClass: 'sb-chosen', dragClass: 'sb-drag',
     // forceFallback: pointer-driven drag clone for consistent cross-browser behavior.
@@ -3785,6 +3800,65 @@
       const rt = e.relatedTarget;
       if (rt && (rt.closest('.ship-ctx-menu') === activeCtxMenu || rt === activeCtxMenu._forBtn)) return;
       scheduleStageHoverClose();
+    });
+  }
+
+  // Hover-to-open for the card-grip button -- same idea as the stage
+  // dropdown above (mouse/trackpad only; touch already opens this via
+  // initGripTapContextMenu's tap-on-grip further down). Card menus and the
+  // stage dropdown share the one activeCtxMenu/closeCtxMenu, so hovering
+  // from one onto the other just swaps which is open, same as clicking would.
+  let gripHoverCloseTimer = null;
+  function cancelGripHoverClose() {
+    if (gripHoverCloseTimer) { clearTimeout(gripHoverCloseTimer); gripHoverCloseTimer = null; }
+  }
+  function scheduleGripHoverClose() {
+    cancelGripHoverClose();
+    gripHoverCloseTimer = setTimeout(() => { closeCtxMenu(); gripHoverCloseTimer = null; }, 200);
+  }
+  // Opening on a bare mouseover (like the stage dropdown does) would fire on
+  // every drag too -- grabbing the grip to reorder a card starts with the
+  // exact same hover. A short dwell delay lets a real drag's near-instant
+  // hover-then-mousedown pass through untouched, while a pointer that
+  // actually lingers (someone looking for the menu, not about to drag)
+  // still opens quickly. mousedown always cancels a pending open outright.
+  let gripHoverOpenTimer = null;
+  function cancelGripHoverOpen() {
+    if (gripHoverOpenTimer) { clearTimeout(gripHoverOpenTimer); gripHoverOpenTimer = null; }
+  }
+  if (HOVER_CAPABLE) {
+    board.addEventListener('mouseover', (e) => {
+      const grip = e.target.closest('.card-grip');
+      if (!grip) return;
+      const cardEl = grip.closest('.card[data-id]');
+      if (!cardEl) return;
+      cancelGripHoverClose();
+      if (activeCtxMenu && activeCtxMenu._forBtn === cardEl) return;
+      cancelGripHoverOpen();
+      gripHoverOpenTimer = setTimeout(() => {
+        gripHoverOpenTimer = null;
+        const r = grip.getBoundingClientRect();
+        openCardCtxMenu(cardEl, { clientX: r.left, clientY: r.bottom + 4 });
+      }, 350);
+    });
+    board.addEventListener('mouseout', (e) => {
+      const grip = e.target.closest('.card-grip');
+      if (!grip || (e.relatedTarget && e.relatedTarget.closest('.ship-ctx-menu'))) return;
+      cancelGripHoverOpen();
+      scheduleGripHoverClose();
+    });
+    board.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.card-grip')) cancelGripHoverOpen();
+    });
+    document.addEventListener('mouseover', (e) => {
+      if (!activeCtxMenu || !activeCtxMenu._forBtn || e.target.closest('.ship-ctx-menu') !== activeCtxMenu) return;
+      cancelGripHoverClose();
+    });
+    document.addEventListener('mouseout', (e) => {
+      if (!activeCtxMenu || !activeCtxMenu._forBtn || e.target.closest('.ship-ctx-menu') !== activeCtxMenu) return;
+      const rt = e.relatedTarget;
+      if (rt && (rt.closest('.ship-ctx-menu') === activeCtxMenu || rt === activeCtxMenu._forBtn)) return;
+      scheduleGripHoverClose();
     });
   }
 
@@ -4055,17 +4129,12 @@
       persist();
       return;
     }
-    if (a === 'del-card') {
-      const cardEl = act.closest('.card');
-      const id = cardEl.dataset.id;
-      const c = STATE.cardData[id];
-      if (c && !c.ghostOf && c.recur) {
-        const ghostCount = unlockedGhostsOf(id).length;
-        if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
-        cleanGhostsForSource(id);
-      }
-      removeCards([id]);
-      recalcAll(); persist();
+    if (a === 'open-card-menu') {
+      e.stopPropagation();
+      const cardEl = act.closest('.card[data-id]');
+      if (!cardEl) return;
+      if (activeCtxMenu && activeCtxMenu._forBtn === cardEl) { closeCtxMenu(); return; }
+      openCardCtxMenu(cardEl, e);
       return;
     }
     if (a === 'del-ship') {
@@ -4876,11 +4945,14 @@
     }, { passive: false });
   })();
 
-  board.addEventListener('contextmenu', (e) => {
-    // Card menu takes priority over shipment menu
-    const cardEl = e.target.closest('.card[data-id]');
-    if (cardEl) {
-      e.preventDefault();
+  // Builds and opens a card's (or divider's) context menu -- shared by the
+  // right-click handler below, the card-grip button's click (see
+  // 'open-card-menu'), and its hover-to-open (see HOVER_CAPABLE wiring,
+  // further down). e only needs clientX/clientY (and, for a real
+  // right-click, preventDefault) -- a synthetic hover "event" is just a
+  // plain object with coordinates, same contract buildCtxMenu already uses.
+  function openCardCtxMenu(cardEl, e) {
+      e.preventDefault?.();
       closeCtxMenu();
       const container = cardEl.parentElement;
       const monthEl = cardEl.closest('.month');
@@ -4928,6 +5000,11 @@
       }
 
       buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
+        // Formerly the standalone × in card-end -- now this menu's own
+        // opener (the card-grip button) replaced it, so the action itself
+        // moved here as its own leading section instead.
+        menu.appendChild(ctxItem('Delete', false, () => deleteCard(cardEl)));
+        menu.appendChild(ctxDivider());
         menu.appendChild(ctxItem('Move to Top', isFirst, () => { container.prepend(cardEl); recalcAll(); persist(); }));
         menu.appendChild(ctxItem('Move to End', isLast, () => { container.append(cardEl); recalcAll(); persist(); }));
         menu.appendChild(ctxDivider());
@@ -4985,8 +5062,13 @@
           })
         ));
       });
-      return;
-    }
+      activeCtxMenu._forBtn = cardEl;
+  }
+
+  board.addEventListener('contextmenu', (e) => {
+    // Card menu takes priority over shipment menu
+    const cardEl = e.target.closest('.card[data-id]');
+    if (cardEl) { openCardCtxMenu(cardEl, e); return; }
 
     const shipEl = e.target.closest('.shipment');
     if (!shipEl) return;
