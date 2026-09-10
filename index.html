@@ -673,7 +673,8 @@
     .autoship-cal-nav {
       appearance: none; border: 0; background: transparent; cursor: pointer;
       width: 22px; height: 22px; border-radius: 6px; color: var(--ink);
-      font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
+      font-family: inherit; font-size: 15px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
       transition: background .1s, color .1s;
     }
     .autoship-cal-nav:hover { background: var(--cream); color: #3f8f87; }
@@ -684,7 +685,8 @@
     }
     .autoship-cal-day {
       appearance: none; border: 0; background: transparent; cursor: pointer;
-      width: 28px; height: 28px; border-radius: 6px; font-size: 12.5px;
+      width: 28px; height: 28px; border-radius: 6px;
+      font-family: inherit; font-size: 12.5px;
       color: var(--ink); transition: background .1s, color .1s;
     }
     .autoship-cal-day:hover { background: var(--cream); color: #3f8f87; }
@@ -698,7 +700,7 @@
     }
     .autoship-cal-today-btn {
       appearance: none; border: 0; background: transparent; cursor: pointer;
-      font-size: 12px; color: #3f8f87; padding: 4px 8px; border-radius: 6px;
+      font-family: inherit; font-size: 12px; color: #3f8f87; padding: 4px 8px; border-radius: 6px;
     }
     .autoship-cal-today-btn:hover { background: rgba(121,189,177,0.12); }
 
@@ -2367,6 +2369,14 @@
     return d.getFullYear() !== now.getFullYear()
       ? `${base}/${String(d.getFullYear()).slice(2)}` : base;
   }
+  // Same m/d shape as fmtDateShort, but a full 4-digit year (m/d/yyyy)
+  // instead of 2 -- used where the year needs to be unambiguous rather
+  // than compact (the Autoship date picker's own trigger display).
+  function fmtDateSlashYear(d) {
+    const now = today();
+    const base = `${d.getMonth() + 1}/${d.getDate()}`;
+    return d.getFullYear() !== now.getFullYear() ? `${base}/${d.getFullYear()}` : base;
+  }
   // Intl.NumberFormat is meant to be built once and reused -- .toLocaleString()
   // constructs (and throws away) an equivalent formatter internally on every
   // single call, which shows up when it's called this often: recalcAll formats
@@ -2414,7 +2424,7 @@
 
   window.SB = {
     DAY, today, parseDate, addDays, daysBetween,
-    calc, fmtDate, fmtDateShort, fmtMoney, fmtMoney0, fmtUnits, tier,
+    calc, fmtDate, fmtDateShort, fmtDateSlashYear, fmtMoney, fmtMoney0, fmtUnits, tier,
     getShowCents, setShowCents,
   };
 
@@ -6181,7 +6191,7 @@
   function setDateTrigger(iso) {
     dateTriggerEl.dataset.value = iso || '';
     if (iso) {
-      dateDisplayEl.textContent = window.SB.fmtDate(window.SB.parseDate(iso));
+      dateDisplayEl.textContent = window.SB.fmtDateSlashYear(window.SB.parseDate(iso));
       dateDisplayEl.classList.remove('is-placeholder');
     } else {
       dateDisplayEl.textContent = 'No date set';
