@@ -1104,16 +1104,6 @@
     #tab-board .card.counted .incl-toggle .sw i { transform: translateX(13px); }
     #tab-board .month-list > .card .badge.loose-tag { display: inline-block; }
     #tab-board .badge.loose-tag { display: none; background: #eef2f2; color: var(--ink-3); }
-    #tab-board .del {
-      position: absolute; top: 7px; right: 7px; width: 20px; height: 20px;
-      border: 0; border-radius: 6px; background: transparent; color: var(--ink-3);
-      cursor: pointer; opacity: 0; transition: opacity .12s, background .12s, color .12s;
-      display: grid; place-items: center; font-size: 14px; line-height: 1;
-    }
-    #tab-board .ship-head:hover .del { opacity: 1; }
-    #tab-board .del:hover { background: var(--out-tint); color: var(--out); }
-    #tab-board .ship-head .del { position: static; opacity: 0; }
-    #tab-board .shipment:hover .ship-head .del { opacity: 1; }
     /* card-end groups incl-toggle/recur/notes; in non-compact it floats top-right */
     #tab-board .card-end {
       position: absolute; top: 6px; right: 8px;
@@ -1313,15 +1303,11 @@
         left: 596px; right: 32px;
       }
       /* Was static (inline right after ship-notes in flex order); now
-         pinned to the row's own right edge since ship-notes is absolutely
-         positioned here and no longer guarantees this sits right after it.
-         .ship-grip needs the same treatment for the same reason -- without
-         it, it'd flow immediately after notes-toggle (nothing left in-flow
-         to push it further right once ship-notes/ship-total/ship-min-date
-         all left the flow above), nowhere near the far-right corner it's
-         meant to share with the x. */
-      #tab-board .ship-head .del { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); }
-      #tab-board .ship-grip { position: absolute; top: 50%; right: 30px; transform: translateY(-50%); }
+         pinned to the row's own right edge -- ship-notes is absolutely
+         positioned here and no longer guarantees the grip sits right after
+         it, since nothing's left in-flow to push it there once ship-notes/
+         ship-total/ship-min-date all left the flow above. */
+      #tab-board .ship-grip { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); }
     }
     /* month metrics: fixed-width columns so the alignment column is stable.
        PLANNED right edge = 14px (month-head pad) + 96px (MAX box) = 110px from month inner right.
@@ -1527,19 +1513,12 @@
     #tab-board .shipment.is-locked > .ship-head {
       background: transparent;
     }
-    /* Unlike the card-grip (see below), this can't switch to a
-       Sortable-disable-and-stay-clickable approach: makeMonthSortable's one
-       instance governs a whole month's shipments AND loose cards together,
-       so there's no per-shipment "disabled" to toggle -- pointer-events is
-       the only way to block just THIS shipment's drag without touching
-       everything else in its month. Its own right-click still opens the
-       menu regardless (see openShipCtxMenu) -- only the grip shortcut
-       (hover/tap) goes with it. */
-    #tab-board .shipment.is-locked > .ship-head > .ship-grip { pointer-events: none; opacity: 0.4; }
-    /* Dimmed (can't drag once locked -- see the Sortable .option('disabled')
-       toggle in applyShipmentStage) but NOT pointer-events:none: the same
-       button still opens the card menu, and Delete inside it needs to keep
-       working on a locked/received line item same as the old × always did. */
+    /* Dimmed (can't drag once locked -- see makeMonthSortable's filter
+       function and makeShipSortable's Sortable .option('disabled') toggle
+       in applyShipmentStage) but NOT pointer-events:none: the same button
+       still opens the menu, and Delete inside it needs to keep working on
+       a locked/received shipment or line item same as the old × always did. */
+    #tab-board .shipment.is-locked > .ship-head > .ship-grip,
     #tab-board .shipment.is-locked .ship-body .card-grip { opacity: 0.5; cursor: default; }
     #tab-board .shipment.is-locked .ship-body input[disabled] {
       background: transparent; opacity: 0.45; cursor: default;
@@ -1677,17 +1656,16 @@
          it), keep it while open-but-blank so it can still collapse back. */
       #tab-board .month-head:has(+ .month-notes-row .month-notes:not(:empty)) .month-notes-toggle { display: none; }
 
-      /* Shipment header: wrap instead of clipping the total/notes/grip/×
-         off the right edge -- the fixed-width flex row was tuned for
-         desktop and never shrinks. Explicit order on every child instead of
+      /* Shipment header: wrap instead of clipping the total/notes/grip off
+         the right edge -- the fixed-width flex row was tuned for desktop
+         and never shrinks. Explicit order on every child instead of
          relying on wrap+DOM order to land them right: row 1 is just the
          name (grows to fill up to the reserved corner clearance), row 2 is
          Total, + Item, Status, Notes in that order, row 3 (conditional) is
-         the notes field itself. The grip + × stay pinned to the header's
-         own top-right corner regardless of how the rest wraps, same idea as
-         the card-end delete button used to use before it moved into the
-         grip's own menu. */
-      #tab-board .ship-head { flex-wrap: wrap; row-gap: 6px; position: relative; padding-right: 54px; }
+         the notes field itself. The grip stays pinned to the header's own
+         top-right corner regardless of how the rest wraps -- it's now the
+         only thing there (Delete lives in its menu; there's no more ×). */
+      #tab-board .ship-head { flex-wrap: wrap; row-gap: 6px; position: relative; padding-right: 30px; }
       #tab-board .ship-id { flex: 1 1 0; order: 1; }
       #tab-board .ship-head .ship-total { order: 2; margin-right: 0; }
       #tab-board .ship-add { order: 3; }
@@ -1709,11 +1687,7 @@
          .ship-notes's own specificity (3 classes) to win the cascade here. */
       #tab-board .ship-notes { display: none; order: 6; }
       #tab-board .shipment.notes-open .ship-notes { display: block; flex-basis: 100%; }
-      #tab-board .ship-grip, #tab-board .ship-head > .del {
-        position: absolute; top: 5px; margin: 0;
-      }
-      #tab-board .ship-grip { right: 26px; }
-      #tab-board .ship-head > .del { right: 2px; }
+      #tab-board .ship-grip { position: absolute; top: 5px; right: 2px; margin: 0; }
       /* One more thing to save space on: the shipment's own min-order-date
          isn't as load-bearing as the per-item run-out dates below it. */
       #tab-board .ship-min-date { display: none; }
@@ -2693,7 +2667,6 @@
         <div class="ship-total"><span class="amt">$0.00</span></div>
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
         <button type="button" class="ship-grip block-grip" data-act="open-ship-menu" title="Drag to reorder, or open menu" aria-label="Shipment menu">${ICON.menu}</button>
-        <button class="del" data-act="del-ship" title="Remove shipment">×</button>
       </div>
       <div class="ship-body" data-list="shipment">${cards}</div>
     </div>`;
@@ -3364,13 +3337,14 @@
     recalcAll(); persist();
   }
 
-  // Shared by the manual "x" delete and the auto-delete-on-Received
-  // automation -- a recurring root living in the shipment has projections
-  // scattered across other months as ghosts, which a plain DOM removal here
-  // would never touch (they'd survive pointing at an id that's about to stop
-  // existing anywhere on the board), so those get cascaded first.
-  // recurCards is passed in rather than recomputed since del-ship's caller
-  // already walked the shipment once to run its own pre-delete confirms.
+  // Shared by deleteShipment (the context menu's Delete item) and the
+  // auto-delete-on-Received automation -- a recurring root living in the
+  // shipment has projections scattered across other months as ghosts, which
+  // a plain DOM removal here would never touch (they'd survive pointing at
+  // an id that's about to stop existing anywhere on the board), so those
+  // get cascaded first. recurCards is passed in rather than recomputed
+  // since deleteShipment's caller already walked the shipment once to run
+  // its own pre-delete confirms.
   function deleteShipmentCascade(shipEl, recurCards) {
     (recurCards || [...shipEl.querySelectorAll('.card[data-id]')].filter((cardEl) => {
       const c = STATE.cardData[cardEl.dataset.id];
@@ -3378,6 +3352,28 @@
     })).forEach((cardEl) => cleanGhostsForSource(cardEl.dataset.id));
     shipEl.remove();
     recalcAll(); persist();
+  }
+
+  // Formerly the standalone × in ship-head -- now the context menu's
+  // "Delete" item (see openShipCtxMenu). Same confirms as before: a plain
+  // native confirm() on mobile only (desktop never had one), plus a
+  // per-recurring-card confirm if deleting would orphan its ghosts.
+  function deleteShipment(shipEl) {
+    if (window.matchMedia('(pointer: coarse)').matches) {
+      const shipName = (STATE.shipmentData[shipEl.dataset.id] || {}).name || 'this order';
+      if (!confirm(`Delete "${shipName}" and everything in it?`)) return;
+    }
+    const recurCards = [...shipEl.querySelectorAll('.card[data-id]')].filter((cardEl) => {
+      const c = STATE.cardData[cardEl.dataset.id];
+      return c && !c.ghostOf && c.recur;
+    });
+    for (const cardEl of recurCards) {
+      const cid = cardEl.dataset.id;
+      const c = STATE.cardData[cid];
+      const ghostCount = unlockedGhostsOf(cid).length;
+      if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
+    }
+    deleteShipmentCascade(shipEl, recurCards);
   }
 
   // Generate ghost cards/shipments for a recurring source card.
@@ -3716,6 +3712,22 @@
       group: { name: 'sb', pull: true, put: true },
       draggable: '.card:not(.card--ghost), .shipment',
       handle: '.block-grip',
+      // Overrides COMMON's plain string filter with a function doing the
+      // same job (same three exemptions) plus one more: a locked
+      // shipment's own grip needs to stay clickable/hoverable for its menu
+      // (Delete has to keep working on an already-placed shipment, same as
+      // any other card) while still refusing to actually drag it -- and
+      // this list's one Sortable instance governs every shipment AND loose
+      // card in the month together, so there's no per-item way to do that
+      // except filtering the drag attempt itself, unlike makeShipSortable's
+      // list-wide .option('disabled') toggle in applyShipmentStage.
+      filter: (evt) => {
+        const t = evt.target;
+        if (t.closest('input,select,[contenteditable]')) return true;
+        if (t.closest('button') && !t.closest('.card-grip,.ship-grip')) return true;
+        if (t.closest('.shipment.is-locked')) return true;
+        return false;
+      },
     }));
   }
   function makeShipSortable(bodyEl) {
@@ -4148,40 +4160,6 @@
       if (!shipEl) return;
       if (activeCtxMenu && activeCtxMenu._forBtn === shipEl) { closeCtxMenu(); return; }
       openShipCtxMenu(shipEl, e);
-      return;
-    }
-    if (a === 'del-ship') {
-      const shipEl = act.closest('.shipment');
-      // Desktop has no equivalent confirm today and this isn't meant to add
-      // one there -- it's specifically for mobile, where the delete × sits
-      // right next to other frequently-tapped controls in a cramped header
-      // and a mis-tap is far easier than on a mouse-driven desktop layout.
-      if (window.matchMedia('(pointer: coarse)').matches) {
-        const shipName = (STATE.shipmentData[shipEl.dataset.id] || {}).name || 'this order';
-        if (!confirm(`Delete "${shipName}" and everything in it?`)) return;
-      }
-      // A recurring root card living in this shipment has its projections
-      // scattered across other months' shipments, which a plain DOM removal
-      // here would never touch — they'd survive as ghosts pointing at an id
-      // that's about to stop existing anywhere on the board. Cascade the same
-      // way deleting that one card directly already does, per root found.
-      // Ask every recurring card's confirm BEFORE mutating anything: this
-      // used to `continue` past just that card's ghost cleanup on Cancel,
-      // while shipEl.remove() ran unconditionally afterward regardless --
-      // Cancel deleted the shipment (and the item) anyway, just without
-      // cleaning up its ghosts. Bailing out here, before any DOM/STATE
-      // change has happened, is what actually cancels the whole action.
-      const recurCards = [...shipEl.querySelectorAll('.card[data-id]')].filter((cardEl) => {
-        const c = STATE.cardData[cardEl.dataset.id];
-        return c && !c.ghostOf && c.recur;
-      });
-      for (const cardEl of recurCards) {
-        const cid = cardEl.dataset.id;
-        const c = STATE.cardData[cid];
-        const ghostCount = unlockedGhostsOf(cid).length;
-        if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
-      }
-      deleteShipmentCascade(shipEl, recurCards);
       return;
     }
     if (a === 'add-card-ship') {
@@ -5129,6 +5107,9 @@
     }
 
     buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
+      // Formerly the standalone × in ship-head -- see deleteShipment.
+      menu.appendChild(ctxItem('Delete', false, () => deleteShipment(shipEl), 'ctx-danger'));
+      menu.appendChild(ctxDivider());
       menu.appendChild(ctxItem('Move to Top', isFirst, () => {
         list.prepend(shipEl); recalcAll(); persist();
       }));
