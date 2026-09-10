@@ -2583,7 +2583,7 @@
     const isGhost = !!c.ghostOf && !isCardLocked(id);
     const dis = isGhost ? ' disabled' : '';
     return `
-    <div class="card${isGhost ? ' card--ghost' : ''}${untracked && !isGhost ? ' card--untracked' : ''}${c.notes && c.notes.trim() ? ' notes-open' : ''}" data-id="${id}" data-kind="card" data-recur="${c.recur || ''}" data-ghost-of="${c.ghostOf || ''}">
+    <div class="card${isGhost ? ' card--ghost' : ''}${untracked && !isGhost ? ' card--untracked' : ''}${c.notes && c.notes.trim() ? ' notes-open' : ''}" data-id="${id}" data-kind="card" data-recur="${c.recur || ''}" data-ghost-of="${c.ghostOf || ''}" data-autoship-link="${esc(c.autoshipLink || '').replace(/"/g, '&quot;')}" data-autoship-next="${c.autoshipNextDate || ''}">
       <div class="card-body">
         <div class="card-top">
           <div class="card-name" ${untracked && !isGhost ? 'contenteditable="true" spellcheck="false"' : 'data-act="open-inv-item" title="Open in Inventory"'} data-field="name">${esc(c.name)}</div>
@@ -3497,11 +3497,17 @@
     // Advance the promoted ghost's own Autoship date by however many
     // "ev N mo" cycles it sits ahead of the outgoing root -- the same
     // projection updateCard already showed on it as a ghost, now becoming
-    // its real, editable value as the new root. Link carries over as-is
-    // (re-synced from src in case it changed after this ghost was created).
+    // its real, editable value as the new root. Link is unconditional (it
+    // needs no date math, and re-syncs from src in case it changed after
+    // this ghost was created) -- it used to be gated behind the same
+    // `if` as the date shift, which meant a link set on src AFTER this
+    // ghost's own creation, with no autoshipNextDate set at promotion
+    // time, would silently never carry over at all. The date itself still
+    // needs src.autoshipNextDate to compute a shift from; without one,
+    // keep whatever this ghost already had rather than blanking it.
+    STATE.cardData[firstId].autoshipLink = src.autoshipLink || '';
     if (sourceMi >= 0 && firstMi > sourceMi && src.autoshipNextDate) {
       STATE.cardData[firstId].autoshipNextDate = toISODate(addMonthsToDate(SB.parseDate(src.autoshipNextDate), firstMi - sourceMi));
-      STATE.cardData[firstId].autoshipLink = src.autoshipLink || '';
     }
 
     // Promote: clear ghostOf on the new root...
@@ -3589,11 +3595,19 @@
   // ── persistence: serialize the DOM to the /api/orders shape and PUT it ──
   function pushItem(items, id, orderId, month, blockPos, itemPos) {
     const c = STATE.cardData[id] || {};
-    // Read recur and ghostOf from DOM attributes (stamped at render/create time and on change)
-    // as the authoritative source — STATE can drift if cleanGhostsForSource runs async.
+    // Read recur/ghostOf/autoship from DOM attributes (stamped at render/
+    // create time and on every change -- see cardHTML, the recur-ctl-n
+    // input handler, saveCardAutoship, and promoteFirstGhost) as the
+    // authoritative source -- STATE can drift if cleanGhostsForSource runs
+    // async. autoship_link/autoship_next_date used to be read from STATE
+    // alone with no such fallback, which is what let a drifted/empty STATE
+    // value silently wipe a real saved link on the next save with nothing
+    // to catch it -- same treatment as recur/ghostOf now closes that gap.
     const cardEl = board.querySelector(`.card[data-id="${id}"]`);
     const domRecur = cardEl && cardEl.dataset.recur ? Number(cardEl.dataset.recur) : null;
     const domGhostOf = cardEl ? (cardEl.dataset.ghostOf || null) : null;
+    const domAutoshipLink = cardEl && cardEl.dataset.autoshipLink ? cardEl.dataset.autoshipLink : null;
+    const domAutoshipNext = cardEl && cardEl.dataset.autoshipNext ? cardEl.dataset.autoshipNext : null;
     items.push({
       order_item_id: id,
       order_id: orderId,
@@ -3608,8 +3622,8 @@
       notes: c.notes || '',
       recur: domRecur || c.recur || null,
       recur_source: domGhostOf !== null ? domGhostOf : (c.ghostOf || null),
-      autoship_link: c.autoshipLink || null,
-      autoship_next_date: c.autoshipNextDate || null,
+      autoship_link: domAutoshipLink !== null ? (domAutoshipLink || null) : (c.autoshipLink || null),
+      autoship_next_date: domAutoshipNext !== null ? (domAutoshipNext || null) : (c.autoshipNextDate || null),
     });
   }
   function toApi() {
@@ -5306,6 +5320,9 @@
       if (!c) return false;
       c.autoshipLink = link;
       c.autoshipNextDate = nextDate;
+      // Keep the DOM stamp in lockstep -- see pushItem's dom-first read.
+      const cardEl = board.querySelector(`.card[data-id="${id}"]`);
+      if (cardEl) { cardEl.dataset.autoshipLink = link || ''; cardEl.dataset.autoshipNext = nextDate || ''; }
       recalcAll();
       persist();
       return true;
