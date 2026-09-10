@@ -1670,7 +1670,7 @@
          the notes field itself. The grip stays pinned to the header's own
          top-right corner regardless of how the rest wraps -- it's now the
          only thing there (Delete lives in its menu; there's no more ×). */
-      #tab-board .ship-head { flex-wrap: wrap; row-gap: 6px; position: relative; padding-right: 30px; }
+      #tab-board .ship-head { flex-wrap: wrap; row-gap: 6px; position: relative; padding-right: 39px; }
       #tab-board .ship-id { flex: 1 1 0; order: 1; }
       #tab-board .ship-head .ship-total { order: 2; margin-right: 0; }
       #tab-board .ship-add { order: 3; }
@@ -1692,7 +1692,7 @@
          .ship-notes's own specificity (3 classes) to win the cascade here. */
       #tab-board .ship-notes { display: none; order: 6; }
       #tab-board .shipment.notes-open .ship-notes { display: block; flex-basis: 100%; }
-      #tab-board .ship-grip { position: absolute; top: 5px; right: 2px; margin: 0; }
+      #tab-board .ship-grip { position: absolute; top: 5px; right: 11px; margin: 0; }
       /* One more thing to save space on: the shipment's own min-order-date
          isn't as load-bearing as the per-item run-out dates below it. */
       #tab-board .ship-min-date { display: none; }
