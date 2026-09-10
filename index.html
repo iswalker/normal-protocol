@@ -3353,6 +3353,22 @@
     removeCards(unlockedGhostsOf(sourceId));
   }
 
+  // Shared by the manual "x" delete and the auto-delete-on-Received
+  // automation -- a recurring root living in the shipment has projections
+  // scattered across other months as ghosts, which a plain DOM removal here
+  // would never touch (they'd survive pointing at an id that's about to stop
+  // existing anywhere on the board), so those get cascaded first.
+  // recurCards is passed in rather than recomputed since del-ship's caller
+  // already walked the shipment once to run its own pre-delete confirms.
+  function deleteShipmentCascade(shipEl, recurCards) {
+    (recurCards || [...shipEl.querySelectorAll('.card[data-id]')].filter((cardEl) => {
+      const c = STATE.cardData[cardEl.dataset.id];
+      return c && !c.ghostOf && c.recur;
+    })).forEach((cardEl) => cleanGhostsForSource(cardEl.dataset.id));
+    shipEl.remove();
+    recalcAll(); persist();
+  }
+
   // Generate ghost cards/shipments for a recurring source card.
   // Reconciles rather than rebuilds: a ghost already sitting in a month this
   // source still wants is left alone, so re-running this (on load, or after a
@@ -3989,7 +4005,16 @@
       // un-marking Received) is unaffected and commits immediately as before.
       if (newStage === 'received' && window.InventoryWriter?.confirmReceive) {
         window.InventoryWriter.confirmReceive({ orderId: id, merchantName: sd.name || '', cards: invCards })
-          .then((approved) => { if (approved) commitStageChange(); });
+          .then((approved) => {
+            if (!approved) return; // Cancel: stage stays unchanged, shipment stays put
+            commitStageChange();
+            // Once Received is confirmed (On Hand already bumped), the
+            // shipment has nothing left to do on the board -- same cleanup
+            // as the manual x, just without its extra confirms, since
+            // approving the receive-confirmation just now already served as
+            // this whole action's "are you sure".
+            deleteShipmentCascade(shipEl);
+          });
       } else {
         commitStageChange();
       }
@@ -4074,9 +4099,7 @@
         const ghostCount = unlockedGhostsOf(cid).length;
         if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
       }
-      recurCards.forEach((cardEl) => cleanGhostsForSource(cardEl.dataset.id));
-      shipEl.remove();
-      recalcAll(); persist();
+      deleteShipmentCascade(shipEl, recurCards);
       return;
     }
     if (a === 'add-card-ship') {
