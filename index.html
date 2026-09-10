@@ -639,6 +639,69 @@
     .autoship-clear-btn:hover { background: rgba(214,80,74,0.08); }
     .autoship-clear-btn:disabled { opacity: 0.5; cursor: default; }
 
+    /* Autoship date field -- a button styled like the modal's other text
+       inputs (not a native <input type="date">, see .autoship-cal below)
+       that opens the shared calendar popover on click. */
+    .autoship-date-input {
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; box-sizing: border-box;
+      border: 1.5px solid var(--ink-12); border-radius: 6px; padding: 6px 8px;
+      font-size: 13px; font-family: inherit; background: #fff; color: var(--ink);
+      cursor: pointer; text-align: left; transition: border-color .12s;
+    }
+    .autoship-date-input:hover, .autoship-date-input:focus { border-color: var(--teal); outline: none; }
+    .autoship-date-text.is-placeholder { color: var(--ink-60); }
+    .autoship-date-cal-icon { width: 14px; height: 14px; color: var(--ink-60); flex: none; }
+
+    /* Shared calendar popover -- used by the Autoship modal's date field
+       and by hovering a board card's own Autoship date (see
+       initAutoshipDateHover in the board module). Same chrome as
+       .ship-ctx-menu/.ship-stage-select (white, bordered, teal hover) so it
+       reads as part of the same popover family. */
+    .autoship-cal {
+      position: fixed; z-index: 9999;
+      background: #fff; border: 1.5px solid var(--ink-12);
+      border-radius: 9px; box-shadow: 0 6px 20px rgba(23,26,28,0.14);
+      padding: 8px; width: 224px; box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px; color: var(--ink);
+    }
+    .autoship-cal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 2px 2px 8px; font-weight: 600;
+    }
+    .autoship-cal-nav {
+      appearance: none; border: 0; background: transparent; cursor: pointer;
+      width: 22px; height: 22px; border-radius: 6px; color: var(--ink);
+      font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
+      transition: background .1s, color .1s;
+    }
+    .autoship-cal-nav:hover { background: var(--cream); color: #3f8f87; }
+    .autoship-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+    .autoship-cal-dow {
+      font-size: 10px; font-weight: 600; color: var(--ink-60);
+      text-align: center; padding: 2px 0 4px;
+    }
+    .autoship-cal-day {
+      appearance: none; border: 0; background: transparent; cursor: pointer;
+      width: 28px; height: 28px; border-radius: 6px; font-size: 12.5px;
+      color: var(--ink); transition: background .1s, color .1s;
+    }
+    .autoship-cal-day:hover { background: var(--cream); color: #3f8f87; }
+    .autoship-cal-day.is-muted { color: var(--ink-12); cursor: default; }
+    .autoship-cal-day.is-muted:hover { background: transparent; color: var(--ink-12); }
+    .autoship-cal-day.is-today { font-weight: 700; }
+    .autoship-cal-day.is-selected, .autoship-cal-day.is-selected:hover { background: var(--teal); color: #fff; }
+    .autoship-cal-footer {
+      display: flex; justify-content: center; padding-top: 6px; margin-top: 4px;
+      border-top: 1px solid var(--ink-12);
+    }
+    .autoship-cal-today-btn {
+      appearance: none; border: 0; background: transparent; cursor: pointer;
+      font-size: 12px; color: #3f8f87; padding: 4px 8px; border-radius: 6px;
+    }
+    .autoship-cal-today-btn:hover { background: rgba(121,189,177,0.12); }
+
     /* Scan success / error toast */
     .scan-toast {
       position: fixed; top: 60px; right: 24px; z-index: 400;
@@ -1031,8 +1094,11 @@
        run-out dates when set (see updateCard) -- same orange as the
        Inventory popover's "Soon" tag (--soon / #e08a3c), bold so it reads
        as a distinct marker slotted into the middle of the arrow chain. */
-    #tab-board .proj .autoship-date { color: var(--soon); font-weight: 700; font-size: 12px; white-space: nowrap; }
-    #tab-board .proj .autoship-date.has-link { cursor: pointer; }
+    /* cursor:pointer unconditional now (not just .has-link) -- hovering
+       always offers the date picker (see initAutoshipDateHover), even on
+       an item with a date but no link yet; the underline stays link-only
+       so it still reads as "click to navigate" specifically. */
+    #tab-board .proj .autoship-date { color: var(--soon); font-weight: 700; font-size: 12px; white-space: nowrap; cursor: pointer; }
     #tab-board .proj .autoship-date.has-link:hover { text-decoration: underline; }
     /* Same date, same styling, for a card with no run-out projection to
        embed it in (.proj is display:none there -- see .no-proj .proj
@@ -1041,8 +1107,8 @@
        name/status badges instead. */
     #tab-board .card-top .autoship-date-badge {
       color: var(--soon); font-weight: 700; font-size: 11px; white-space: nowrap; flex: none;
+      cursor: pointer;
     }
-    #tab-board .card-top .autoship-date-badge.has-link { cursor: pointer; }
     #tab-board .card-top .autoship-date-badge.has-link:hover { text-decoration: underline; }
     #tab-board .proj .nxt { opacity: 0; width: 0; overflow: hidden; color: var(--accent-deep); }
     #tab-board .proj .nxt .dl { font-size: 19px; line-height: 1; letter-spacing: -.02em; color: var(--accent-deep); }
@@ -2367,6 +2433,126 @@
       window.SupplementBoard?.recalc();
     });
   })();
+})();
+</script>
+
+<!-- ── Shared calendar popover (window.openDatePicker/closeDatePicker) --
+     used by the Autoship modal's date field and the board's inline
+     Autoship-date hover. Lives outside both modules (portal to <body>,
+     same pattern as .inv-picker) since it's reached from both. ── -->
+<script>
+(function () {
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DOW = ['S','M','T','W','T','F','S'];
+  let popEl = null;
+  let state = null; // { year, month, selectedISO, onPick }
+
+  function isoToday() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function onOutsideClick(e) {
+    if (popEl && !popEl.contains(e.target)) closeDatePicker();
+  }
+  function onEscape(e) {
+    if (e.key === 'Escape') closeDatePicker();
+  }
+  function closeDatePicker() {
+    if (popEl) { popEl.remove(); popEl = null; }
+    document.removeEventListener('click', onOutsideClick, true);
+    document.removeEventListener('keydown', onEscape);
+    state = null;
+  }
+
+  function render() {
+    const { year, month, selectedISO } = state;
+    const first = new Date(year, month, 1);
+    const startDow = first.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+    const todayISO = isoToday();
+    const cells = [];
+    for (let i = 0; i < startDow; i++) cells.push({ day: daysInPrevMonth - startDow + 1 + i, muted: true, iso: null });
+    for (let d = 1; d <= daysInMonth; d++) {
+      cells.push({ day: d, muted: false, iso: `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
+    }
+    let trail = 1;
+    while (cells.length % 7 !== 0) cells.push({ day: trail++, muted: true, iso: null });
+
+    popEl.innerHTML = `
+      <div class="autoship-cal-head">
+        <button type="button" class="autoship-cal-nav" data-dir="-1" aria-label="Previous month">‹</button>
+        <span class="autoship-cal-title">${MONTH_NAMES[month]} ${year}</span>
+        <button type="button" class="autoship-cal-nav" data-dir="1" aria-label="Next month">›</button>
+      </div>
+      <div class="autoship-cal-grid">
+        ${DOW.map((d, i) => `<div class="autoship-cal-dow">${d}</div>`).join('')}
+        ${cells.map((c) => {
+          const cls = ['autoship-cal-day'];
+          if (c.muted) cls.push('is-muted');
+          if (c.iso === selectedISO) cls.push('is-selected');
+          if (c.iso === todayISO) cls.push('is-today');
+          return `<button type="button" class="${cls.join(' ')}"${c.iso ? ` data-iso="${c.iso}"` : ' disabled'}>${c.day}</button>`;
+        }).join('')}
+      </div>
+      <div class="autoship-cal-footer"><button type="button" class="autoship-cal-today-btn">Today</button></div>
+    `;
+    popEl.querySelectorAll('.autoship-cal-nav').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        let m = state.month + Number(btn.dataset.dir), y = state.year;
+        if (m < 0) { m = 11; y--; } else if (m > 11) { m = 0; y++; }
+        state.month = m; state.year = y;
+        render();
+      });
+    });
+    popEl.querySelectorAll('.autoship-cal-day[data-iso]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.onPick(btn.dataset.iso);
+        closeDatePicker();
+      });
+    });
+    popEl.querySelector('.autoship-cal-today-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.onPick(todayISO);
+      closeDatePicker();
+    });
+  }
+
+  // anchorEl: element to position the popover under. value: current ISO
+  // date string (or falsy for none -- opens on today's month). onPick(iso):
+  // called with the chosen date; the caller decides what to do with it
+  // (this module has no idea what an "Autoship date" even means).
+  function openDatePicker({ anchorEl, value, onPick }) {
+    closeDatePicker();
+    popEl = document.createElement('div');
+    popEl.className = 'autoship-cal';
+    document.body.appendChild(popEl);
+    const d = value ? new Date(value + 'T00:00:00') : new Date();
+    state = { year: d.getFullYear(), month: d.getMonth(), selectedISO: value || null, onPick };
+    render();
+    const r = anchorEl.getBoundingClientRect();
+    popEl.style.left = r.left + 'px';
+    popEl.style.top = (r.bottom + 4) + 'px';
+    requestAnimationFrame(() => {
+      if (!popEl) return;
+      const pr = popEl.getBoundingClientRect();
+      let left = r.left, top = r.bottom + 4;
+      if (pr.right > window.innerWidth - 8) left = Math.max(8, window.innerWidth - pr.width - 8);
+      if (pr.bottom > window.innerHeight - 8) top = Math.max(8, r.top - pr.height - 4);
+      popEl.style.left = left + 'px';
+      popEl.style.top = top + 'px';
+    });
+    setTimeout(() => {
+      document.addEventListener('click', onOutsideClick, true);
+      document.addEventListener('keydown', onEscape);
+    }, 0);
+  }
+
+  window.openDatePicker = openDatePicker;
+  window.closeDatePicker = closeDatePicker;
 })();
 </script>
 
@@ -3895,6 +4081,52 @@
       const rt = e.relatedTarget;
       if (rt && (rt.closest('.ship-ctx-menu') === activeCtxMenu || rt === activeCtxMenu._forBtn)) return;
       scheduleGripHoverClose();
+    });
+  }
+
+  // Hovering a card's own Autoship date opens the shared calendar popover
+  // to pick a NEW date directly, no full modal needed -- clicking still
+  // follows the link unchanged (see 'open-autoship-link' above). Ghosts are
+  // excluded: their date is a computed projection of the root's, not a
+  // value of their own to edit (same restriction "Add/Edit Autoship" in
+  // the context menu already applies -- see isGhostCard there).
+  let autoshipCalCloseTimer = null;
+  function cancelAutoshipCalClose() {
+    if (autoshipCalCloseTimer) { clearTimeout(autoshipCalCloseTimer); autoshipCalCloseTimer = null; }
+  }
+  function scheduleAutoshipCalClose() {
+    cancelAutoshipCalClose();
+    autoshipCalCloseTimer = setTimeout(() => { window.closeDatePicker?.(); autoshipCalCloseTimer = null; }, 200);
+  }
+  if (HOVER_CAPABLE) {
+    board.addEventListener('mouseover', (e) => {
+      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge');
+      if (!dateEl || dateEl.style.display === 'none') return;
+      const cardEl = dateEl.closest('.card[data-id]');
+      if (!cardEl) return;
+      const cId = cardEl.dataset.id;
+      const cData = STATE.cardData[cId];
+      if (!cData || (!!cData.ghostOf && !isCardLocked(cId))) return;
+      cancelAutoshipCalClose();
+      window.openDatePicker({
+        anchorEl: dateEl,
+        value: cData.autoshipNextDate || null,
+        onPick: (iso) => window.SupplementBoard.saveCardAutoship(cId, cData.autoshipLink || '', iso),
+      });
+    });
+    board.addEventListener('mouseout', (e) => {
+      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge');
+      if (!dateEl || (e.relatedTarget && e.relatedTarget.closest('.autoship-cal'))) return;
+      scheduleAutoshipCalClose();
+    });
+    document.addEventListener('mouseover', (e) => {
+      if (e.target.closest('.autoship-cal')) cancelAutoshipCalClose();
+    });
+    document.addEventListener('mouseout', (e) => {
+      if (!e.target.closest('.autoship-cal')) return;
+      const rt = e.relatedTarget;
+      if (rt && rt.closest('.autoship-cal')) return;
+      scheduleAutoshipCalClose();
     });
   }
 
@@ -5918,11 +6150,17 @@
       </div>
       <div class="snm-fields">
         <div class="snm-field full"><label>Link</label><input id="autoship-link" type="text" placeholder="https://..."></div>
-        <div class="snm-field full"><label>Next Autoship Date</label><input id="autoship-date" type="date"></div>
+        <div class="snm-field full">
+          <label>Next Autoship Date</label>
+          <button type="button" class="autoship-date-input" id="autoship-date-trigger">
+            <span class="autoship-date-text" id="autoship-date-display">No date set</span>
+            <svg class="autoship-date-cal-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5 1.5v2.5M11 1.5v2.5"/></svg>
+          </button>
+        </div>
       </div>
       <div class="scan-status-msg" id="autoship-status-msg"></div>
       <div class="snm-footer">
-        <button class="autoship-clear-btn" id="autoship-clear-btn" style="display:none">Clear Link</button>
+        <button class="autoship-clear-btn" id="autoship-clear-btn" style="display:none">Clear Autoship</button>
         <button class="snm-cancel" id="autoship-cancel-btn">Cancel</button>
         <button class="snm-confirm" id="autoship-save-btn">Save</button>
       </div>
@@ -5938,12 +6176,31 @@
   // to STATE/persist -- this modal is otherwise just a dumb UI over
   // whatever { id, name, link, nextDate } it was opened with.
   let _autoshipCardId = null;
+  const dateTriggerEl = document.getElementById('autoship-date-trigger');
+  const dateDisplayEl = document.getElementById('autoship-date-display');
+  function setDateTrigger(iso) {
+    dateTriggerEl.dataset.value = iso || '';
+    if (iso) {
+      dateDisplayEl.textContent = window.SB.fmtDate(window.SB.parseDate(iso));
+      dateDisplayEl.classList.remove('is-placeholder');
+    } else {
+      dateDisplayEl.textContent = 'No date set';
+      dateDisplayEl.classList.add('is-placeholder');
+    }
+  }
+  dateTriggerEl.addEventListener('click', () => {
+    window.openDatePicker({
+      anchorEl: dateTriggerEl,
+      value: dateTriggerEl.dataset.value || null,
+      onPick: (iso) => setDateTrigger(iso),
+    });
+  });
   function openAutoshipModal({ id, name, link, nextDate } = {}) {
     if (!id) return;
     _autoshipCardId = id;
     document.getElementById('autoship-item-name').textContent = name || '';
     document.getElementById('autoship-link').value = link || '';
-    document.getElementById('autoship-date').value = nextDate || '';
+    setDateTrigger(nextDate || '');
     document.getElementById('autoship-clear-btn').style.display = link ? '' : 'none';
     document.getElementById('autoship-status-msg').textContent = '';
     autoshipOv.style.display = 'flex';
@@ -5952,7 +6209,11 @@
       inp?.focus(); inp?.select();
     }, 50);
   }
-  function closeAutoshipModal() { autoshipOv.style.display = 'none'; _autoshipCardId = null; }
+  function closeAutoshipModal() {
+    autoshipOv.style.display = 'none';
+    _autoshipCardId = null;
+    window.closeDatePicker?.();
+  }
 
   document.getElementById('autoship-close-btn').addEventListener('click', closeAutoshipModal);
   document.getElementById('autoship-cancel-btn').addEventListener('click', closeAutoshipModal);
@@ -5969,7 +6230,7 @@
     if (!_autoshipCardId) return;
     const statusEl = document.getElementById('autoship-status-msg');
     const link = document.getElementById('autoship-link').value.trim();
-    const nextDate = document.getElementById('autoship-date').value;
+    const nextDate = dateTriggerEl.dataset.value || '';
     const ok = window.SupplementBoard?.saveCardAutoship(_autoshipCardId, link, nextDate);
     if (ok === false) { statusEl.textContent = 'Save failed — card not found, try refreshing.'; return; }
     closeAutoshipModal();
