@@ -349,7 +349,7 @@
     }
     .refresh-inv-btn:hover { color: var(--teal); border-color: var(--teal); }
 
-    /* shipment right-click context menu */
+    /* card/shipment context menu, opened via the grip button */
     .ship-ctx-menu {
       position: fixed; z-index: 9999;
       background: white; border: 1.5px solid var(--ink-12);
@@ -972,9 +972,9 @@
     #tab-board .card-top { display: flex; align-items: flex-start; gap: 7px; }
     /* drag handles: a circular menu-glyph button, shared look on cards
        (.card-grip) and shipments (.ship-grip, replacing the old truck
-       icon). Also the mobile tap target for the context menu (see
-       initGripTapContextMenu) and, on hover-capable devices, opens the same
-       menu without needing a right-click (see the HOVER_CAPABLE wiring near
+       icon). Also the sole way to open the card/shipment context menu --
+       tap on touch (see initGripTapContextMenu), hover-dwell on
+       hover-capable devices (see the HOVER_CAPABLE wiring near
        openCardCtxMenu/openShipCtxMenu) -- no callout/selection UI stealing
        the mobile tap. */
     #tab-board .card-grip, #tab-board .ship-grip {
@@ -4786,7 +4786,7 @@
     }
   });
 
-  // ── right-click context menus (shipment + card) ──
+  // ── card/shipment context menus, opened via the grip button ──
   let activeCtxMenu = null;
   function closeCtxMenu() {
     if (activeCtxMenu) { activeCtxMenu.remove(); activeCtxMenu = null; }
@@ -4824,7 +4824,7 @@
       sel.innerHTML = '<option value=""></option>' + months.map((m, i) =>
         `<option value="${i}">${m.querySelector('.mname')?.textContent.trim() || ''}</option>`).join('');
       if (!months.length) sel.disabled = true;
-      // Keep the right-click menu from closing when the native dropdown is used
+      // Keep the context menu from closing when the native dropdown is used
       ['mousedown', 'click'].forEach((t) => sel.addEventListener(t, (ev) => ev.stopPropagation()));
       sel.addEventListener('change', () => {
         const target = months[Number(sel.value)];
@@ -4873,8 +4873,7 @@
     return newEl.querySelector('.ship-body');
   }
 
-  // ── mobile: tap the grip/drag-handle → open the same context menu
-  //    right-click opens ──
+  // ── mobile: tap the grip/drag-handle → open its context menu ──
   // Long-press was tried first, but on touch it lost the race to iOS/
   // Android's own text-selection callout before our timer ever fired --
   // holding a finger on a card just triggered "Select/Copy", not our menu.
@@ -4882,8 +4881,8 @@
   // a card/shipment already reserved for touch (dragging needs press-and-
   // move there), so a tap without movement is free to mean something else,
   // and it can't be mistaken for selecting text. Scoped to touch/coarse-
-  // pointer devices only -- a desktop mouse click on the grip shouldn't
-  // also pop a menu, since right-click already covers that there.
+  // pointer devices only -- desktop uses the grip's own hover-to-open
+  // instead (see the HOVER_CAPABLE wiring near openCardCtxMenu).
   (function initGripTapContextMenu() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
     // Driven directly off touchstart/touchend rather than the synthetic
@@ -4911,12 +4910,12 @@
       const grip = gripTarget;
       gripTarget = null;
       if (!grip || moved) return;
-      const target = grip.closest('.card[data-id], .shipment');
-      if (!target) return;
+      const cardEl = grip.closest('.card[data-id]');
+      const shipEl = !cardEl ? grip.closest('.shipment') : null;
+      if (!cardEl && !shipEl) return;
       e.preventDefault();
-      target.dispatchEvent(new MouseEvent('contextmenu', {
-        bubbles: true, cancelable: true, clientX: startX, clientY: startY,
-      }));
+      const coords = { clientX: startX, clientY: startY };
+      if (cardEl) openCardCtxMenu(cardEl, coords); else openShipCtxMenu(shipEl, coords);
     }, { passive: false });
   })();
 
@@ -4962,11 +4961,11 @@
   })();
 
   // Builds and opens a card's (or divider's) context menu -- shared by the
-  // right-click handler below, the card-grip button's click (see
-  // 'open-card-menu'), and its hover-to-open (see HOVER_CAPABLE wiring,
-  // further down). e only needs clientX/clientY (and, for a real
-  // right-click, preventDefault) -- a synthetic hover "event" is just a
-  // plain object with coordinates, same contract buildCtxMenu already uses.
+  // card-grip button's click (see 'open-card-menu'), its tap-to-open (see
+  // initGripTapContextMenu above), and its hover-to-open (see
+  // HOVER_CAPABLE wiring, further down). e only needs clientX/clientY --
+  // a synthetic tap/hover "event" is just a plain object with coordinates,
+  // same contract buildCtxMenu already uses.
   function openCardCtxMenu(cardEl, e) {
       e.preventDefault?.();
       closeCtxMenu();
@@ -5021,6 +5020,32 @@
         // moved here as its own leading section instead.
         menu.appendChild(ctxItem('Delete', false, () => deleteCard(cardEl), 'ctx-danger'));
         menu.appendChild(ctxDivider());
+        // Lives on this specific card (STATE.cardData), not on the
+        // Inventory item it happens to be named after -- two unrelated
+        // cards for the same item never share a link, and this one's own
+        // recurring ghosts inherit it via syncGhosts, same as price/qty/
+        // notes. No actual Inventory dependency, so this works for an
+        // untracked/free-text card too. Only disabled for dividers (not
+        // real items) and for a ghost: a ghost's Autoship date/link is a
+        // straight copy from its root as of whenever it was created (see
+        // syncGhosts), same "locked until promoted" treatment as its
+        // "ev N mo" control (see cardHTML) -- it only ever shows that
+        // value (projected forward for the date) never edits it directly.
+        const cData = STATE.cardData[cardEl.dataset.id] || {};
+        const isGhostCard = !!cData.ghostOf && !isCardLocked(cardEl.dataset.id);
+        const rootData = cData.ghostOf ? (STATE.cardData[cData.ghostOf] || cData) : cData;
+        const autoshipDisabled = !cData.name || cData.name === '__divider__' || isGhostCard;
+        menu.appendChild(ctxItem(
+          rootData.autoshipLink ? 'Edit Autoship' : 'Add Autoship',
+          autoshipDisabled,
+          () => window.InventoryWriter?.openAutoshipModal({
+            id: cardEl.dataset.id,
+            name: cData.name,
+            link: cData.autoshipLink || '',
+            nextDate: cData.autoshipNextDate || '',
+          })
+        ));
+        menu.appendChild(ctxDivider());
         menu.appendChild(ctxItem('Move to Top', isFirst, () => { container.prepend(cardEl); recalcAll(); persist(); }));
         menu.appendChild(ctxItem('Move to End', isLast, () => { container.append(cardEl); recalcAll(); persist(); }));
         menu.appendChild(ctxDivider());
@@ -5051,40 +5076,14 @@
           cardEl.after(el(cardHTML(did)));
           recalcAll(); persist();
         }));
-        // Lives on this specific card (STATE.cardData), not on the
-        // Inventory item it happens to be named after -- two unrelated
-        // cards for the same item never share a link, and this one's own
-        // recurring ghosts inherit it via syncGhosts, same as price/qty/
-        // notes. No actual Inventory dependency, so this works for an
-        // untracked/free-text card too. Only disabled for dividers (not
-        // real items) and for a ghost: a ghost's Autoship date/link is a
-        // straight copy from its root as of whenever it was created (see
-        // syncGhosts), same "locked until promoted" treatment as its
-        // "ev N mo" control (see cardHTML) -- it only ever shows that
-        // value (projected forward for the date) never edits it directly.
-        const cData = STATE.cardData[cardEl.dataset.id] || {};
-        const isGhostCard = !!cData.ghostOf && !isCardLocked(cardEl.dataset.id);
-        const rootData = cData.ghostOf ? (STATE.cardData[cData.ghostOf] || cData) : cData;
-        const autoshipDisabled = !cData.name || cData.name === '__divider__' || isGhostCard;
-        menu.appendChild(ctxDivider());
-        menu.appendChild(ctxItem(
-          rootData.autoshipLink ? 'Edit Autoship Link' : 'Add Autoship Link',
-          autoshipDisabled,
-          () => window.InventoryWriter?.openAutoshipModal({
-            id: cardEl.dataset.id,
-            name: cData.name,
-            link: cData.autoshipLink || '',
-            nextDate: cData.autoshipNextDate || '',
-          })
-        ));
       });
       activeCtxMenu._forBtn = cardEl;
   }
 
   // Builds and opens a shipment's context menu -- same shared contract as
-  // openCardCtxMenu (e only needs clientX/clientY, plus preventDefault for
-  // a real right-click), reused by the right-click handler, the ship-grip
-  // button's click (see 'open-ship-menu'), and its hover-to-open.
+  // openCardCtxMenu (e only needs clientX/clientY), reused by the
+  // ship-grip button's click (see 'open-ship-menu'), its tap-to-open, and
+  // its hover-to-open.
   function openShipCtxMenu(shipEl, e) {
     e.preventDefault?.();
     closeCtxMenu();
@@ -5175,14 +5174,6 @@
     });
     activeCtxMenu._forBtn = shipEl;
   }
-
-  board.addEventListener('contextmenu', (e) => {
-    // Card menu takes priority over shipment menu
-    const cardEl = e.target.closest('.card[data-id]');
-    if (cardEl) { openCardCtxMenu(cardEl, e); return; }
-    const shipEl = e.target.closest('.shipment');
-    if (shipEl) openShipCtxMenu(shipEl, e);
-  });
 
   document.addEventListener('click', closeCtxMenu);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCtxMenu(); });
@@ -5916,7 +5907,7 @@
     });
   }
 
-  // ── Autoship Link modal — reached from the card right-click menu ──
+  // ── Autoship Link modal — reached from the card's context menu ──
   const autoshipOv = document.createElement('div');
   autoshipOv.id = 'autoship-overlay'; autoshipOv.className = 'scan-overlay'; autoshipOv.style.display = 'none';
   autoshipOv.innerHTML = `
