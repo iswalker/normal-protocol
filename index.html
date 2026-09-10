@@ -1225,7 +1225,7 @@
          count hugging it while a long one pushes its count out near the
          ellipsis cutoff). .month-title's matching fixed width is what
          aligns .mcount with this. */
-      #tab-board .ship-id { width: 108px; }
+      #tab-board .ship-id { width: 108px; margin-left: 9px; }
       #tab-board .ship-id .scount { margin-left: auto; }
       /* .mname stays flush left at its natural position (unlike .ship-name,
          which shifts as a unit with its badge) -- only .mcount moves,
@@ -1307,7 +1307,7 @@
          positioned here and no longer guarantees the grip sits right after
          it, since nothing's left in-flow to push it there once ship-notes/
          ship-total/ship-min-date all left the flow above. */
-      #tab-board .ship-grip { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); }
+      #tab-board .ship-grip { position: absolute; top: 50%; right: 11px; transform: translateY(-50%); }
     }
     /* month metrics: fixed-width columns so the alignment column is stable.
        PLANNED right edge = 14px (month-head pad) + 96px (MAX box) = 110px from month inner right.
@@ -1330,6 +1330,11 @@
     #tab-board .card.card--divider .div-line { flex: 1; border: 0; border-top: 1px solid var(--ink-12); margin: 0; }
     #tab-board .card.card--divider .card-grip { width: 18px; height: 18px; }
     #tab-board .card.card--divider .card-grip svg { width: 10px; height: 10px; }
+    /* Divider rows only -- a plain item's grip (.board.layout-compact
+       .card-grip below) stays at its own right value; this just nudges the
+       divider's smaller grip in slightly further since its own row is
+       shorter and reads better a touch tighter to the edge. */
+    #tab-board .board.layout-compact .card.card--divider .card-grip { right: 6px; }
     /* .no-proj is set dynamically in updateCard() (not tied to the static
        card--untracked class) so it also covers a recurring ghost whose
        source item has no Inventory match -- ghosts never carry
