@@ -6384,6 +6384,16 @@
     return h + '</span>';
   }
 
+  // On Hand allows one decimal place (someone counting out a fraction of a
+  // cap/scoop), but a whole number shouldn't grow a pointless ".0" -- round
+  // to the nearest tenth first so a value like 8.96 becomes "9", not "9.0",
+  // then only append the decimal when what's left after that rounding
+  // actually has one.
+  function fmtOnHand(n) {
+    const rounded = Math.round(n * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  }
+
   let _rendering = false;
   async function renderInventory() {
     if (!body || _rendering) return;
@@ -6448,7 +6458,7 @@
           + (nextOrder ? ' data-card-id="' + nextOrder.cardId + '" title="Jump to this order"' : '') + '>'
           + (nextOrder ? escHtml(nextOrder.month) : '—') + '</td>' +
         '<td class="inv-bottles" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit bottles">' + bottles + bottleBars + '</td>' +
-        '<td class="inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit caps">' + Math.round(currentAmount) + '</td>' +
+        '<td class="inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit caps">' + fmtOnHand(currentAmount) + '</td>' +
         '<td class="inv-num inv-bs" data-key="' + key + '" title="Click to edit bottle size">' + (bs || '—') + '</td>' +
         '<td class="inv-num inv-dose" data-key="' + key + '" title="Click to edit daily dose">' + (dose || '—') + '</td>' +
         '<td class="inv-num inv-dpb">' + (bs > 0 && dose > 0 ? (Math.round(bs / dose * 10) / 10) + 'd' : '—') + '</td>' +
@@ -6477,7 +6487,7 @@
           '</div>' +
           '<div class="inv-card-pair">' +
             '<div class="inv-card-half"><span class="inv-card-label">On Hand</span>' +
-              '<span class="inv-card-val inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '">' + Math.round(currentAmount) + '</span></div>' +
+              '<span class="inv-card-val inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '">' + fmtOnHand(currentAmount) + '</span></div>' +
             '<div class="inv-card-half"><span class="inv-card-label">Dose / Day</span>' +
               '<span class="inv-card-val inv-dose" data-key="' + key + '">' + (dose || '—') + '</span></div>' +
           '</div>' +
@@ -6535,7 +6545,7 @@
       const runoutCell   = tr.querySelector('td:nth-child(2)');
       const resetCell    = tr.querySelector('td:nth-child(8)');
 
-      if (capsCell)    { capsCell.dataset.amount = newCaps;    capsCell.textContent = Math.round(newCaps); }
+      if (capsCell)    { capsCell.dataset.amount = newCaps;    capsCell.textContent = fmtOnHand(newCaps); }
       if (bottlesCell) { bottlesCell.dataset.amount = newCaps; bottlesCell.innerHTML = bottles + bottleBars; }
       if (runoutCell)  {
         runoutCell.className = 'inv-runout' + (ro ? (' ' + ro.cls) : ' inv-no-data');
@@ -6556,7 +6566,7 @@
       const bottlesCell = card.querySelector('.inv-bottles');
       const runoutBadge = card.querySelector('.inv-card-runout');
 
-      if (capsCell)    { capsCell.dataset.amount = newCaps;    capsCell.textContent = Math.round(newCaps); capsCell.onclick = () => startEdit(capsCell, itemMap, 'caps'); }
+      if (capsCell)    { capsCell.dataset.amount = newCaps;    capsCell.textContent = fmtOnHand(newCaps); capsCell.onclick = () => startEdit(capsCell, itemMap, 'caps'); }
       if (bottlesCell) { bottlesCell.dataset.amount = newCaps; bottlesCell.textContent = bottles; bottlesCell.onclick = () => startEdit(bottlesCell, itemMap, 'bottles'); }
       if (runoutBadge) {
         runoutBadge.className = 'inv-card-runout ' + (ro ? ro.cls : 'inv-no-data');
@@ -6576,7 +6586,7 @@
     const key  = cell.dataset.key;
     const bs   = (itemMap[key] || {}).bottleSize || 0;
     const caps = Number(cell.dataset.amount) || 0;
-    const val  = mode === 'bottles' && bs > 0 ? (caps / bs).toFixed(2) : Math.round(caps);
+    const val  = mode === 'bottles' && bs > 0 ? (caps / bs).toFixed(2) : fmtOnHand(caps);
     const unit = mode === 'bottles' ? 'bottles' : 'caps';
 
     cell.textContent = '';
@@ -6591,8 +6601,12 @@
     let committed = false;
     const save = async () => {
       if (committed) return; committed = true;
-      const parsed = evalExpr(inp.value);
+      let parsed = evalExpr(inp.value);
       if (isNaN(parsed) || parsed < 0) { renderInventory(); return; }
+      // Caps mode allows one decimal place -- round here so what's actually
+      // saved matches what fmtOnHand will ever display back (bottles mode
+      // is left alone; its own math already produces a sensible caps value).
+      if (mode !== 'bottles') parsed = Math.round(parsed * 10) / 10;
       const newCaps  = mode === 'bottles' && bs > 0 ? parsed * bs : parsed;
       const itemName = (itemMap[key] || {}).name || key;
       // Optimistic in-place update — no stutter
