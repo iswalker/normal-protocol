@@ -1203,7 +1203,11 @@
       padding: 9px 12px; font-family: var(--font-ui); font-size: 13px; color: var(--b-ink);
       background: #f7f9f9; border-radius: 10px 10px 0 0;
     }
-    .inv-picker-list { list-style: none; margin: 0; padding: 4px 0; }
+    /* Capped and internally scrollable so the popover itself never grows
+       into a wall spanning the whole page -- up to 50 matches render here
+       (see showItemPicker/showMerchantPicker), typing narrows that down to
+       a handful anyway, so there's no need to show them all at once. */
+    .inv-picker-list { list-style: none; margin: 0; padding: 4px 0; max-height: 280px; overflow-y: auto; }
     .inv-picker-opt {
       padding: 7px 13px; font-size: 13px; cursor: pointer; color: #1c2426;
       transition: background .1s, color .12s; outline: none;
@@ -4660,12 +4664,23 @@
     picker.style.top = (rect.bottom + window.scrollY + 4) + 'px';
     picker.style.width = width + 'px';
     document.body.appendChild(picker);
-    requestAnimationFrame(() => {
-      const pr = picker.getBoundingClientRect();
-      if (pr.bottom > window.innerHeight - PAD) {
-        picker.style.top = Math.max(PAD, rect.top + window.scrollY - pr.height - 4) + 'px';
-      }
-    });
+    // Flipping above the trigger when the list would overflow the bottom
+    // makes sense on desktop (plenty of vertical room either way, and the
+    // whole list is worth seeing) but is actively disruptive on mobile: the
+    // list here has no height cap of its own, so flipping could shove the
+    // search box -- the part that actually matters, since typing narrows
+    // the list down to a handful of matches anyway -- all the way up to
+    // the top of the screen, far from the button that opened it. On a
+    // coarse pointer, just stay anchored below the trigger and let the
+    // list run past the bottom of the viewport; the page can scroll to it.
+    if (!window.matchMedia('(pointer: coarse)').matches) {
+      requestAnimationFrame(() => {
+        const pr = picker.getBoundingClientRect();
+        if (pr.bottom > window.innerHeight - PAD) {
+          picker.style.top = Math.max(PAD, rect.top + window.scrollY - pr.height - 4) + 'px';
+        }
+      });
+    }
   }
 
   // ── Inventory picklist shown when "+ Item" is clicked ──────────────────
