@@ -1050,7 +1050,7 @@
       background: var(--paper, #fff); color: var(--ink-3);
       transition: background .12s, color .12s, border-color .12s;
     }
-    #tab-board .card-grip svg, #tab-board .ship-grip svg { width: 11px; height: 11px; display: block; }
+    #tab-board .card-grip svg, #tab-board .ship-grip svg { width: 11px; height: 11px; display: block; margin-top: -2px; }
     #tab-board .card-grip:hover, #tab-board .ship-grip:hover { background: var(--accent-tint); color: var(--accent-deep); border-color: var(--accent); }
     #tab-board .grip:active, #tab-board .card-grip:active, #tab-board .ship-grip:active { cursor: grabbing; }
     #tab-board .card-name {
@@ -1760,6 +1760,16 @@
          .ship-notes's own specificity (3 classes) to win the cascade here. */
       #tab-board .ship-notes { display: none; order: 6; }
       #tab-board .shipment.notes-open .ship-notes { display: block; flex-basis: 100%; }
+      /* Desktop keeps notes single-line (nowrap + ellipsis at rest, clipped
+         visible-overflow while focused/typing -- see the base .ship-notes
+         rules) since there's room on either side to just keep going.
+         Mobile already dedicates this field its own full-width row once
+         open, so there's no reason to keep it single-line there too --
+         wrap normally instead of running text off the edge of the screen
+         while editing. */
+      #tab-board .ship-notes, #tab-board .ship-notes:focus {
+        white-space: normal; overflow: visible; text-overflow: clip; word-break: break-word;
+      }
       #tab-board .ship-grip { position: absolute; top: 5px; right: 11px; margin: 0; }
       /* One more thing to save space on: the shipment's own min-order-date
          isn't as load-bearing as the per-item run-out dates below it. */
@@ -1836,6 +1846,13 @@
          rules above) -- this tap-to-reveal treatment is mobile-only. */
       #tab-board .board.layout-compact .card-notes { display: none; margin-top: 2px; padding-left: 0; padding-right: 0; }
       #tab-board .board.layout-compact .card.notes-open .card-notes { display: block; }
+      /* Same reasoning as .ship-notes above: mobile already gives this its
+         own full-width row once open, so wrap instead of running text off
+         the edge of the screen while editing (desktop stays single-line
+         via the shared base rules). */
+      #tab-board .board.layout-compact .card-notes, #tab-board .board.layout-compact .card-notes:focus {
+        white-space: normal; overflow: visible; text-overflow: clip; word-break: break-word;
+      }
       /* Left-aligned, sitting right after the "ev N mo" control (its DOM
          order, card-end is display:contents here so it's really a direct
          flex item of card-body's row 2) -- no margin-left:auto pushing it
@@ -4615,6 +4632,42 @@
     recalcAll(); persist();
   }
 
+  // Shared by showItemPicker/showMerchantPicker: both portal to <body> with
+  // position:absolute in document coordinates (so overflow:hidden on an
+  // ancestor like .shipment can't clip them, and the page can scroll to
+  // reveal the full list), anchored just below/left-aligned with the
+  // trigger. Clamped so no edge ever runs past the viewport, with PAD kept
+  // as breathing room even after clamping.
+  // Width+left are computed and applied together BEFORE the element ever
+  // touches the DOM, not measured-then-corrected after appending: a mobile
+  // browser that sees an absolutely-positioned element wider than the
+  // device, even for one frame, responds by permanently widening its own
+  // layout viewport to fit it -- after which window.innerWidth itself has
+  // grown to match the overflow, so every clamp computed from it afterward
+  // is measuring a viewport that no longer matches the real screen. Only
+  // vertical (bottom-edge) clamping still happens post-append, since
+  // vertical overflow doesn't trigger that same reflow-and-widen behavior.
+  function positionPortalPopover(picker, anchor, minWidth) {
+    const PAD = 8;
+    const rect = anchor.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth || window.innerWidth;
+    const width = Math.min(Math.max(minWidth, rect.width), vw - PAD * 2);
+    const minLeft = window.scrollX + PAD;
+    const maxLeft = window.scrollX + vw - width - PAD;
+    const left = Math.max(minLeft, Math.min(rect.left + window.scrollX, maxLeft));
+    picker.style.position = 'absolute';
+    picker.style.left = left + 'px';
+    picker.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    picker.style.width = width + 'px';
+    document.body.appendChild(picker);
+    requestAnimationFrame(() => {
+      const pr = picker.getBoundingClientRect();
+      if (pr.bottom > window.innerHeight - PAD) {
+        picker.style.top = Math.max(PAD, rect.top + window.scrollY - pr.height - 4) + 'px';
+      }
+    });
+  }
+
   // ── Inventory picklist shown when "+ Item" is clicked ──────────────────
   let activePicker = null;
   function showItemPicker(anchor, onSelect, fromFilter = null) {
@@ -4770,14 +4823,7 @@
       if (opt) commit(opt.dataset.name);
     });
 
-    // Portal to body with position:absolute in document coords so overflow:hidden
-    // on .shipment doesn't clip it, and the page can scroll to reveal the full list.
-    const rect = anchor.getBoundingClientRect();
-    picker.style.position = 'absolute';
-    picker.style.left = (rect.left + window.scrollX) + 'px';
-    picker.style.top = (rect.bottom + window.scrollY + 4) + 'px';
-    picker.style.width = Math.max(350, rect.width) + 'px';
-    document.body.appendChild(picker);
+    positionPortalPopover(picker, anchor, 350);
     activePicker = picker;
     renderList('');
     input.focus();
@@ -4915,12 +4961,7 @@
       if (opt) commit(opt.dataset.name);
     });
 
-    const rect = anchor.getBoundingClientRect();
-    picker.style.position = 'absolute';
-    picker.style.left = (rect.left + window.scrollX) + 'px';
-    picker.style.top = (rect.bottom + window.scrollY + 4) + 'px';
-    picker.style.width = Math.max(350, rect.width) + 'px';
-    document.body.appendChild(picker);
+    positionPortalPopover(picker, anchor, 350);
     activePicker = picker;
     renderList('');
     input.focus();
