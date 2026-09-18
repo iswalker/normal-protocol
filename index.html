@@ -5161,13 +5161,16 @@
     if (e.key === 'Enter' && e.target.matches('[contenteditable]')) {
       e.preventDefault(); e.target.blur();
     }
-    // "-" typed anywhere in the Price field toggles the sign (same as
-    // clicking the circle next to it) instead of literally inserting a
-    // minus character -- one field-wide toggle reads more clearly than a
-    // "-" that could end up buried mid-expression depending on cursor
-    // position, and it's what actually flips the circle to its active
-    // state in the first place.
-    if (e.key === '-' && e.target.matches('input[data-field="price"]')) {
+    // "-" toggles the sign of whatever's already in the Price field (same
+    // as clicking the circle) instead of literally inserting a minus
+    // character -- one field-wide toggle reads more clearly than a "-"
+    // that could end up buried mid-expression depending on cursor
+    // position. But an EMPTY field has nothing to toggle yet -- typing "-"
+    // there is someone starting a negative number from scratch ("-" then
+    // "15"), so let it insert normally instead of silently swallowing it
+    // (toggling committed-but-unset price 0 to -0 is a no-op that displays
+    // as blank either way, which is exactly what made this look broken).
+    if (e.key === '-' && e.target.matches('input[data-field="price"]') && e.target.value.trim() !== '') {
       e.preventDefault();
       togglePriceSign(e.target);
     }
