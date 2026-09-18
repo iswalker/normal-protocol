@@ -1129,6 +1129,24 @@
       font-size: 9px; font-weight: 600; letter-spacing: .06em;
       text-transform: uppercase; color: var(--ink-3);
     }
+    #tab-board .field-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+    /* Price-only: flip the amount negative (a credit/discount/coupon
+       line), same idea and same on/active teal as .incl-toggle below --
+       "-" typed directly into the field also drives this, see the
+       keydown handler on input[data-field="price"]. */
+    #tab-board .price-sign-toggle {
+      flex: none; width: 18px; height: 18px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      appearance: none; padding: 0; border: 1.5px solid var(--line);
+      background: #fff; color: var(--ink-3); cursor: pointer;
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    #tab-board .price-sign-toggle svg { width: 9px; height: 9px; display: block; }
+    #tab-board .price-sign-toggle:hover { border-color: var(--accent); color: var(--accent-deep); }
+    #tab-board .price-sign-toggle.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #tab-board .price-sign-toggle.is-active:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+    #tab-board .price-sign-toggle:disabled { opacity: .45; cursor: default; }
+    #tab-board .field-row .input-wrap { flex: 1 1 auto; min-width: 0; }
     #tab-board .input-wrap {
       display: flex; align-items: center; gap: 2px;
       background: #f7f9f9; border: 1px solid var(--line); border-radius: 7px;
@@ -2612,6 +2630,7 @@
   const ICON = {
     grip: `<svg viewBox="0 0 8 16" width="11" height="16" fill="currentColor"><circle cx="2" cy="3" r="1.3"/><circle cx="6" cy="3" r="1.3"/><circle cx="2" cy="8" r="1.3"/><circle cx="6" cy="8" r="1.3"/><circle cx="2" cy="13" r="1.3"/><circle cx="6" cy="13" r="1.3"/></svg>`,
     plus: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>`,
+    minus: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 7h10"/></svg>`,
     search: `<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>`,
     notes: `<svg viewBox="0 0 1200 1200" fill="currentColor"><path d="m1087.5 131.25h-975c-10.363 0-18.75-8.3867-18.75-18.75s8.3867-18.75 18.75-18.75h975c10.363 0 18.75 8.3867 18.75 18.75s-8.3867 18.75-18.75 18.75zm18.75 176.26c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm0 194.99c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm0 195.01c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm0 194.99c0-10.363-8.3867-18.75-18.75-18.75h-975c-10.363 0-18.75 8.3867-18.75 18.75 0 10.363 8.3867 18.75 18.75 18.75h975c10.363 0 18.75-8.3867 18.75-18.75zm-466.3 195.01c0-10.363-8.3867-18.75-18.75-18.75h-508.7c-10.363 0-18.75 8.3867-18.75 18.75s8.3867 18.75 18.75 18.75h508.7c10.363 0 18.75-8.3867 18.75-18.75z"/></svg>`,
     // Hamburger/menu glyph -- the card row's combined drag-handle + "open
@@ -2833,7 +2852,10 @@
         <div class="order">
           <div class="field">
             <label>Price <span class="lbl-sub">/ bottle</span></label>
-            <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="decimal" data-field="price" value="${c.price}"${dis}></div>
+            <div class="field-row">
+              <button type="button" class="price-sign-toggle${Number(c.price) < 0 ? ' is-active' : ''}" data-act="toggle-price-sign" title="Make this a credit/negative amount" aria-label="Toggle negative amount"${dis}>${ICON.minus}</button>
+              <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="decimal" data-field="price" value="${c.price}"${dis}></div>
+            </div>
           </div>
           <div class="field">
             <label>Order <span class="lbl-sub">bottles</span></label>
@@ -3017,6 +3039,12 @@
     // fills the column when there IS data, so it also covers a recurring
     // ghost whose source has no match (ghosts never carry card--untracked).
     cardEl.classList.toggle('no-proj', !hasInv);
+    // Keeps the price-sign toggle's active/teal state correct regardless of
+    // how the price actually changed -- typed "-", clicked the circle, or
+    // propagated down from a recurring root -- since all of those end up
+    // running through here via recalcAll (or, for ghosts, a full re-render
+    // that already computes this same class at creation time).
+    cardEl.querySelector('.price-sign-toggle')?.classList.toggle('is-active', Number(c.price) < 0);
 
     cardEl.querySelector('.status').textContent =
       !hasInv ? '—' : tier === 'out' ? 'OUT' : tier === 'soon' ? 'SOON' : 'OK';
@@ -3555,6 +3583,38 @@
 
   function cleanGhostsForSource(sourceId) {
     removeCards(unlockedGhostsOf(sourceId));
+  }
+
+  // Shared by the price-sign toggle circle's click and typing "-" directly
+  // into the Price field (see the keydown handler below) -- both just flip
+  // whichever sign the field currently has. With something already typed,
+  // this only touches the raw text (toggling a leading "-") and replays it
+  // through the field's own 'input' handler, so evalExpr/ghost-propagation/
+  // recalc all run exactly as they would for a real keystroke -- including
+  // an expression like "12*3", which flips to "-12*3" and evaluates fine.
+  // An empty field has no text to toggle, so it flips the already-committed
+  // value directly instead (prepending "-" to "" would still evalExpr to 0,
+  // silently swallowing the toggle).
+  function togglePriceSign(inp) {
+    const raw = inp.value.trim();
+    if (raw === '') {
+      const cardEl = inp.closest('.card');
+      const id = cardEl.dataset.id;
+      const c = STATE.cardData[id];
+      const newVal = -(c.price || 0);
+      c.price = newVal;
+      inp.value = newVal === 0 ? '' : String(newVal);
+      if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, 'price', newVal);
+      recalcAll();
+      persistSoon();
+      return;
+    }
+    // Flipping zero's sign is a no-op either way (-0 === 0) but would
+    // otherwise leave the field showing the visually odd "-0" -- skip it.
+    const evaluated = evalExpr(raw);
+    if (!isNaN(evaluated) && evaluated === 0) return;
+    inp.value = raw.startsWith('-') ? raw.slice(1) : '-' + raw;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   // Shared by the card context menu's "Delete" item (formerly the standalone
@@ -4440,6 +4500,13 @@
       persist();
       return;
     }
+    if (a === 'toggle-price-sign') {
+      e.preventDefault();
+      const cardEl = act.closest('.card');
+      const inp = cardEl.querySelector('input[data-field="price"]');
+      if (inp) togglePriceSign(inp);
+      return;
+    }
     if (a === 'open-card-menu') {
       e.stopPropagation();
       const cardEl = act.closest('.card[data-id]');
@@ -5093,6 +5160,16 @@
   board.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.matches('[contenteditable]')) {
       e.preventDefault(); e.target.blur();
+    }
+    // "-" typed anywhere in the Price field toggles the sign (same as
+    // clicking the circle next to it) instead of literally inserting a
+    // minus character -- one field-wide toggle reads more clearly than a
+    // "-" that could end up buried mid-expression depending on cursor
+    // position, and it's what actually flips the circle to its active
+    // state in the first place.
+    if (e.key === '-' && e.target.matches('input[data-field="price"]')) {
+      e.preventDefault();
+      togglePriceSign(e.target);
     }
   });
 
