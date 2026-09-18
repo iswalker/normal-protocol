@@ -3040,6 +3040,12 @@
     // entries rather than an assumed daily-use rate) -- see calcQtyCard and the
     // isQtyMode branch of applyEffectiveMap for the parallel current->new chain.
     const isQtyMode = !c.untracked && !c.dose && !!c.loggedOn;
+    // Computed up front (not just inside the isQtyMode display branch below)
+    // since has-order also needs it: a negative Price is neither a withdraw
+    // nor a deposit (see calcQtyCard), so on-hand doesn't actually change --
+    // that state should read as "no order" (just the on-hand figure, no
+    // arrow/new-total), not a same-to-same "50 -> 50".
+    const rq = isQtyMode ? calcQtyCard(c) : null;
     const tier = hasInv ? SB.tier(r.curDaysLeft, thr()) : 'ok';
     const compact = board.classList.contains('layout-compact');
     const df = compact ? SB.fmtDateShort : SB.fmtDate;
@@ -3047,7 +3053,7 @@
     cardEl.classList.toggle('tier-reorder', hasInv && tier === 'ok' && r.curDaysLeft > 0 && r.curDaysLeft <= 45);
     cardEl.classList.toggle('tier-soon', tier === 'soon');
     cardEl.classList.toggle('tier-out', tier === 'out');
-    cardEl.classList.toggle('has-order', (hasInv || isQtyMode) && r.hasOrder);
+    cardEl.classList.toggle('has-order', (hasInv && r.hasOrder) || (isQtyMode && rq.delta !== 0));
     cardEl.classList.toggle('counted', !!c.includeInMonthTotal);
     // No Inventory match (no projected run-out to show) -- hide the whole
     // Supply/run-out column instead of a "—, —" placeholder, freeing up the
@@ -3151,9 +3157,9 @@
       // Specifically-annotated usage: no assumed daily rate, so the Supply
       // column shows a plain on-hand count instead of a day-based
       // projection -- "[current] -> [new]" (see calcQtyCard). A blank Price
-      // means the entry withdraws (uses up) units; any populated price
-      // (even "0") means it deposits (restocks) units.
-      const rq = calcQtyCard(c);
+      // means the entry withdraws (uses up) units; a Price >= 0 means it
+      // deposits (restocks) units; a negative Price does neither, so only
+      // the on-hand figure shows (no arrow/new-total -- see has-order above).
       doseTag.style.display = 'none';
       if (doseArrowEl) doseArrowEl.style.display = 'none';
       setUnits(curDl, rq.onHand);
@@ -3263,7 +3269,7 @@
     // withdraw or deposit, on-hand carries through unchanged.
     const delta = isBlank ? -qty : (isDeposit ? qty * bottle : 0);
     const newOnHand = onHand + delta;
-    return { onHand, newOnHand, isDeposit };
+    return { onHand, newOnHand, isDeposit, delta };
   }
 
   function applyEffectiveMap() {
