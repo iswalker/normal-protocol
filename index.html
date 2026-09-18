@@ -3257,8 +3257,12 @@
     const onHand = c._effectiveQty !== undefined ? c._effectiveQty : (Number(c.amount) || 0);
     const qty = Number(c.qty) || 0;
     const bottle = Number(c.bottleSize) || 0;
-    const isDeposit = c.price !== '' && c.price !== null && c.price !== undefined;
-    const newOnHand = onHand + (isDeposit ? qty * bottle : -qty);
+    const isBlank = c.price === '' || c.price === null || c.price === undefined;
+    const isDeposit = !isBlank && Number(c.price) >= 0;
+    // A negative price is neither trigger (not blank, not >= 0) -- doesn't
+    // withdraw or deposit, on-hand carries through unchanged.
+    const delta = isBlank ? -qty : (isDeposit ? qty * bottle : 0);
+    const newOnHand = onHand + delta;
     return { onHand, newOnHand, isDeposit };
   }
 
