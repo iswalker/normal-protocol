@@ -2981,6 +2981,18 @@
     n.textContent = Math.max(0, Math.round(val));
     if (u) u.textContent = 'd';
   }
+  // The "new" side of the Supply projection shows how many days an order
+  // ADDS ("+60d, 11/3") rather than the resulting total ("73d, 11/3") --
+  // the run-out date already says where that total lands, so the absolute
+  // day count next to it was redundant with the current side's own number
+  // just a subtraction away; the delta is the part someone actually reads
+  // this for (how much did ordering just buy).
+  function setDaysDelta(span, delta) {
+    const n = span.querySelector('.n'), u = span.querySelector('.u');
+    const rounded = Math.round(delta);
+    n.textContent = (rounded > 0 ? '+' : '') + rounded;
+    if (u) u.textContent = 'd';
+  }
 
   function updateCard(cardEl) {
     const id = cardEl.dataset.id;
@@ -3063,7 +3075,7 @@
       // instead of only in the Inventory table's own Dose/Day column.
       doseTag.textContent = fmtCompact(+r.dose.toFixed(1)) + 'x';
       setDays(curDl, r.curDaysLeft);
-      setDays(nxtDl, r.newDaysLeft);
+      setDaysDelta(nxtDl, r.newDaysLeft - r.curDaysLeft);
       curRo.textContent = df(r.curRunOut);
       nxtRo.textContent = df(r.newRunOut);
       cardEl.querySelector('.onhand').textContent = SB.fmtUnits(r.onHand);
