@@ -2689,7 +2689,10 @@
     items.forEach((it) => {
       cardData[it.order_item_id] = {
         name: it.supplement,
-        price: it.price_per_bottle || 0,
+        // A genuinely blank Price (quantity mode's withdraw trigger, see
+        // calcQtyCard) must round-trip as '' rather than collapsing to 0 --
+        // the server preserves NULL for this reason, so only a real 0 stays 0.
+        price: it.price_per_bottle == null ? '' : it.price_per_bottle,
         qty: it.order_qty_bottles || 0,
         includeInMonthTotal: !!it.include_in_total,
         untracked: !!it.untracked,
@@ -3015,6 +3018,14 @@
     n.textContent = (rounded > 0 ? '+' : '') + rounded;
     if (u) u.textContent = 'd';
   }
+  // Quantity-mode's "current"/"new" figures are plain unit counts (e.g. "2"),
+  // not a day count, so no "d" suffix and no rounding-up-to-zero clamp --
+  // going negative is meaningful here (over-withdrawn) unlike a day count.
+  function setUnits(span, val) {
+    const n = span.querySelector('.n'), u = span.querySelector('.u');
+    n.textContent = SB.fmtUnits(val);
+    if (u) u.textContent = '';
+  }
 
   function updateCard(cardEl) {
     const id = cardEl.dataset.id;
@@ -3024,6 +3035,11 @@
     const r = calcForCard(c);
     // run-out needs Inventory (dose/amount/loggedOn); absent until the sheet is wired
     const hasInv = !c.untracked && !!c.dose && !!c.loggedOn;
+    // Quantity mode: matched to an Inventory item with no Dose/Day set (e.g. an
+    // infrequent item like Nutrition Visits, tracked by specific withdraw/deposit
+    // entries rather than an assumed daily-use rate) -- see calcQtyCard and the
+    // isQtyMode branch of applyEffectiveMap for the parallel current->new chain.
+    const isQtyMode = !c.untracked && !c.dose && !!c.loggedOn;
     const tier = hasInv ? SB.tier(r.curDaysLeft, thr()) : 'ok';
     const compact = board.classList.contains('layout-compact');
     const df = compact ? SB.fmtDateShort : SB.fmtDate;
@@ -3031,14 +3047,16 @@
     cardEl.classList.toggle('tier-reorder', hasInv && tier === 'ok' && r.curDaysLeft > 0 && r.curDaysLeft <= 45);
     cardEl.classList.toggle('tier-soon', tier === 'soon');
     cardEl.classList.toggle('tier-out', tier === 'out');
-    cardEl.classList.toggle('has-order', hasInv && r.hasOrder);
+    cardEl.classList.toggle('has-order', (hasInv || isQtyMode) && r.hasOrder);
     cardEl.classList.toggle('counted', !!c.includeInMonthTotal);
     // No Inventory match (no projected run-out to show) -- hide the whole
     // Supply/run-out column instead of a "—, —" placeholder, freeing up the
     // space for everything else. Driven off the same live hasInv check that
     // fills the column when there IS data, so it also covers a recurring
     // ghost whose source has no match (ghosts never carry card--untracked).
-    cardEl.classList.toggle('no-proj', !hasInv);
+    // Quantity-mode cards get their own (non-empty) rendering below, so they
+    // stay out of this hidden state too.
+    cardEl.classList.toggle('no-proj', !hasInv && !isQtyMode);
     // Keeps the price-sign toggle's active/teal state correct regardless of
     // how the price actually changed -- typed "-", clicked the circle, or
     // propagated down from a recurring root -- since all of those end up
@@ -3051,8 +3069,11 @@
 
     const proj = cardEl.querySelector('.proj');
     const doseTag = proj.querySelector('.dose-tag');
+    const doseArrowEl = proj.querySelector('.dose-arrow');
     const curDl = proj.querySelector('.cur .dl');
     const nxtDl = proj.querySelector('.nxt .dl');
+    const curSep = proj.querySelector('.cur .sep');
+    const nxtSep = proj.querySelector('.nxt .sep');
     const curRo = proj.querySelector('.cur .ro');
     const nxtRo = proj.querySelector('.nxt .ro');
     const autoshipDateEl = proj.querySelector('.autoship-date');
@@ -3101,9 +3122,15 @@
       // dose that's obviously wrong (0x, or way off from what's actually
       // being taken) is visible for a sanity check right on the card
       // instead of only in the Inventory table's own Dose/Day column.
+      doseTag.style.display = '';
+      if (doseArrowEl) doseArrowEl.style.display = '';
       doseTag.textContent = fmtCompact(+r.dose.toFixed(1)) + 'x';
       setDays(curDl, r.curDaysLeft);
       setDaysDelta(nxtDl, r.newDaysLeft - r.curDaysLeft);
+      if (curSep) curSep.style.display = '';
+      if (nxtSep) nxtSep.style.display = '';
+      curRo.style.display = '';
+      nxtRo.style.display = '';
       curRo.textContent = df(r.curRunOut);
       nxtRo.textContent = df(r.newRunOut);
       cardEl.querySelector('.onhand').textContent = SB.fmtUnits(r.onHand);
@@ -3120,9 +3147,44 @@
       }
       if (autoshipArrowEl) autoshipArrowEl.style.display = autoshipDate ? '' : 'none';
       if (autoshipBadgeEl) autoshipBadgeEl.style.display = 'none';
+    } else if (isQtyMode) {
+      // Specifically-annotated usage: no assumed daily rate, so the Supply
+      // column shows a plain on-hand count instead of a day-based
+      // projection -- "[current] -> [new]" (see calcQtyCard). A blank Price
+      // means the entry withdraws (uses up) units; any populated price
+      // (even "0") means it deposits (restocks) units.
+      const rq = calcQtyCard(c);
+      doseTag.style.display = 'none';
+      if (doseArrowEl) doseArrowEl.style.display = 'none';
+      setUnits(curDl, rq.onHand);
+      setUnits(nxtDl, rq.newOnHand);
+      if (curSep) curSep.style.display = 'none';
+      if (nxtSep) nxtSep.style.display = 'none';
+      curRo.style.display = 'none';
+      nxtRo.style.display = 'none';
+      cardEl.querySelector('.onhand').textContent = SB.fmtUnits(rq.onHand);
+      cardEl.querySelector('.dose').textContent = '—';
+      cardEl.querySelector('.bsize').textContent = String(Number(c.bottleSize) || 0);
+      if (autoshipDateEl) {
+        autoshipDateEl.style.display = autoshipDate ? '' : 'none';
+        autoshipDateEl.classList.toggle('has-link', !!(autoshipDate && rootData.autoshipLink));
+        autoshipDateEl.title = autoshipDate && rootData.autoshipLink ? 'Open Autoship link' : '';
+        if (autoshipDate) {
+          autoshipDateEl.textContent = df(autoshipDate);
+          autoshipDateEl.dataset.link = rootData.autoshipLink || '';
+        }
+      }
+      if (autoshipArrowEl) autoshipArrowEl.style.display = autoshipDate ? '' : 'none';
+      if (autoshipBadgeEl) autoshipBadgeEl.style.display = 'none';
     } else {
+      doseTag.style.display = '';
+      if (doseArrowEl) doseArrowEl.style.display = '';
       doseTag.textContent = '—';
       [curDl, nxtDl].forEach(dash);
+      if (curSep) curSep.style.display = '';
+      if (nxtSep) nxtSep.style.display = '';
+      curRo.style.display = '';
+      nxtRo.style.display = '';
       curRo.textContent = '—';
       nxtRo.textContent = '—';
       cardEl.querySelector('.onhand').textContent = '—';
@@ -3185,8 +3247,24 @@
     return SB.calc(c);
   }
 
+  // Quantity-mode counterpart to calcForCard, for Inventory-matched cards with
+  // no Dose/Day set (see updateCard's isQtyMode branch). Tracks a plain
+  // on-hand unit count rather than a daily-use projection -- an occurrence
+  // either withdraws `qty` units (blank Price) or deposits `qty * bottleSize`
+  // units (any populated Price, including "0") -- chained across a recurring
+  // series via c._effectiveQty the same way calcForCard chains _effectiveDays.
+  function calcQtyCard(c) {
+    const onHand = c._effectiveQty !== undefined ? c._effectiveQty : (Number(c.amount) || 0);
+    const qty = Number(c.qty) || 0;
+    const bottle = Number(c.bottleSize) || 0;
+    const isDeposit = c.price !== '' && c.price !== null && c.price !== undefined;
+    const newOnHand = onHand + (isDeposit ? qty * bottle : -qty);
+    return { onHand, newOnHand, isDeposit };
+  }
+
   function applyEffectiveMap() {
     const seen = new Map(); // supplement name (lowercase) → { daysLeft, runOut } after last order
+    const seenQty = new Map(); // supplement name (lowercase) → on-hand units after last withdraw/deposit (quantity mode)
     // Walk the cards in the order the orders actually happen, which is not the order
     // they are shown in: render() sinks locked shipments to the bottom of their month,
     // but an order already placed precedes anything still staged in that same month.
@@ -3204,8 +3282,23 @@
       const c = STATE.cardData[cardEl.dataset.id];
       if (!c) return;
       const hasInv = !c.untracked && !!c.dose && !!c.loggedOn;
-      if (!hasInv) { delete c._effectiveDays; return; }
+      const isQtyMode = !c.untracked && !c.dose && !!c.loggedOn;
+      if (!hasInv) delete c._effectiveDays;
+      if (!isQtyMode) delete c._effectiveQty;
+      if (!hasInv && !isQtyMode) return;
       const key = c.name.trim().toLowerCase();
+      if (isQtyMode) {
+        // No lock/pre-order distinction here (unlike the dose-based branch
+        // below) -- quantity mode just chains the running on-hand count
+        // straight through in calendar order.
+        if (seenQty.has(key)) c._effectiveQty = seenQty.get(key);
+        else delete c._effectiveQty;
+        if (c.includeInMonthTotal) {
+          const rq = calcQtyCard(c);
+          seenQty.set(key, rq.newOnHand);
+        }
+        return;
+      }
       const inLocked = !!cardEl.closest('.shipment.is-locked');
       if (inLocked) {
         // Show pre-order run-out — don't absorb carry-forward; use _preOrderAmount in calcForCard.
@@ -3904,7 +3997,11 @@
       block_position: blockPos,
       item_position: itemPos,
       supplement: c.name || '',
-      price_per_bottle: Number(c.price) || 0,
+      // Send null (not 0) for a genuinely blank Price so it round-trips as
+      // blank on reload instead of silently becoming a real "0" -- would
+      // otherwise flip a quantity-mode withdraw into a deposit after a
+      // refresh (see calcQtyCard / fromApi).
+      price_per_bottle: (c.price === '' || c.price == null) ? null : (Number(c.price) || 0),
       order_qty_bottles: Number(c.qty) || 0,
       include_in_total: c.includeInMonthTotal ? 1 : 0,
       untracked: c.untracked ? 1 : 0,
@@ -4257,7 +4354,12 @@
       // the field itself gets finalized/replaced with the plain number on
       // blur, below, same as the Inventory On Hand field.
       if (t.value.trim() === '') {
-        c[field] = 0;
+        // A genuinely blank Price is its own meaningful state (the
+        // withdraw/deposit trigger for quantity-mode Inventory items --
+        // see calcQtyCard/isQtyMode), not the same as "0". Qty has no such
+        // distinction and still collapses to 0. Matches the same rule
+        // applied again on blur, below.
+        c[field] = field === 'price' ? '' : 0;
       } else {
         const val = evalExpr(t.value);
         // Negative is intentionally allowed for Price -- credit/discount/
@@ -5132,17 +5234,26 @@
       const c = STATE.cardData[id];
       const field = t.dataset.field;
       const raw = t.value.trim();
-      let val = raw === '' ? 0 : evalExpr(raw);
-      // Invalid expression (e.g. left mid-typing, like "12*") -- fall back to
-      // whatever was last successfully committed rather than zeroing it out.
-      // Negative is only rejected for Qty (ordering a negative number of
-      // bottles doesn't mean anything) -- Price allows it intentionally, for
-      // credit/discount/coupon lines with a negative amount.
-      if (isNaN(val) || !isFinite(val) || (field === 'qty' && val < 0)) val = c[field] || 0;
-      // Round to cents/hundredths to clean up floating-point noise (e.g.
-      // 12.5*2 -> 25.000000000000004) -- not to a whole number. Qty is
-      // legitimately fractional (half a bottle, .5), same as Price.
-      val = Math.round(val * 100) / 100;
+      let val;
+      // A genuinely blank Price is its own meaningful state -- not the same
+      // as "0" -- since it's the withdraw/deposit trigger for quantity-mode
+      // Inventory items (see calcQtyCard/isQtyMode). Qty has no such
+      // distinction, so it still collapses an empty field to 0 as before.
+      if (raw === '' && field === 'price') {
+        val = '';
+      } else {
+        val = raw === '' ? 0 : evalExpr(raw);
+        // Invalid expression (e.g. left mid-typing, like "12*") -- fall back to
+        // whatever was last successfully committed rather than zeroing it out.
+        // Negative is only rejected for Qty (ordering a negative number of
+        // bottles doesn't mean anything) -- Price allows it intentionally, for
+        // credit/discount/coupon lines with a negative amount.
+        if (isNaN(val) || !isFinite(val) || (field === 'qty' && val < 0)) val = c[field] || 0;
+        // Round to cents/hundredths to clean up floating-point noise (e.g.
+        // 12.5*2 -> 25.000000000000004) -- not to a whole number. Qty is
+        // legitimately fractional (half a bottle, .5), same as Price.
+        val = Math.round(val * 100) / 100;
+      }
       c[field] = val;
       t.value = field === 'qty' ? fmtCompact(val) : String(val);
       if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, field, val);
@@ -5640,7 +5751,11 @@
       let matched = 0;
       Object.values(STATE.cardData).forEach((c) => {
         const inv = invMap[String(c.name || '').trim().toLowerCase()];
-        if (inv && inv.dose > 0 && inv.loggedOn) {
+        // No dose > 0 requirement here — a matched item with no Dose/Day set
+        // still needs its amount/bottleSize/loggedOn synced on, just routed
+        // through quantity mode (see updateCard's isQtyMode) instead of the
+        // normal daily-use projection.
+        if (inv && inv.loggedOn) {
           c.amount = inv.amount;
           c.bottleSize = inv.bottleSize;
           c.dose = inv.dose;

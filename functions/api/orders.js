@@ -92,7 +92,10 @@ export async function onRequestGet({ env }) {
     const items = rowsFrom(results[2]).map((it) => ({
       order_item_id: it.order_item_id, order_id: it.order_id, month: it.month,
       block_position: num(it.block_position), item_position: num(it.item_position),
-      supplement: it.supplement, price_per_bottle: num(it.price_per_bottle) || 0,
+      supplement: it.supplement,
+      // Preserve a genuinely NULL price as null (not 0) -- the board uses a
+      // blank Price as a meaningful signal (quantity mode's withdraw trigger).
+      price_per_bottle: it.price_per_bottle == null ? null : num(it.price_per_bottle),
       order_qty_bottles: num(it.order_qty_bottles) || 0,
       include_in_total: num(it.include_in_total) ? true : false, notes: it.notes,
       untracked: num(it.untracked) ? true : false,
