@@ -6749,7 +6749,11 @@
     let committed = false;
     const save = async () => {
       if (committed) return; committed = true;
-      let parsed = evalExpr(inp.value);
+      // An empty field means "clear this" (0), not an invalid expression --
+      // evalExpr('') returns NaN same as genuinely bad input like "12*",
+      // which used to make clearing the field silently revert instead of
+      // actually saving 0.
+      let parsed = inp.value.trim() === '' ? 0 : evalExpr(inp.value);
       if (isNaN(parsed) || parsed < 0) { renderInventory(); return; }
       // Caps mode allows one decimal place -- round here so what's actually
       // saved matches what fmtOnHand will ever display back (bottles mode
@@ -6800,7 +6804,11 @@
     let committed = false;
     const save = async () => {
       if (committed) return; committed = true;
-      const parsed = evalExpr(inp.value);
+      // An empty field means "clear this" (0), not an invalid expression --
+      // evalExpr('') returns NaN same as genuinely bad input, which used to
+      // make clearing Dose/Day or Bottle Size silently revert to the old
+      // value instead of actually saving 0/"—".
+      const parsed = inp.value.trim() === '' ? 0 : evalExpr(inp.value);
       if (isNaN(parsed) || parsed < 0) { cell.textContent = curVal || '—'; return; }
 
       // When dose changes, snapshot current on-hand as a new Reset dated today so the
