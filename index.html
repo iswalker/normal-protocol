@@ -4115,7 +4115,14 @@
     // The clone uses position:fixed so overflow:hidden on .shipment doesn't clip it;
     // we additionally toggle .sb-dragging on body during drag to un-clip if needed.
     forceFallback: true, fallbackOnBody: false, swapThreshold: 0.65,
-    onStart: () => document.body.classList.add('sb-dragging'),
+    onStart: () => {
+      document.body.classList.add('sb-dragging');
+      // Belt-and-suspenders alongside the sb-dragging check in the grip's
+      // own mouseover handler below: kill any dwell-open already ticking
+      // and close a menu that happened to be open the instant a drag starts.
+      cancelGripHoverOpen();
+      closeCtxMenu();
+    },
     onEnd: (evt) => {
       document.body.classList.remove('sb-dragging');
       reconcileMovedRecurring(evt.item);
@@ -4258,6 +4265,13 @@
   }
   if (HOVER_CAPABLE) {
     board.addEventListener('mouseover', (e) => {
+      // A drag in progress (forceFallback's pointer-driven clone -- see
+      // COMMON above) moves the real cursor over the board like any other
+      // mouse movement, so it fires genuine mouseover on whatever grip
+      // happens to be underneath, even though nothing was actually hovered
+      // on purpose. Suppress the dwell-open outright while dragging so the
+      // menu can never appear mid-drag no matter whose handle it passes over.
+      if (document.body.classList.contains('sb-dragging')) return;
       const grip = e.target.closest('.card-grip, .ship-grip');
       if (!grip) return;
       const isShip = grip.classList.contains('ship-grip');
@@ -4268,6 +4282,10 @@
       cancelGripHoverOpen();
       gripHoverOpenTimer = setTimeout(() => {
         gripHoverOpenTimer = null;
+        // Re-check at fire time too: a drag can start (mousedown on a
+        // different grip, with no mouseout in between to cancel this timer)
+        // after the dwell was already scheduled but before it fires.
+        if (document.body.classList.contains('sb-dragging')) return;
         const r = grip.getBoundingClientRect();
         const openFn = isShip ? openShipCtxMenu : openCardCtxMenu;
         openFn(ownerEl, { clientX: r.left, clientY: r.bottom + 4 });
