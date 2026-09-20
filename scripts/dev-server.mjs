@@ -30,7 +30,7 @@ const ROUTES = {
   '/api/inventory':       { GET: inventory.onRequestGet, POST: inventory.onRequestPost, PATCH: inventory.onRequestPatch, DELETE: inventory.onRequestDelete },
   '/api/inventory-items': { GET: inventoryItems.onRequestGet, POST: inventoryItems.onRequestPost, PATCH: inventoryItems.onRequestPatch, DELETE: inventoryItems.onRequestDelete },
   '/api/meta':            { GET: meta.onRequestGet },
-  '/api/board-settings':  { GET: boardSettings.onRequestGet, PUT: boardSettings.onRequestPut },
+  '/api/board-settings':  { GET: boardSettings.onRequestGet, PUT: boardSettings.onRequestPut, POST: boardSettings.onRequestPost },
 };
 
 async function readBody(req) {

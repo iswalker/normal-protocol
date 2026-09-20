@@ -540,6 +540,15 @@
        already claims all of .brand's width -- same "two elements, one CSS
        switch" pattern as .mob-inv-fab vs the desktop Scan button. */
     .pinned-merchants { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+    /* Desktop specifically: grow wider (pushing the month-strip further
+       right) instead of wrapping chips onto a second line within whatever
+       width it happened to already have -- .brand is sized to its content
+       now (flex:0 1 auto, see above), not fighting anything else for a
+       fixed share of the header, so there's real room for this to expand
+       into. Mobile keeps wrapping (its own row already spans full width,
+       see .pinned-merchants-mobile below, so wrapping there is the space-
+       constrained, correct behavior instead). */
+    #pinned-merchants-desktop { flex-wrap: nowrap; overflow-x: auto; }
     .pinned-merchants.is-empty { display: none; }
     .pinned-merchants-mobile { display: none; }
     /* .pin-chip itself reuses .inv-scan-btn/.inv-scan-btn.active as-is (same
@@ -2743,12 +2752,46 @@
     renderPinnedMerchants();
     initPinnedMerchantsSortable();
   }
-  function savePinnedMerchants() {
-    fetch('/api/board-settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pinnedMerchants }),
-    }).catch((e) => console.error('Board: /api/board-settings save failed —', e.message));
+  // Reorder-only save (see initPinnedMerchantsSortable's onEnd) -- pin/unpin
+  // go through onRequestPost's atomic SQL UPDATE instead (see
+  // pinMerchant/unpinMerchant below) specifically so two of those landing
+  // close together from different devices can never clobber each other.
+  // Reordering is inherently a "replace the whole order" operation and
+  // can't be expressed that way, so this narrows the race instead of
+  // closing it outright: fetch the CURRENT server list right before
+  // writing (not whatever this tab loaded at boot, which could be stale by
+  // now) and reconcile the drag's new order against it -- known entries
+  // keep the order just dragged into them, anything pinned/unpinned
+  // elsewhere since this tab last knew is preserved/dropped correctly
+  // rather than being silently resurrected or wiped by an overwrite built
+  // from a stale copy. A concurrent write landing in the narrow gap between
+  // this fetch and this PUT can still lose a race, but that's just a
+  // reorder being redone, not a pinned merchant disappearing.
+  async function saveReorderedMerchants(draggedOrder) {
+    let serverList = draggedOrder;
+    try {
+      const res = await fetch('/api/board-settings');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.pinnedMerchants)) serverList = data.pinnedMerchants;
+      }
+    } catch (e) {
+      console.error('Board: /api/board-settings re-fetch before reorder failed —', e.message);
+    }
+    const known = draggedOrder.filter((n) => serverList.some((s) => s.toLowerCase() === n.toLowerCase()));
+    const unknown = serverList.filter((s) => !draggedOrder.some((n) => n.toLowerCase() === s.toLowerCase()));
+    const merged = [...known, ...unknown];
+    pinnedMerchants = merged;
+    renderPinnedMerchants();
+    try {
+      await fetch('/api/board-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinnedMerchants: merged }),
+      });
+    } catch (e) {
+      console.error('Board: /api/board-settings reorder save failed —', e.message);
+    }
   }
   // The active pinned-merchant filter, if any -- stacks with globalSearchQuery
   // (shipment name AND text, both must match) but mutually exclusive with
@@ -4935,24 +4978,54 @@
       cont.classList.toggle('is-empty', pinnedMerchants.length === 0);
     });
   }
+  // Both go through onRequestPost's atomic SQL UPDATE (add/remove computed
+  // server-side against whatever the row's current value is, not a value
+  // this client read earlier and might be holding stale) -- see
+  // board-settings.js. Applied optimistically here for immediate feedback,
+  // then reconciled against the server's own returned list once the
+  // request resolves, so a stale local copy can't linger.
   function pinMerchant(name) {
     const trimmed = (name || '').trim();
     if (!trimmed) return;
     if (!pinnedMerchants.some((m) => m.toLowerCase() === trimmed.toLowerCase())) {
-      pinnedMerchants.push(trimmed);
-      savePinnedMerchants();
+      pinnedMerchants = [...pinnedMerchants, trimmed];
+      renderPinnedMerchants();
     }
-    renderPinnedMerchants();
+    postPinAction('pin', trimmed);
   }
   function unpinMerchant(name) {
     const lname = (name || '').toLowerCase();
     pinnedMerchants = pinnedMerchants.filter((m) => m.toLowerCase() !== lname);
-    savePinnedMerchants();
     if (globalPinnedMerchant.toLowerCase() === lname) {
       globalPinnedMerchant = '';
       refreshBoardFilters();
     } else {
       renderPinnedMerchants();
+    }
+    postPinAction('unpin', name);
+  }
+  async function postPinAction(action, name) {
+    try {
+      const res = await fetch('/api/board-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, name }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (!Array.isArray(data.pinnedMerchants)) return;
+      pinnedMerchants = data.pinnedMerchants;
+      // The active filter might reference a merchant this action (or a
+      // concurrent one from elsewhere) just removed -- drop it rather than
+      // keep filtering by a chip that no longer exists.
+      if (globalPinnedMerchant && !pinnedMerchants.some((m) => m.toLowerCase() === globalPinnedMerchant.toLowerCase())) {
+        globalPinnedMerchant = '';
+        refreshBoardFilters();
+      } else {
+        renderPinnedMerchants();
+      }
+    } catch (e) {
+      console.error(`Board: /api/board-settings ${action} failed —`, e.message);
     }
   }
   // Shared by initGlobalSearch (text input/Autoship button) and the pin-chip
@@ -5062,9 +5135,8 @@
         animation: 150,
         draggable: '.pin-chip',
         onEnd: () => {
-          pinnedMerchants = [...cont.querySelectorAll('.pin-chip')].map((c) => c.dataset.merchant);
-          savePinnedMerchants();
-          renderPinnedMerchants();
+          const draggedOrder = [...cont.querySelectorAll('.pin-chip')].map((c) => c.dataset.merchant);
+          saveReorderedMerchants(draggedOrder);
         },
       });
     });
