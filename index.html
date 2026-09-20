@@ -55,18 +55,26 @@
       z-index: 50;
     }
 
-    /* flex:0 (not 1 1 0) -- sized to its own content (logo/Inventory/
-       Autoship/search/pinned chips) instead of growing to fill the header's
-       leftover space. It used to grow, which is what was actually pushing
-       .month-strip far to the right regardless of the month-strip's own
-       padding-left: with .brand claiming all the slack, .month-strip just
-       started wherever .brand's much-wider-than-its-content box happened to
-       end. .month-strip is the one that grows now instead (see below), so
-       it starts immediately after .brand's real content and packs its own
-       cells flex-start (the default) into that space -- .header-right stays
-       pinned to the row's right edge either way, just via month-strip
-       growing into the gap in front of it instead of .brand doing so. */
-    .brand { display: flex; align-items: center; gap: 10px; flex: 0 1 auto; min-width: 0; }
+    /* flex:0 0 auto (no grow, no shrink) -- sized to its own content
+       (logo/Inventory/Autoship/search/pinned chips) instead of growing to
+       fill the header's leftover space. It used to grow, which is what was
+       actually pushing .month-strip far to the right regardless of the
+       month-strip's own padding-left: with .brand claiming all the slack,
+       .month-strip just started wherever .brand's much-wider-than-its-
+       content box happened to end. .month-strip is the one that grows now
+       instead (see below), so it starts immediately after .brand's real
+       content and packs its own cells flex-start (the default) into that
+       space -- .header-right stays pinned to the row's right edge either
+       way, just via month-strip growing into the gap in front of it
+       instead of .brand doing so.
+       flex-shrink also off (not just grow): .brand used to shrink too, and
+       once pinned-merchant chips joined it, a header with more months than
+       fit at full width squeezed .brand below its own content's real size,
+       clipping the last pin chip behind #pinned-merchants-desktop's own
+       overflow-x:auto scrollbar. .month-strip already has overflow:hidden
+       and can shrink to nothing without breaking anything, so it's the
+       right (only) place for the squeeze to land when space is tight. */
+    .brand { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; min-width: 0; }
     /* Same border color/weight as #tab-board .month (1px #dde3e4); radius
        backed off from the month's own 14px to 5px, since 14px on this
        26px box clamped to a full circle. overflow:hidden clips the square
@@ -548,7 +556,7 @@
        into. Mobile keeps wrapping (its own row already spans full width,
        see .pinned-merchants-mobile below, so wrapping there is the space-
        constrained, correct behavior instead). */
-    #pinned-merchants-desktop { flex-wrap: nowrap; overflow-x: auto; }
+    #pinned-merchants-desktop { flex-wrap: nowrap; flex: none; }
     .pinned-merchants.is-empty { display: none; }
     .pinned-merchants-mobile { display: none; }
     /* .pin-chip itself reuses .inv-scan-btn/.inv-scan-btn.active as-is (same
