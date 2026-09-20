@@ -2552,7 +2552,19 @@
   }
 
   function onOutsideClick(e) {
-    if (popEl && !popEl.contains(e.target)) closeDatePicker();
+    if (!popEl) return;
+    if (popEl.contains(e.target)) return;
+    // A click landing back on the anchor that opened this isn't "elsewhere"
+    // -- most notably, mobile's hold-to-open (see initAutoshipHoldToOpen)
+    // opens the calendar mid-gesture, before the finger has even lifted, so
+    // whatever click-like event the browser ends up synthesizing once it
+    // does still targets the anchor itself; without this check that read as
+    // an immediate "outside click" and closed the calendar right back.
+    // Desktop already gets the equivalent behavior for free (hovering back
+    // onto the date re-cancels its own close timer -- see
+    // cancelAutoshipCalClose in the mouseover handler).
+    if (state && e.target === state.anchorEl) return;
+    closeDatePicker();
   }
   function onEscape(e) {
     if (e.key === 'Escape') closeDatePicker();
@@ -2630,7 +2642,7 @@
     popEl.className = 'autoship-cal';
     document.body.appendChild(popEl);
     const d = value ? new Date(value + 'T00:00:00') : new Date();
-    state = { year: d.getFullYear(), month: d.getMonth(), selectedISO: value || null, onPick };
+    state = { year: d.getFullYear(), month: d.getMonth(), selectedISO: value || null, onPick, anchorEl };
     render();
     const r = anchorEl.getBoundingClientRect();
     popEl.style.left = r.left + 'px';
