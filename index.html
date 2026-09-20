@@ -1024,9 +1024,15 @@
     #tab-board .month-notes:empty::before { content: attr(placeholder); opacity: .35; pointer-events: none; }
     #tab-board .month-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; white-space: normal; }
     #tab-board .month-notes--desktop { flex: 1 1 0; min-width: 0; }
-    /* Cards/shipments hidden by an active month search */
+    /* Cards/shipments hidden by an active month search -- a whole .month
+       column too, once none of its own content matches (see
+       applyMonthSearch), so a search doesn't leave the board cluttered with
+       empty columns the way an unmatched shipment/card would otherwise be
+       left visible-but-empty. The month-strip's own $ summary at the top
+       is a separate element (not a .month) and stays put either way. */
     #tab-board .month-list > .search-hide,
-    #tab-board .ship-body > .search-hide { display: none !important; }
+    #tab-board .ship-body > .search-hide,
+    #tab-board .board > .month.search-hide { display: none !important; }
 
     /* ── shipment block ── */
     #tab-board .shipment {
@@ -5054,6 +5060,16 @@
         node.classList.toggle('search-hide', !itemMatches);
       }
     });
+    // Hide the whole month column once a search/filter is active and none
+    // of its own content matches -- same idea as an unmatched shipment/card
+    // already being hidden, just one level up, so a search doesn't leave a
+    // string of empty columns cluttering the board. A shipment that matches
+    // purely by its own name (kept visible even with zero matching items --
+    // see shipMatches above) still counts as "has content" here, same as it
+    // does everywhere else. Dividers are never real content.
+    const anyVisible = [...list.children].some((node) =>
+      !node.classList.contains('card--divider') && !node.classList.contains('search-hide'));
+    monthEl.classList.toggle('search-hide', filterActive && !anyVisible);
     recalcTotalsFor(monthEl);
   }
 
