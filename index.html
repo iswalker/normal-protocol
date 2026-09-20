@@ -265,7 +265,17 @@
     .inv-search-clear:hover { color: var(--ink); background: var(--accent-tint, rgba(121,189,177,0.15)); }
 
     /* right side of the top bar — board-only Inventory controls */
-    .header-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
+    /* flex:0 (not 1 1 0) -- its content (Scan/settings) is fixed-size and
+       never needed a growing share; it used to get one anyway just by
+       matching .brand's ratio, splitting the header's leftover space evenly
+       between them regardless of whether .brand's own content could use
+       more. That silently capped .brand's real width to whatever was left
+       after .month-strip, which stayed fine while .brand only held the
+       logo/Inventory button/search box, but started overflowing once the
+       Autoship button and pinned-merchant chips joined it there. Leaving
+       .header-right at its natural width now hands ALL the header's slack
+       to .brand instead. */
+    .header-right { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
     .board-controls { display: flex; align-items: center; gap: 10px; padding-left: 7px; }
     .inv-controls { display: none; align-items: center; gap: 10px; }
     .inv-controls.show { display: flex; }
@@ -518,7 +528,7 @@
        below the month-strip on narrow screens where the search box itself
        already claims all of .brand's width -- same "two elements, one CSS
        switch" pattern as .mob-inv-fab vs the desktop Scan button. */
-    .pinned-merchants { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .pinned-merchants { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
     .pinned-merchants.is-empty { display: none; }
     .pinned-merchants-mobile { display: none; }
     /* .pin-chip itself reuses .inv-scan-btn/.inv-scan-btn.active as-is (same
@@ -740,7 +750,7 @@
 
     /* ── Mobile header ── */
     @media (max-width: 680px) {
-      header { padding: 6px 10px 8px; gap: 4px; min-height: 52px; flex-wrap: wrap; row-gap: 6px; }
+      header { padding: 6px 10px 3px; gap: 4px; min-height: 52px; flex-wrap: wrap; row-gap: 6px; }
 
       /* Logo only — no text */
       .brand h1 { display: none; }
@@ -750,7 +760,7 @@
          the search box is the one flexible item absorbing whatever's left
          before .header-right's own fixed-size Scan/gear. */
       .brand { flex: 1 1 0; order: 1; min-width: 0; }
-      .brand img, .brand .inv-search-link { flex: none; }
+      .brand img, .brand .inv-search-link, .brand #inv-autoship-btn { flex: none; }
       .header-right { flex: 0 0 auto; order: 2; }
 
       /* Brought back as its own full-width row under the primary toolbar,
@@ -781,7 +791,7 @@
       #pinned-merchants-desktop { display: none !important; }
       .pinned-merchants-mobile:not(.is-empty) {
         display: flex; order: 4; flex: 1 1 100%; justify-content: center;
-        padding-bottom: 2px;
+        padding: 2px 0px;
       }
       /* Same fixed 6px radius as desktop, but these cells are noticeably
          shorter here (smaller font, tighter padding) so that radius eats a
@@ -2097,6 +2107,7 @@
       <svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg>
       <span class="inv-search-label">Inventory</span>
     </button>
+    <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin:0px 2px 2px -1px"><path d="m1087.2 506.4c-12-12-31.199-12-43.199 0l-144 146.4c0-16.801 2.3984-31.199 2.3984-45.602 0-225.6-182.4-408-408-408-225.6 0-408 182.4-408 408 0 225.6 182.4 408 408 408 108 0 211.2-43.199 288-120 12-12 12-31.199 0-43.199s-31.199-12-43.199 0c-64.801 64.801-153.6 100.8-244.8 100.8-192 0-348-156-348-348s156-348 348-348 348 156 348 348c0 16.801-2.3984 38.398-2.3984 60l-163.2-160.8c-12-12-31.199-12-43.199 0s-12 31.199 0 43.199l208.8 208.8c2.3984 0 2.3984 2.3984 4.8008 2.3984 2.3984 0 4.8008 2.3984 4.8008 2.3984h4.8008 2.3984 2.3984 4.8008 4.8008c2.3984 0 4.8008-2.3984 4.8008-2.3984 2.3984 0 2.3984-2.3984 4.8008-2.3984h2.3984l204-204c12-14.395 12-33.598 0-45.598z"/></svg> Autoship</button>
     <div class="global-search-box" data-act="focus-global-search" title="Search every month">
       <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
       <input type="text" id="global-search-input" class="global-search-input" placeholder="Search…" autocomplete="off" />
@@ -2108,7 +2119,6 @@
   <div class="pinned-merchants pinned-merchants-mobile is-empty" id="pinned-merchants-mobile"></div>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
-      <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin:0px 2px 2px -1px"><path d="m1087.2 506.4c-12-12-31.199-12-43.199 0l-144 146.4c0-16.801 2.3984-31.199 2.3984-45.602 0-225.6-182.4-408-408-408-225.6 0-408 182.4-408 408 0 225.6 182.4 408 408 408 108 0 211.2-43.199 288-120 12-12 12-31.199 0-43.199s-31.199-12-43.199 0c-64.801 64.801-153.6 100.8-244.8 100.8-192 0-348-156-348-348s156-348 348-348 348 156 348 348c0 16.801-2.3984 38.398-2.3984 60l-163.2-160.8c-12-12-31.199-12-43.199 0s-12 31.199 0 43.199l208.8 208.8c2.3984 0 2.3984 2.3984 4.8008 2.3984 2.3984 0 4.8008 2.3984 4.8008 2.3984h4.8008 2.3984 2.3984 4.8008 4.8008c2.3984 0 4.8008-2.3984 4.8008-2.3984 2.3984 0 2.3984-2.3984 4.8008-2.3984h2.3984l204-204c12-14.395 12-33.598 0-45.598z"/></svg> Autoship</button>
       <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
       <div class="settings-wrap">
         <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
@@ -4875,10 +4885,12 @@
   }
   // Activating a pinned-merchant chip (mouse click, or a quick tap -- these
   // chips aren't inside a Sortable drag handle, so unlike card/ship grips
-  // they need no tap-reconstruction workaround). Toggles: clicking the
-  // already-active chip turns it back off. Turns off the Autoship filter,
-  // same mutual-exclusivity rule text search already follows -- a pinned
-  // merchant stacks with text, not with the Autoship-link filter.
+  // they need no tap-reconstruction workaround; Sortable's own small-move
+  // threshold is what keeps a plain click from being swallowed by the drag
+  // reordering set up below). Toggles: clicking the already-active chip
+  // turns it back off. Turns off the Autoship filter, same mutual-
+  // exclusivity rule text search already follows -- a pinned merchant
+  // stacks with text, not with the Autoship-link filter.
   document.addEventListener('click', (e) => {
     const chip = e.target.closest('.pin-chip');
     if (!chip) return;
@@ -4888,19 +4900,31 @@
     globalAutoshipOnly = false;
     refreshBoardFilters();
   });
-  // Desktop: right-click a chip to unpin it outright (no confirmation --
-  // pinning it again is one context-menu click away).
+  // Right-click (desktop) / hold (mobile) a chip -- opens a small menu with
+  // "Unpin Merchant" rather than unpinning outright, same pattern as the
+  // card/shipment grip menus (buildCtxMenu, defined further below --
+  // referencing it here is fine since it's only ever called once this
+  // whole file has finished parsing).
+  function openPinChipCtxMenu(chip, e) {
+    e.preventDefault?.();
+    closeCtxMenu();
+    const name = chip.dataset.merchant;
+    buildCtxMenu(e, (menu, ctxItem) => {
+      menu.appendChild(ctxItem('Unpin Merchant', false, () => unpinMerchant(name), 'ctx-danger'));
+    });
+    activeCtxMenu._forBtn = chip;
+  }
   document.addEventListener('contextmenu', (e) => {
     const chip = e.target.closest('.pin-chip');
     if (!chip) return;
     e.preventDefault();
-    unpinMerchant(chip.dataset.merchant);
+    openPinChipCtxMenu(chip, e);
   });
-  // Mobile: hold a chip to unpin (no native right-click). Same manual
-  // touchstart/move/end tracking as initGripTapContextMenu/
+  // Mobile: hold a chip to open the same menu (no native right-click). Same
+  // manual touchstart/move/end tracking as initGripTapContextMenu/
   // initAutoshipHoldToOpen, on `document` rather than `board` since these
   // chips live in the header, outside #board.
-  (function initPinChipHoldToUnpin() {
+  (function initPinChipHoldToOpen() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
     const MOVE_TOLERANCE = 10;
     const HOLD_MS = 450;
@@ -4916,7 +4940,7 @@
       holdTimer = setTimeout(() => {
         holdTimer = null;
         if (moved || !target) return;
-        unpinMerchant(target.dataset.merchant);
+        openPinChipCtxMenu(target, { clientX: startX, clientY: startY });
         fired = true;
       }, HOLD_MS);
     }, { passive: true });
@@ -4934,6 +4958,33 @@
       target = null; fired = false;
     }, { passive: false });
   })();
+
+  // Drag-and-drop reorder of the pinned-merchant chips -- defaults to pin
+  // order (pinnedMerchants is appended to in that order already), Sortable
+  // just lets it be changed by hand afterward. Both containers get their
+  // own instance since either could be the one visible depending on
+  // viewport (see the .pinned-merchants CSS); onEnd reads back whichever
+  // one was actually dragged and re-renders both so they stay in sync.
+  // _pmSortableInit guards against double-initializing on a container that
+  // already has an instance -- renderPinnedMerchants() only rewrites
+  // innerHTML, it never replaces the container elements themselves, so one
+  // `new Sortable(...)` per container for the page's lifetime is enough.
+  function initPinnedMerchantsSortable() {
+    ['pinned-merchants-desktop', 'pinned-merchants-mobile'].forEach((id) => {
+      const cont = document.getElementById(id);
+      if (!cont || cont._pmSortableInit) return;
+      cont._pmSortableInit = true;
+      new Sortable(cont, {
+        animation: 150,
+        draggable: '.pin-chip',
+        onEnd: () => {
+          pinnedMerchants = [...cont.querySelectorAll('.pin-chip')].map((c) => c.dataset.merchant);
+          savePinnedMerchants();
+          renderPinnedMerchants();
+        },
+      });
+    });
+  }
 
   // Filters one month's shipments/loose cards to `q` (case-insensitive), or
   // -- when globalAutoshipOnly is set instead -- to items with a saved
@@ -5965,6 +6016,7 @@
       cleanupAndPromote();
       render();
       renderPinnedMerchants(); // show whatever's already pinned from a previous session
+      initPinnedMerchantsSortable();
       // Backfill every recurring series into any newly-visible months (e.g.
       // after extending the rolling window) -- syncGhosts is otherwise only
       // re-run when a card's "ev N mo" value is edited, so a plain page load
