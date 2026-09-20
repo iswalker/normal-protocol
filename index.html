@@ -509,6 +509,21 @@
     }
     .global-search-clear:hover { color: var(--ink); background: var(--accent-tint, rgba(121,189,177,0.15)); }
 
+    /* "Pin Merchant" (shipment context menu) chips -- a persistent one-click
+       shortcut for "Shipment name = X", stacking (AND) with the text search
+       box rather than replacing it the way the Autoship filter does. Two
+       containers with identical content (see renderPinnedMerchants):
+       #pinned-merchants-desktop sits right after the search box so it reads
+       as an extension of it, #pinned-merchants-mobile is a separate row
+       below the month-strip on narrow screens where the search box itself
+       already claims all of .brand's width -- same "two elements, one CSS
+       switch" pattern as .mob-inv-fab vs the desktop Scan button. */
+    .pinned-merchants { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .pinned-merchants.is-empty { display: none; }
+    .pinned-merchants-mobile { display: none; }
+    /* .pin-chip itself reuses .inv-scan-btn/.inv-scan-btn.active as-is (same
+       "same styling as Autoship" look) -- no extra rules needed here. */
+
     .scan-overlay {
       position: fixed; inset: 0; background: rgba(23,26,28,0.55); z-index: 300;
       display: flex; align-items: center; justify-content: center;
@@ -757,6 +772,17 @@
          start behind the left edge instead of showing it flush. Left-align
          instead whenever there's something to actually scroll to. */
       .month-strip.is-overflowing { justify-content: flex-start; }
+      /* Desktop's pinned-merchant chips live inside .brand next to the
+         search box, which has no room to spare here (search box itself is
+         .brand's one flexible child at this width -- see .global-search-box
+         below). #pinned-merchants-mobile is the standalone equivalent,
+         same idea as #month-strip above: order:4 + flex-basis:100% forces
+         it onto its own row, right after the month-strip's row. */
+      #pinned-merchants-desktop { display: none !important; }
+      .pinned-merchants-mobile:not(.is-empty) {
+        display: flex; order: 4; flex: 1 1 100%; justify-content: center;
+        padding-bottom: 2px;
+      }
       /* Same fixed 6px radius as desktop, but these cells are noticeably
          shorter here (smaller font, tighter padding) so that radius eats a
          much bigger share of the divider's height -- enough to read as a
@@ -1101,6 +1127,12 @@
        an item with a date but no link yet; the underline stays link-only
        so it still reads as "click to navigate" specifically. */
     #tab-board .proj .autoship-date { color: var(--soon); font-weight: 700; font-size: 12px; white-space: nowrap; cursor: pointer; }
+    /* Holding either one on touch opens the calendar picker (see
+       initAutoshipHoldToOpen) instead of the browser's own text-selection
+       callout -- suppress that callout so the hold gesture reads cleanly. */
+    #tab-board .autoship-date, #tab-board .autoship-date-badge {
+      -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    }
     #tab-board .proj .autoship-date.has-link:hover { text-decoration: underline; }
     /* Same date, same styling, for a card with no run-out projection to
        embed it in (.proj is display:none there -- see .no-proj .proj
@@ -1109,7 +1141,7 @@
        name/status badges instead. */
     #tab-board .card-top .autoship-date-badge {
       color: var(--soon); font-weight: 700; font-size: 11px; white-space: nowrap; flex: none;
-      cursor: pointer;
+      cursor: pointer; padding-right: 21px;
     }
     #tab-board .card-top .autoship-date-badge.has-link:hover { text-decoration: underline; }
     #tab-board .proj .nxt { opacity: 0; width: 0; overflow: hidden; color: var(--accent-deep); }
@@ -2070,8 +2102,10 @@
       <input type="text" id="global-search-input" class="global-search-input" placeholder="Search…" autocomplete="off" />
       <button class="global-search-clear" id="global-search-clear" title="Clear search" style="display:none">×</button>
     </div>
+    <div class="pinned-merchants is-empty" id="pinned-merchants-desktop"></div>
   </div>
   <div class="month-strip" id="month-strip"></div>
+  <div class="pinned-merchants pinned-merchants-mobile is-empty" id="pinned-merchants-mobile"></div>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
       <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin:0px 2px 2px -1px"><path d="m1087.2 506.4c-12-12-31.199-12-43.199 0l-144 146.4c0-16.801 2.3984-31.199 2.3984-45.602 0-225.6-182.4-408-408-408-225.6 0-408 182.4-408 408 0 225.6 182.4 408 408 408 108 0 211.2-43.199 288-120 12-12 12-31.199 0-43.199s-31.199-12-43.199 0c-64.801 64.801-153.6 100.8-244.8 100.8-192 0-348-156-348-348s156-348 348-348 348 156 348 348c0 16.801-2.3984 38.398-2.3984 60l-163.2-160.8c-12-12-31.199-12-43.199 0s-12 31.199 0 43.199l208.8 208.8c2.3984 0 2.3984 2.3984 4.8008 2.3984 2.3984 0 4.8008 2.3984 4.8008 2.3984h4.8008 2.3984 2.3984 4.8008 4.8008c2.3984 0 4.8008-2.3984 4.8008-2.3984 2.3984 0 2.3984-2.3984 4.8008-2.3984h2.3984l204-204c12-14.395 12-33.598 0-45.598z"/></svg> Autoship</button>
@@ -2649,6 +2683,24 @@
   // matching everything with a saved Autoship link instead of a text query.
   // Mutually exclusive with it: turning one on clears the other.
   let globalAutoshipOnly = false;
+  // Shipment names pinned via "Pin Merchant" (context menu) -- persisted
+  // locally since it's a per-device UI convenience, not board data. The
+  // pinned SET survives reloads; which one (if any) is actively selected as
+  // a filter does not, same as globalSearchQuery/globalAutoshipOnly above.
+  const PINNED_MERCHANTS_KEY = 'np_pinned_merchants';
+  let pinnedMerchants = (() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(PINNED_MERCHANTS_KEY) || '[]');
+      return Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [];
+    } catch { return []; }
+  })();
+  function savePinnedMerchants() {
+    try { localStorage.setItem(PINNED_MERCHANTS_KEY, JSON.stringify(pinnedMerchants)); } catch {}
+  }
+  // The active pinned-merchant filter, if any -- stacks with globalSearchQuery
+  // (shipment name AND text, both must match) but mutually exclusive with
+  // globalAutoshipOnly, same as text search is (see initGlobalSearch).
+  let globalPinnedMerchant = '';
   let INV_MAP = {};     // lowercased-name -> Inventory row (set by applyInventory)
   let SPENT_BY_MONTH = {}; // month name -> $ amount (set by YNAB sync)
   let PROJ_MAP = {};    // lowercased-name -> { daysLeft, runOut } after all board orders
@@ -3348,7 +3400,7 @@
       // unrelated to which items happen to match the query) would mix an
       // always-present figure into a number that's supposed to represent
       // only the filtered results.
-      const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly;
+      const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || !!globalPinnedMerchant;
       let plannedItems = 0, maxItems = 0, itemCount = 0;
 
       [...list.children].forEach((node) => {
@@ -4326,21 +4378,30 @@
     cancelAutoshipCalClose();
     autoshipCalCloseTimer = setTimeout(() => { window.closeDatePicker?.(); autoshipCalCloseTimer = null; }, 200);
   }
+  // Shared by the hover-open below (mouse/trackpad) and the hold-to-open
+  // touch handler further down -- same guard either way: no date shown, no
+  // card, or a ghost (whose date is a computed projection of the root's,
+  // not a value of its own to edit -- see openAutoshipModal's isGhostCard).
+  function openAutoshipCalFor(dateEl) {
+    if (!dateEl || dateEl.style.display === 'none') return false;
+    const cardEl = dateEl.closest('.card[data-id]');
+    if (!cardEl) return false;
+    const cId = cardEl.dataset.id;
+    const cData = STATE.cardData[cId];
+    if (!cData || (!!cData.ghostOf && !isCardLocked(cId))) return false;
+    window.openDatePicker({
+      anchorEl: dateEl,
+      value: cData.autoshipNextDate || null,
+      onPick: (iso) => window.SupplementBoard.saveCardAutoship(cId, cData.autoshipLink || '', iso),
+    });
+    return true;
+  }
   if (HOVER_CAPABLE) {
     board.addEventListener('mouseover', (e) => {
       const dateEl = e.target.closest('.autoship-date, .autoship-date-badge');
-      if (!dateEl || dateEl.style.display === 'none') return;
-      const cardEl = dateEl.closest('.card[data-id]');
-      if (!cardEl) return;
-      const cId = cardEl.dataset.id;
-      const cData = STATE.cardData[cId];
-      if (!cData || (!!cData.ghostOf && !isCardLocked(cId))) return;
+      if (!dateEl) return;
       cancelAutoshipCalClose();
-      window.openDatePicker({
-        anchorEl: dateEl,
-        value: cData.autoshipNextDate || null,
-        onPick: (iso) => window.SupplementBoard.saveCardAutoship(cId, cData.autoshipLink || '', iso),
-      });
+      openAutoshipCalFor(dateEl);
     });
     board.addEventListener('mouseout', (e) => {
       const dateEl = e.target.closest('.autoship-date, .autoship-date-badge');
@@ -4357,6 +4418,51 @@
       scheduleAutoshipCalClose();
     });
   }
+
+  // ── mobile: HOLD the Autoship date/badge to open the calendar picker --
+  // touch has no hover to stand in for the desktop behavior above, and a
+  // plain tap there already means "follow the link" (see initTapFix's SEL
+  // list further down). Without this, holding just triggered the browser's
+  // own text-selection callout (now suppressed via user-select:none in CSS)
+  // and did nothing useful. Registered before initTapFix below so that when
+  // a hold actually opens the calendar, stopImmediatePropagation() on its
+  // touchend reliably beats initTapFix's own touchend listener on the same
+  // element and swallows the tap-click that would otherwise also follow the
+  // link right after. Mirrors initGripTapContextMenu's manual touch
+  // tracking, plus a hold-duration timer on top (tap alone isn't "hold").
+  (function initAutoshipHoldToOpen() {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    const MOVE_TOLERANCE = 10;
+    const HOLD_MS = 450;
+    let startX = 0, startY = 0, target = null, moved = false, fired = false, holdTimer = null;
+    function cancelHold() { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } }
+    board.addEventListener('touchstart', (e) => {
+      target = e.target.closest('.autoship-date, .autoship-date-badge') || null;
+      moved = false; fired = false;
+      cancelHold();
+      if (!target) return;
+      const t = e.touches[0];
+      startX = t.clientX; startY = t.clientY;
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        if (moved || !target) return;
+        fired = openAutoshipCalFor(target);
+      }, HOLD_MS);
+    }, { passive: true });
+    board.addEventListener('touchmove', (e) => {
+      if (!target) return;
+      const t = e.touches[0];
+      if (Math.abs(t.clientX - startX) > MOVE_TOLERANCE || Math.abs(t.clientY - startY) > MOVE_TOLERANCE) {
+        moved = true;
+        cancelHold();
+      }
+    }, { passive: true });
+    board.addEventListener('touchend', (e) => {
+      cancelHold();
+      if (fired) { e.stopImmediatePropagation(); e.preventDefault(); }
+      target = null; fired = false;
+    }, { passive: false });
+  })();
 
   // ── editing ──
   board.addEventListener('input', (e) => {
@@ -4483,7 +4589,7 @@
     // While searching, monthSpent drops the unattributable YNAB base but
     // keeps matching "Ordered" shipment totals -- a completed order that
     // matches the search still counts toward Spent.
-    const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly;
+    const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || !!globalPinnedMerchant;
     const spent = monthSpent(monthEl, searchActive);
     const spentEl = monthEl.querySelector('.spentv');
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
@@ -4715,6 +4821,120 @@
     }
   });
 
+  // ── "Pin Merchant" chips (see openShipCtxMenu's context-menu item) --
+  //    persistent one-click shortcuts for "Shipment name = X", rendered
+  //    into both #pinned-merchants-desktop and #pinned-merchants-mobile
+  //    (identical content, CSS picks which one is actually visible -- see
+  //    the .pinned-merchants rules). pinMerchant is called from the
+  //    shipment context menu, well below this point in the file; declared
+  //    at this outer scope (not nested in initGlobalSearch) so that call
+  //    site can reach it. ──
+  function renderPinnedMerchants() {
+    const html = pinnedMerchants.map((name) => {
+      const active = globalPinnedMerchant.toLowerCase() === name.toLowerCase();
+      return `<button type="button" class="inv-scan-btn pin-chip${active ? ' active' : ''}" data-merchant="${esc(name).replace(/"/g, '&quot;')}" title="Filter to &quot;${esc(name)}&quot; shipments — right-click/hold to unpin">${esc(name)}</button>`;
+    }).join('');
+    ['pinned-merchants-desktop', 'pinned-merchants-mobile'].forEach((id) => {
+      const cont = document.getElementById(id);
+      if (!cont) return;
+      cont.innerHTML = html;
+      cont.classList.toggle('is-empty', pinnedMerchants.length === 0);
+    });
+  }
+  function pinMerchant(name) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return;
+    if (!pinnedMerchants.some((m) => m.toLowerCase() === trimmed.toLowerCase())) {
+      pinnedMerchants.push(trimmed);
+      savePinnedMerchants();
+    }
+    renderPinnedMerchants();
+  }
+  function unpinMerchant(name) {
+    const lname = (name || '').toLowerCase();
+    pinnedMerchants = pinnedMerchants.filter((m) => m.toLowerCase() !== lname);
+    savePinnedMerchants();
+    if (globalPinnedMerchant.toLowerCase() === lname) {
+      globalPinnedMerchant = '';
+      refreshBoardFilters();
+    } else {
+      renderPinnedMerchants();
+    }
+  }
+  // Shared by initGlobalSearch (text input/Autoship button) and the pin-chip
+  // click/unpin handlers below -- the one place that re-applies every active
+  // filter (text, Autoship, pinned merchant) to the board and syncs the
+  // header controls' own on/off appearance to match.
+  function refreshBoardFilters() {
+    const clearBtn = document.getElementById('global-search-clear');
+    const autoshipBtn = document.getElementById('inv-autoship-btn');
+    board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
+    if (clearBtn) clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly || globalPinnedMerchant) ? 'block' : 'none';
+    autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
+    renderPinnedMerchants();
+  }
+  // Activating a pinned-merchant chip (mouse click, or a quick tap -- these
+  // chips aren't inside a Sortable drag handle, so unlike card/ship grips
+  // they need no tap-reconstruction workaround). Toggles: clicking the
+  // already-active chip turns it back off. Turns off the Autoship filter,
+  // same mutual-exclusivity rule text search already follows -- a pinned
+  // merchant stacks with text, not with the Autoship-link filter.
+  document.addEventListener('click', (e) => {
+    const chip = e.target.closest('.pin-chip');
+    if (!chip) return;
+    const name = chip.dataset.merchant;
+    const isActive = globalPinnedMerchant.toLowerCase() === name.toLowerCase();
+    globalPinnedMerchant = isActive ? '' : name;
+    globalAutoshipOnly = false;
+    refreshBoardFilters();
+  });
+  // Desktop: right-click a chip to unpin it outright (no confirmation --
+  // pinning it again is one context-menu click away).
+  document.addEventListener('contextmenu', (e) => {
+    const chip = e.target.closest('.pin-chip');
+    if (!chip) return;
+    e.preventDefault();
+    unpinMerchant(chip.dataset.merchant);
+  });
+  // Mobile: hold a chip to unpin (no native right-click). Same manual
+  // touchstart/move/end tracking as initGripTapContextMenu/
+  // initAutoshipHoldToOpen, on `document` rather than `board` since these
+  // chips live in the header, outside #board.
+  (function initPinChipHoldToUnpin() {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    const MOVE_TOLERANCE = 10;
+    const HOLD_MS = 450;
+    let startX = 0, startY = 0, target = null, moved = false, fired = false, holdTimer = null;
+    function cancelHold() { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } }
+    document.addEventListener('touchstart', (e) => {
+      target = e.target.closest('.pin-chip') || null;
+      moved = false; fired = false;
+      cancelHold();
+      if (!target) return;
+      const t = e.touches[0];
+      startX = t.clientX; startY = t.clientY;
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        if (moved || !target) return;
+        unpinMerchant(target.dataset.merchant);
+        fired = true;
+      }, HOLD_MS);
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (!target) return;
+      const t = e.touches[0];
+      if (Math.abs(t.clientX - startX) > MOVE_TOLERANCE || Math.abs(t.clientY - startY) > MOVE_TOLERANCE) {
+        moved = true;
+        cancelHold();
+      }
+    }, { passive: true });
+    document.addEventListener('touchend', (e) => {
+      cancelHold();
+      if (fired) { e.stopImmediatePropagation(); e.preventDefault(); }
+      target = null; fired = false;
+    }, { passive: false });
+  })();
+
   // Filters one month's shipments/loose cards to `q` (case-insensitive), or
   // -- when globalAutoshipOnly is set instead -- to items with a saved
   // Autoship link, ignoring `q` entirely. Same shape either way: a shipment
@@ -4737,12 +4957,28 @@
   }
   function applyMonthSearch(monthEl, q) {
     const lq = q.trim().toLowerCase();
-    const filterActive = globalAutoshipOnly || !!lq;
+    // A pinned merchant stacks with the text query (AND), not an alternate
+    // mode like globalAutoshipOnly is -- "Shipment name = Amazon (pinned)
+    // AND find text NMN anywhere". It only ever narrows to a shipment's own
+    // exact name (case-insensitive), matching what was actually pinned.
+    const merchantActive = !!globalPinnedMerchant;
+    const lpm = globalPinnedMerchant.toLowerCase();
+    const filterActive = globalAutoshipOnly || !!lq || merchantActive;
     const list = monthEl.querySelector('.month-list');
     if (!list) return;
     [...list.children].forEach((node) => {
       if (node.classList.contains('shipment')) {
         const shipName = (node.querySelector('.ship-name')?.textContent || '').toLowerCase();
+        // A pinned merchant is shipment-scoped -- a mismatch hides this
+        // shipment and every item in it outright, regardless of any item's
+        // own text match, before the usual text/autoship matching even runs.
+        if (merchantActive && shipName !== lpm) {
+          node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
+            cardEl.classList.add('search-hide');
+          });
+          node.classList.add('search-hide');
+          return;
+        }
         const shipMatches = globalAutoshipOnly ? false : (!lq || shipName.includes(lq));
         let anyItemMatches = false;
         node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
@@ -4758,6 +4994,9 @@
           node.classList.toggle('search-hide', filterActive);
           return;
         }
+        // A loose card belongs to no merchant, so it can never satisfy a
+        // pinned-merchant filter -- hide it outright while one is active.
+        if (merchantActive) { node.classList.add('search-hide'); return; }
         const itemName = node.querySelector('.card-name')?.textContent || '';
         const itemMatches = !filterActive
           || (globalAutoshipOnly ? cardMatchesAutoshipFilter(node) : itemName.toLowerCase().includes(lq));
@@ -4778,13 +5017,10 @@
     const box = document.querySelector('.global-search-box');
     const autoshipBtn = document.getElementById('inv-autoship-btn');
     if (!input || !box) return;
-    function refresh() {
-      board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
-      clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly) ? 'block' : 'none';
-      autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
-    }
+    const refresh = refreshBoardFilters;
     // Any text-search entry point turns the Autoship filter back off -- the
-    // two are mutually exclusive views over the same board.
+    // two are mutually exclusive views over the same board. A pinned
+    // merchant is left alone here -- it stacks with text, doesn't reset it.
     function applyToAllMonths(q) {
       globalSearchQuery = q;
       globalAutoshipOnly = false;
@@ -4798,8 +5034,12 @@
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { input.value = ''; applyToAllMonths(''); input.blur(); }
     });
+    // The × is the one "clear everything" affordance -- text, Autoship, and
+    // an active pinned-merchant selection all reset together (the pinned
+    // chips themselves stay pinned, just deselected -- see globalPinnedMerchant).
     clearBtn.addEventListener('click', () => {
       input.value = '';
+      globalPinnedMerchant = '';
       applyToAllMonths('');
       input.blur();
     });
@@ -4810,6 +5050,7 @@
       globalAutoshipOnly = !globalAutoshipOnly;
       input.value = '';
       globalSearchQuery = '';
+      globalPinnedMerchant = '';
       refresh();
     });
     // "/" jumps to the search box, same convention as GitHub/Slack/etc --
@@ -5700,6 +5941,12 @@
         shipEl.after(el(cardHTML(did)));
         recalcAll(); persist();
       }));
+      menu.appendChild(ctxDivider());
+      // Reads the live DOM name, same source applyMonthSearch itself
+      // compares against, so what gets pinned is exactly what the filter
+      // will match later, not a possibly-stale STATE.shipmentData copy.
+      const shipNameNow = (shipEl.querySelector('.ship-name')?.textContent || '').trim();
+      menu.appendChild(ctxItem('Pin Merchant', !shipNameNow, () => pinMerchant(shipNameNow)));
     });
     activeCtxMenu._forBtn = shipEl;
   }
@@ -5717,6 +5964,7 @@
       // Promote any ghosts whose source is already in an ordered shipment (from DB reload)
       cleanupAndPromote();
       render();
+      renderPinnedMerchants(); // show whatever's already pinned from a previous session
       // Backfill every recurring series into any newly-visible months (e.g.
       // after extending the rolling window) -- syncGhosts is otherwise only
       // re-run when a card's "ev N mo" value is edited, so a plain page load
