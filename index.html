@@ -2823,6 +2823,25 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // window.open(url, '_blank') opens a genuinely new tab in a normal
+  // browser tab, but inside a standalone/installed PWA (no tab strip to put
+  // a new tab in) it tends to just navigate the SAME standalone window
+  // instead of escaping out to the system browser. A real <a target="_blank"
+  // rel="noopener noreferrer"> click, synthesized and fired the same way,
+  // is the more broadly-honored way to ask for an actual new-tab/external
+  // navigation -- not a hard guarantee (iOS in particular can still choose
+  // to keep it inside the standalone shell depending on OS version), but
+  // the best available client-side approach without a native wrapper.
+  function openInSystemBrowser(url) {
+    const linkEl = document.createElement('a');
+    linkEl.href = url;
+    linkEl.target = '_blank';
+    linkEl.rel = 'noopener noreferrer';
+    document.body.appendChild(linkEl);
+    linkEl.click();
+    linkEl.remove();
+  }
+
   // Same math-expression evaluator the Inventory tab's On Hand field uses,
   // so typing "12*3" into Price or Qty works the same way there too.
   function evalExpr(s) {
@@ -4435,6 +4454,16 @@
     });
   }
 
+  // Set by initAutoshipHoldToOpen right when a hold actually opens the
+  // calendar, checked (and cleared) by the 'open-autoship-link' action
+  // handler above -- the authoritative place this gets suppressed,
+  // regardless of exactly how the click that follows a touchend reaches it
+  // (the browser's own synthetic click, initTapFix's manual reconstruction,
+  // or anything else). A bare timeout is also set as a safety net in case
+  // no click ever arrives to consume it, so a stray hold can't leave it
+  // stuck suppressing some LATER, unrelated tap on the link.
+  let suppressAutoshipLinkClick = false;
+
   // ── mobile: HOLD the Autoship date/badge to open the calendar picker --
   // touch has no hover to stand in for the desktop behavior above, and a
   // plain tap there already means "follow the link" (see initTapFix's SEL
@@ -4444,8 +4473,8 @@
   // a hold actually opens the calendar, stopImmediatePropagation() on its
   // touchend reliably beats initTapFix's own touchend listener on the same
   // element and swallows the tap-click that would otherwise also follow the
-  // link right after. Mirrors initGripTapContextMenu's manual touch
-  // tracking, plus a hold-duration timer on top (tap alone isn't "hold").
+  // link right after -- suppressAutoshipLinkClick above is the second,
+  // authoritative layer of that same protection.
   (function initAutoshipHoldToOpen() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
     const MOVE_TOLERANCE = 10;
@@ -4463,6 +4492,10 @@
         holdTimer = null;
         if (moved || !target) return;
         fired = openAutoshipCalFor(target);
+        if (fired) {
+          suppressAutoshipLinkClick = true;
+          setTimeout(() => { suppressAutoshipLinkClick = false; }, 1000);
+        }
       }, HOLD_MS);
     }, { passive: true });
     board.addEventListener('touchmove', (e) => {
@@ -4797,8 +4830,16 @@
       return;
     }
     if (a === 'open-autoship-link') {
+      // A hold that just opened the calendar (see initAutoshipHoldToOpen)
+      // sets this so the click that follows right behind it on touchend --
+      // whether the browser's own synthetic click or initTapFix's manual
+      // reconstruction -- doesn't ALSO follow the link out from under the
+      // calendar that was just opened. Checked here, not just suppressed at
+      // the touch layer, so it holds regardless of exactly how that click
+      // ends up reaching this handler.
+      if (suppressAutoshipLinkClick) { suppressAutoshipLinkClick = false; return; }
       const link = act.dataset.link;
-      if (link) window.open(link, '_blank', 'noopener');
+      if (link) openInSystemBrowser(link);
       return;
     }
     if (a === 'toggle-notes') {
