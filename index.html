@@ -2711,19 +2711,33 @@
   // matching everything with a saved Autoship link instead of a text query.
   // Mutually exclusive with it: turning one on clears the other.
   let globalAutoshipOnly = false;
-  // Shipment names pinned via "Pin Merchant" (context menu) -- persisted
-  // locally since it's a per-device UI convenience, not board data. The
-  // pinned SET survives reloads; which one (if any) is actively selected as
-  // a filter does not, same as globalSearchQuery/globalAutoshipOnly above.
-  const PINNED_MERCHANTS_KEY = 'np_pinned_merchants';
-  let pinnedMerchants = (() => {
+  // Shipment names pinned via "Pin Merchant" (context menu) -- synced via
+  // /api/board-settings (Turso) so a merchant pinned on one device shows up
+  // on every other one, not just localStorage on whichever device pinned it.
+  // The pinned SET survives reloads; which one (if any) is actively selected
+  // as a filter does not, same as globalSearchQuery/globalAutoshipOnly above
+  // (that part stays purely client-side -- no reason to sync a live filter
+  // selection across devices).
+  let pinnedMerchants = [];
+  async function loadPinnedMerchants() {
     try {
-      const v = JSON.parse(localStorage.getItem(PINNED_MERCHANTS_KEY) || '[]');
-      return Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [];
-    } catch { return []; }
-  })();
+      const res = await fetch('/api/board-settings');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      pinnedMerchants = Array.isArray(data.pinnedMerchants) ? data.pinnedMerchants.filter((s) => typeof s === 'string') : [];
+    } catch (e) {
+      console.error('Board: /api/board-settings load failed —', e.message);
+      pinnedMerchants = [];
+    }
+    renderPinnedMerchants();
+    initPinnedMerchantsSortable();
+  }
   function savePinnedMerchants() {
-    try { localStorage.setItem(PINNED_MERCHANTS_KEY, JSON.stringify(pinnedMerchants)); } catch {}
+    fetch('/api/board-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinnedMerchants }),
+    }).catch((e) => console.error('Board: /api/board-settings save failed —', e.message));
   }
   // The active pinned-merchant filter, if any -- stacks with globalSearchQuery
   // (shipment name AND text, both must match) but mutually exclusive with
@@ -6080,12 +6094,13 @@
     async init() {
       if (booted) return;
       booted = true;
-      await load();
+      // Independent fetches (board data vs. pinned-merchant chips) -- run
+      // them in parallel rather than making the pinned chips wait behind
+      // the (much larger) board load.
+      await Promise.all([load(), loadPinnedMerchants()]);
       // Promote any ghosts whose source is already in an ordered shipment (from DB reload)
       cleanupAndPromote();
       render();
-      renderPinnedMerchants(); // show whatever's already pinned from a previous session
-      initPinnedMerchantsSortable();
       // Backfill every recurring series into any newly-visible months (e.g.
       // after extending the rolling window) -- syncGhosts is otherwise only
       // re-run when a card's "ev N mo" value is edited, so a plain page load
