@@ -55,7 +55,18 @@
       z-index: 50;
     }
 
-    .brand { display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 0; }
+    /* flex:0 (not 1 1 0) -- sized to its own content (logo/Inventory/
+       Autoship/search/pinned chips) instead of growing to fill the header's
+       leftover space. It used to grow, which is what was actually pushing
+       .month-strip far to the right regardless of the month-strip's own
+       padding-left: with .brand claiming all the slack, .month-strip just
+       started wherever .brand's much-wider-than-its-content box happened to
+       end. .month-strip is the one that grows now instead (see below), so
+       it starts immediately after .brand's real content and packs its own
+       cells flex-start (the default) into that space -- .header-right stays
+       pinned to the row's right edge either way, just via month-strip
+       growing into the gap in front of it instead of .brand doing so. */
+    .brand { display: flex; align-items: center; gap: 10px; flex: 0 1 auto; min-width: 0; }
     /* Same border color/weight as #tab-board .month (1px #dde3e4); radius
        backed off from the month's own 14px to 5px, since 14px on this
        26px box clamped to a full circle. overflow:hidden clips the square
@@ -168,8 +179,8 @@
 
     /* ── Per-month Planned totals across the middle of the top bar ── */
     .month-strip {
-      flex: 0 1 auto; display: flex; align-items: center;
-      gap: 0; min-width: 0; overflow: hidden; padding-left: 70px;
+      flex: 1 1 auto; display: flex; align-items: center;
+      gap: 0; min-width: 0; overflow: hidden;
     }
     .month-strip-cell {
       position: relative; display: flex; flex-direction: column; align-items: center;
