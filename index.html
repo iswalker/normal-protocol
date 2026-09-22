@@ -2641,7 +2641,12 @@
         ${cells.map((c) => {
           const cls = ['autoship-cal-day'];
           if (c.muted) cls.push('is-muted');
-          if (c.iso === selectedISO) cls.push('is-selected');
+          // c.iso is null for muted filler days -- without the truthiness
+          // check, "no date selected yet" (selectedISO also null) made
+          // every filler day match via null === null and light up teal
+          // (is-selected) instead of reading as the disabled/muted grey
+          // they're actually styled for.
+          if (c.iso && c.iso === selectedISO) cls.push('is-selected');
           if (c.iso === todayISO) cls.push('is-today');
           return `<button type="button" class="${cls.join(' ')}"${c.iso ? ` data-iso="${c.iso}"` : ' disabled'}>${c.day}</button>`;
         }).join('')}
