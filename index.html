@@ -3773,6 +3773,48 @@
     oldEl.replaceWith(el(cardHTML(id)));
   }
 
+  // Renaming a shipment that holds a recurring series' root (or one of its
+  // ghosts) used to only ever change that one month -- syncGhosts links a
+  // ghost card back to its root via c.ghostOf, but a ghost SHIPMENT is only
+  // ever matched/created by NAME (see findShipByName above), with no
+  // persistent link back to the shipment that spawned it. So editing the
+  // name later had nothing to propagate through: every other month's
+  // shipment just kept whatever name it was originally created with. Walks
+  // the OTHER direction instead -- from the cards actually inside the
+  // shipment that was just renamed, out to every card in the same
+  // recurring series (root + every ghost, via ghostOf), and renames
+  // WHATEVER shipment each of those currently lives in to match. Runs on
+  // blur (see the .ship-name case in the contenteditable blur handler),
+  // not on every keystroke, so mid-type edits don't flicker other months'
+  // DOM while still being typed.
+  function propagateShipmentRename(shipNameEl) {
+    const shipEl = shipNameEl.closest('.shipment');
+    if (!shipEl) return;
+    const newName = shipNameEl.textContent;
+    const rootIds = new Set();
+    shipEl.querySelectorAll(':scope .ship-body > .card[data-id]').forEach((cardEl) => {
+      const c = STATE.cardData[cardEl.dataset.id];
+      if (!c) return;
+      if (c.ghostOf) rootIds.add(c.ghostOf);
+      else if (c.recur) rootIds.add(cardEl.dataset.id);
+    });
+    if (!rootIds.size) return; // nothing recurring in here -- no other month to touch
+    const renamedShipIds = new Set([shipEl.dataset.id]);
+    Object.keys(STATE.cardData).forEach((id) => {
+      const c = STATE.cardData[id];
+      if (!c) return;
+      const isFamily = rootIds.has(id) || (c.ghostOf && rootIds.has(c.ghostOf));
+      if (!isFamily) return;
+      const memberEl = board.querySelector(`.card[data-id="${id}"]`);
+      const memberShipEl = memberEl?.closest('.shipment');
+      if (!memberShipEl || renamedShipIds.has(memberShipEl.dataset.id)) return;
+      renamedShipIds.add(memberShipEl.dataset.id);
+      (STATE.shipmentData[memberShipEl.dataset.id] || (STATE.shipmentData[memberShipEl.dataset.id] = {})).name = newName;
+      const nmEl = memberShipEl.querySelector('.ship-name');
+      if (nmEl) nmEl.textContent = newName;
+    });
+  }
+
   // Find the first shipment in a target month whose name matches (case-insensitive).
   function findShipByName(targetMonthIdx, name) {
     const lc = name.trim().toLowerCase();
@@ -5705,6 +5747,7 @@
         'stillConnected=' + t.isConnected,
       );
       focusValues.delete(t);
+      if (changed && t.matches('.ship-name')) propagateShipmentRename(t);
       if (changed) persist();
       // Collapse back to the icon/menu-triggered closed state if the field
       // was opened (by tap or "Add Notes") and left blank -- otherwise an
