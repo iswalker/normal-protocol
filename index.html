@@ -5264,13 +5264,14 @@
   }
 
   // Filters one month's shipments/loose cards to `q` (case-insensitive), or
-  // -- when globalAutoshipOnly is set instead -- to items with a saved
-  // Autoship link, ignoring `q` entirely. Same shape either way: a shipment
-  // whose own name matches (text mode only; a shipment has no autoship link
-  // of its own) keeps every item visible, otherwise only its individually-
-  // matching items show (shipment stays visible to hold them). Dividers hide
-  // whenever a filter is active, in both modes, since they're not real
-  // content to match against.
+  // -- when globalAutoshipOnly is set instead -- to shipments/items with a
+  // saved Autoship link, ignoring `q` entirely. Same shape either way: a
+  // shipment that itself matches (its name in text mode, or its own
+  // Autoship link in autoship mode -- see shipMatchesAutoshipFilter, added
+  // once shipments got their own Autoship field) keeps every item inside it
+  // visible, otherwise only its individually-matching items show (shipment
+  // stays visible to hold them). Dividers hide whenever a filter is active,
+  // in both modes, since they're not real content to match against.
   // Autoship link lives on the specific card (STATE.cardData), not on the
   // Inventory item it's named after -- two cards for the same item can
   // have different Autoship status, so this has to check the actual card,
@@ -5282,6 +5283,13 @@
     if (!c) return false;
     const rootData = c.ghostOf ? (STATE.cardData[c.ghostOf] || c) : c;
     return !!rootData.autoshipLink;
+  }
+  // A shipment can now carry its own Autoship link/date directly (see
+  // saveShipAutoship), independent of any item inside it -- the header
+  // "Autoship" filter needs to catch that too, not just items.
+  function shipMatchesAutoshipFilter(shipEl) {
+    const s = STATE.shipmentData[shipEl.dataset.id];
+    return !!s && !!s.autoshipLink;
   }
   function applyMonthSearch(monthEl, q) {
     const lq = q.trim().toLowerCase();
@@ -5307,7 +5315,7 @@
           node.classList.add('search-hide');
           return;
         }
-        const shipMatches = globalAutoshipOnly ? false : (!lq || shipName.includes(lq));
+        const shipMatches = globalAutoshipOnly ? shipMatchesAutoshipFilter(node) : (!lq || shipName.includes(lq));
         let anyItemMatches = false;
         node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           const itemName = cardEl.querySelector('.card-name')?.textContent || '';
