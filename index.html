@@ -3861,6 +3861,58 @@
     });
   }
 
+  // Saving a shipment's own Autoship date (see saveShipAutoship) assumes
+  // monthly recurrence -- same "future instances get the updated date"
+  // treatment an item's own recurring ghosts already get (see syncGhosts'
+  // autoshipNextDate copy + updateCard's per-ghost month-offset projection),
+  // just pushed to STORAGE here instead of computed at render time, since
+  // there's no persistent ghost-shipment-to-root link the way ghost CARDS
+  // have via c.ghostOf -- shipments are only ever matched by name. Reuses
+  // propagateShipmentRename's exact "family" walk (out from this
+  // shipment's own recurring root/ghost cards, to every OTHER shipment
+  // holding a card in that same family) so it only touches shipments that
+  // are genuinely later instances of THIS recurring series, not some
+  // unrelated shipment that coincidentally shares a name. A shipment with
+  // no recurring items in it has no "future instances" at all -- nothing
+  // to push to, same restriction the rename propagation already has.
+  function propagateShipmentAutoship(shipEl, link, nextDate) {
+    const rootIds = new Set();
+    shipEl.querySelectorAll(':scope .ship-body > .card[data-id]').forEach((cardEl) => {
+      const c = STATE.cardData[cardEl.dataset.id];
+      if (!c) return;
+      if (c.ghostOf) rootIds.add(c.ghostOf);
+      else if (c.recur) rootIds.add(cardEl.dataset.id);
+    });
+    if (!rootIds.size) return;
+    const srcMonthEl = shipEl.closest('.month');
+    if (!srcMonthEl) return;
+    const srcMonthIdx = [...srcMonthEl.parentNode.children].indexOf(srcMonthEl);
+    const baseDate = nextDate ? SB.parseDate(nextDate) : null;
+    const touchedShipIds = new Set([shipEl.dataset.id]);
+    Object.keys(STATE.cardData).forEach((id) => {
+      const c = STATE.cardData[id];
+      if (!c) return;
+      const isFamily = rootIds.has(id) || (c.ghostOf && rootIds.has(c.ghostOf));
+      if (!isFamily) return;
+      const memberEl = board.querySelector(`.card[data-id="${id}"]`);
+      const memberShipEl = memberEl?.closest('.shipment');
+      if (!memberShipEl || touchedShipIds.has(memberShipEl.dataset.id)) return;
+      const memberMonthEl = memberShipEl.closest('.month');
+      if (!memberMonthEl) return;
+      const memberMonthIdx = [...memberMonthEl.parentNode.children].indexOf(memberMonthEl);
+      if (memberMonthIdx <= srcMonthIdx) return; // only future instances, never past ones
+      touchedShipIds.add(memberShipEl.dataset.id);
+      const offset = memberMonthIdx - srcMonthIdx;
+      const projectedDate = baseDate ? toISODate(addMonthsToDate(baseDate, offset)) : '';
+      const sd = STATE.shipmentData[memberShipEl.dataset.id] || (STATE.shipmentData[memberShipEl.dataset.id] = {});
+      sd.autoshipLink = link;
+      sd.autoshipNextDate = projectedDate;
+      memberShipEl.dataset.autoshipLink = link || '';
+      memberShipEl.dataset.autoshipNext = projectedDate || '';
+      updateShipAutoship(memberShipEl);
+    });
+  }
+
   // Find the first shipment in a target month whose name matches (case-insensitive).
   function findShipByName(targetMonthIdx, name) {
     const lc = name.trim().toLowerCase();
@@ -4079,7 +4131,20 @@
       let tShipId = srcShipName ? findShipByName(tMi, srcShipName) : null;
       if (!tShipId && srcShipName) {
         tShipId = uid('gs_');
-        STATE.shipmentData[tShipId] = { name: srcShipName, notes: '' };
+        // Seed the new shipment's own Autoship date from its root's shipment
+        // (monthly, same cadence as everything else here -- see
+        // propagateShipmentAutoship for the equivalent push when the date is
+        // edited AFTER instances already exist; this covers the other
+        // direction, a brand new instance appearing after the date was set).
+        const srcShipData = srcShipId ? STATE.shipmentData[srcShipId] : null;
+        const projectedDate = srcShipData?.autoshipNextDate
+          ? toISODate(addMonthsToDate(SB.parseDate(srcShipData.autoshipNextDate), tMi - srcMi))
+          : '';
+        STATE.shipmentData[tShipId] = {
+          name: srcShipName, notes: '',
+          autoshipLink: srcShipData?.autoshipLink || '',
+          autoshipNextDate: projectedDate,
+        };
         tMonth.blocks.push({ type: 'shipment', id: tShipId, cards: [] });
         if (tMonthEl) {
           const sEl = el(shipmentHTML({ type: 'shipment', id: tShipId, cards: [] }));
@@ -6466,16 +6531,23 @@
       return true;
     },
     // Same as saveCardAutoship, for a shipment's own Autoship link/date
-    // instead of a card's. Unlike cards, a shipment has no ghost/root
-    // distinction, so this is always a direct edit on whichever shipment
-    // instance the modal was opened for -- no propagation to other months.
+    // instead of a card's. Unlike a card, a shipment has no persistent
+    // ghost/root link back to its other-month instances (only matched by
+    // name), so instead of reading a root's value at render time the way a
+    // ghost card does, this pushes the (monthly-projected) date out to
+    // every later instance of the same recurring series right now -- see
+    // propagateShipmentAutoship.
     saveShipAutoship(id, link, nextDate) {
       const s = STATE.shipmentData[id];
       if (!s) return false;
       s.autoshipLink = link;
       s.autoshipNextDate = nextDate;
       const shipEl = board.querySelector(`.shipment[data-id="${id}"]`);
-      if (shipEl) { shipEl.dataset.autoshipLink = link || ''; shipEl.dataset.autoshipNext = nextDate || ''; }
+      if (shipEl) {
+        shipEl.dataset.autoshipLink = link || '';
+        shipEl.dataset.autoshipNext = nextDate || '';
+        propagateShipmentAutoship(shipEl, link, nextDate);
+      }
       recalcAll();
       persist();
       return true;
