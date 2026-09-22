@@ -63,6 +63,8 @@ async function ensureSchema(env) {
     "ALTER TABLE order_months ADD COLUMN notes TEXT",
     "ALTER TABLE order_items ADD COLUMN autoship_link TEXT",
     "ALTER TABLE order_items ADD COLUMN autoship_next_date TEXT",
+    "ALTER TABLE orders ADD COLUMN autoship_link TEXT",
+    "ALTER TABLE orders ADD COLUMN autoship_next_date TEXT",
   ]) {
     try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
   }
@@ -74,7 +76,7 @@ export async function onRequestGet({ env }) {
     await ensureSchema(env);
     const results = await pipeline(env, [
       exec("SELECT month, year, position, notes FROM order_months ORDER BY position"),
-      exec("SELECT order_id, month, merchant, position, status, notes FROM orders ORDER BY position"),
+      exec("SELECT order_id, month, merchant, position, status, notes, autoship_link, autoship_next_date FROM orders ORDER BY position"),
       exec(
         `SELECT order_item_id, order_id, month, block_position, item_position, supplement,
                 price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
@@ -88,6 +90,8 @@ export async function onRequestGet({ env }) {
     const orders = rowsFrom(results[1]).map((o) => ({
       order_id: o.order_id, month: o.month, merchant: o.merchant,
       position: num(o.position), status: o.status, notes: o.notes,
+      autoship_link: o.autoship_link || null,
+      autoship_next_date: o.autoship_next_date || null,
     }));
     const items = rowsFrom(results[2]).map((it) => ({
       order_item_id: it.order_item_id, order_id: it.order_id, month: it.month,
@@ -135,8 +139,8 @@ export async function onRequestPut({ request, env }) {
   }
   for (const o of orders) {
     reqs.push(exec(
-      "INSERT INTO orders (order_id, month, merchant, position, status, notes) VALUES (?, ?, ?, ?, ?, ?)",
-      [T(o.order_id), T(o.month), T(o.merchant), I(o.position), T(o.status), T(o.notes)]
+      "INSERT INTO orders (order_id, month, merchant, position, status, notes, autoship_link, autoship_next_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [T(o.order_id), T(o.month), T(o.merchant), I(o.position), T(o.status), T(o.notes), T(o.autoship_link), T(o.autoship_next_date)]
     ));
   }
   for (const it of items) {

@@ -1174,7 +1174,7 @@
     /* Holding either one on touch opens the calendar picker (see
        initAutoshipHoldToOpen) instead of the browser's own text-selection
        callout -- suppress that callout so the hold gesture reads cleanly. */
-    #tab-board .autoship-date, #tab-board .autoship-date-badge {
+    #tab-board .autoship-date, #tab-board .autoship-date-badge, #tab-board .ship-autoship-date {
       -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     }
     #tab-board .proj .autoship-date.has-link:hover { text-decoration: underline; }
@@ -1667,6 +1667,16 @@
     #tab-board .ship-stage-select::after {
       content: '▾'; font-size: 17px; color: var(--ink-3); margin: 0px -3px -2px -4px;
     }
+    /* Shipment-level Autoship date -- same look/interactivity as a card's
+       own .autoship-date-badge (click follows the link, hover/hold edits
+       it -- see openAutoshipCalFor), sitting right of the Status dropdown
+       in .ship-head's own flex row (gap:8px there already spaces it out,
+       see .ship-head above). */
+    #tab-board .ship-autoship-date {
+      color: var(--soon); font-weight: 700; font-size: 11px; white-space: nowrap;
+      flex: none; cursor: pointer;
+    }
+    #tab-board .ship-autoship-date.has-link:hover { text-decoration: underline; }
     #tab-board .stage-btn {
       font: 500 10.5px/1 var(--font-ui); padding: 4px 8px;
       background: var(--paper); color: var(--ink-3);
@@ -1841,6 +1851,7 @@
       #tab-board .ship-head .ship-total { order: 2; margin-right: 0; }
       #tab-board .ship-add { order: 3; }
       #tab-board .ship-stage-select { order: 4; }
+      #tab-board .ship-autoship-date { order: 4; }
       #tab-board .ship-head .notes-toggle {
         display: inline-flex; align-items: center; justify-content: center;
         order: 5; width: 20px; height: 20px; flex: none; padding: 0; border: 0;
@@ -2861,7 +2872,11 @@
     });
     orders.forEach((o) => {
       const stage = o.status && o.status !== 'Staged' ? o.status.toLowerCase() : undefined;
-      shipmentData[o.order_id] = { name: o.merchant || 'Order', notes: o.notes || '', ...(stage ? { stage } : {}) };
+      shipmentData[o.order_id] = {
+        name: o.merchant || 'Order', notes: o.notes || '',
+        autoshipLink: o.autoship_link || '', autoshipNextDate: o.autoship_next_date || '',
+        ...(stage ? { stage } : {}),
+      };
     });
 
     structure = months.map((m) => {
@@ -3074,7 +3089,7 @@
     // so promote/demote/confirm-receive all still run.
     const stageLabel = stage ? stage[0].toUpperCase() + stage.slice(1) : 'Status';
     return `
-    <div class="shipment${locked ? ' is-locked' : ''}${s.notes && s.notes.trim() ? ' notes-open' : ''}" data-id="${block.id}" data-kind="shipment">
+    <div class="shipment${locked ? ' is-locked' : ''}${s.notes && s.notes.trim() ? ' notes-open' : ''}" data-id="${block.id}" data-kind="shipment" data-autoship-link="${esc(s.autoshipLink || '').replace(/"/g, '&quot;')}" data-autoship-next="${s.autoshipNextDate || ''}">
       <div class="ship-head">
         <div class="ship-id">
           <span class="ship-name" contenteditable="true" spellcheck="false" data-field="name">${esc(s.name)}</span>
@@ -3083,6 +3098,7 @@
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <div class="ship-stage">${stageBtns}</div>
         <button class="ship-stage-select" data-act="open-stage-menu" aria-label="Status" aria-haspopup="true">${stageLabel}</button>
+        <span class="ship-autoship-date" data-act="open-autoship-link" style="display:none"></span>
         <button class="notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         <span class="ship-min-date"></span>
         <span class="ship-row-break" aria-hidden="true"></span>
@@ -3514,6 +3530,30 @@
     seen.forEach((proj, key) => { PROJ_MAP[key] = proj; });
   }
 
+  // Shipment-level Autoship badge -- sits right of the Status dropdown (see
+  // shipmentHTML), same interactivity as a card's own inline date (click
+  // follows the link, hover/hold edits it -- see openAutoshipCalFor and its
+  // hover/hold wiring, both generalized to accept a .shipment element too).
+  // Unlike a card's, there's no hasOrder/has-a-placed-order gating to check
+  // here -- a shipment doesn't have its own qty, so the badge just shows
+  // whenever a date is actually set.
+  function updateShipAutoship(shipEl) {
+    const s = STATE.shipmentData[shipEl.dataset.id] || {};
+    const dateEl = shipEl.querySelector(':scope > .ship-head > .ship-autoship-date');
+    if (!dateEl) return;
+    const compact = board.classList.contains('layout-compact');
+    const df = compact ? SB.fmtDateShort : SB.fmtDate;
+    if (s.autoshipNextDate) {
+      dateEl.style.display = '';
+      dateEl.textContent = df(SB.parseDate(s.autoshipNextDate));
+      dateEl.classList.toggle('has-link', !!s.autoshipLink);
+      dateEl.title = s.autoshipLink ? 'Open Autoship link' : '';
+      dateEl.dataset.link = s.autoshipLink || '';
+    } else {
+      dateEl.style.display = 'none';
+    }
+  }
+
   function recalcAll() {
     applyEffectiveMap();
     board.querySelectorAll('.month').forEach((monthEl) => {
@@ -3556,6 +3596,7 @@
           node.querySelector('.scount').textContent = sCount;
           const md = node.querySelector('.ship-min-date');
           if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
+          updateShipAutoship(node);
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
           const cost = updateCard(node);
@@ -4257,7 +4298,17 @@
           const oid = n.dataset.id;
           const s = STATE.shipmentData[oid] || {};
           const stageStatus = s.stage ? (s.stage[0].toUpperCase() + s.stage.slice(1)) : 'Staged';
-          orders.push({ order_id: oid, month, merchant: s.name || '', position: blockPos, status: stageStatus, notes: s.notes || '' });
+          // Same dom-first-then-STATE-fallback read as pushItem's own
+          // autoship fields, for the same reason: STATE can drift, and this
+          // is exactly the class of gap that silently wiped real card
+          // Autoship data earlier in this project.
+          const domAutoshipLink = n.dataset.autoshipLink ? n.dataset.autoshipLink : null;
+          const domAutoshipNext = n.dataset.autoshipNext ? n.dataset.autoshipNext : null;
+          orders.push({
+            order_id: oid, month, merchant: s.name || '', position: blockPos, status: stageStatus, notes: s.notes || '',
+            autoship_link: domAutoshipLink !== null ? (domAutoshipLink || null) : (s.autoshipLink || null),
+            autoship_next_date: domAutoshipNext !== null ? (domAutoshipNext || null) : (s.autoshipNextDate || null),
+          });
           [...n.querySelectorAll(':scope .ship-body > .card')].forEach((cardEl, ci) => {
             pushItem(items, cardEl.dataset.id, oid, month, blockPos, ci + 1);
           });
@@ -4544,11 +4595,26 @@
     autoshipCalCloseTimer = setTimeout(() => { window.closeDatePicker?.(); autoshipCalCloseTimer = null; }, 200);
   }
   // Shared by the hover-open below (mouse/trackpad) and the hold-to-open
-  // touch handler further down -- same guard either way: no date shown, no
-  // card, or a ghost (whose date is a computed projection of the root's,
-  // not a value of its own to edit -- see openAutoshipModal's isGhostCard).
+  // touch handler further down -- same guard either way: no date shown, a
+  // card that's a ghost (whose date is a computed projection of the root's,
+  // not a value of its own to edit -- see openAutoshipModal's isGhostCard),
+  // or neither a card nor a shipment. A shipment's own date (.ship-autoship-
+  // date) has no ghost/root distinction to guard against -- see
+  // saveShipAutoship.
   function openAutoshipCalFor(dateEl) {
     if (!dateEl || dateEl.style.display === 'none') return false;
+    const shipEl = dateEl.closest('.shipment[data-id]');
+    if (shipEl) {
+      const sId = shipEl.dataset.id;
+      const sData = STATE.shipmentData[sId];
+      if (!sData) return false;
+      window.openDatePicker({
+        anchorEl: dateEl,
+        value: sData.autoshipNextDate || null,
+        onPick: (iso) => window.SupplementBoard.saveShipAutoship(sId, sData.autoshipLink || '', iso),
+      });
+      return true;
+    }
     const cardEl = dateEl.closest('.card[data-id]');
     if (!cardEl) return false;
     const cId = cardEl.dataset.id;
@@ -4563,13 +4629,13 @@
   }
   if (HOVER_CAPABLE) {
     board.addEventListener('mouseover', (e) => {
-      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge');
+      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge, .ship-autoship-date');
       if (!dateEl) return;
       cancelAutoshipCalClose();
       openAutoshipCalFor(dateEl);
     });
     board.addEventListener('mouseout', (e) => {
-      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge');
+      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge, .ship-autoship-date');
       if (!dateEl || (e.relatedTarget && e.relatedTarget.closest('.autoship-cal'))) return;
       scheduleAutoshipCalClose();
     });
@@ -4612,7 +4678,7 @@
     let startX = 0, startY = 0, target = null, moved = false, fired = false, holdTimer = null;
     function cancelHold() { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } }
     board.addEventListener('touchstart', (e) => {
-      target = e.target.closest('.autoship-date, .autoship-date-badge') || null;
+      target = e.target.closest('.autoship-date, .autoship-date-badge, .ship-autoship-date') || null;
       moved = false; fired = false;
       cancelHold();
       if (!target) return;
@@ -5976,7 +6042,7 @@
   //    editing it. ──
   (function initTapFix() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
-    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"], .autoship-date, .autoship-date-badge';
+    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"], .autoship-date, .autoship-date-badge, .ship-autoship-date';
     const MOVE_TOLERANCE = 10;
     let startX = 0, startY = 0, target = null, moved = false;
     board.addEventListener('touchstart', (e) => {
@@ -6165,6 +6231,23 @@
     buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
       // Formerly the standalone × in ship-head -- see deleteShipment.
       menu.appendChild(ctxItem('Delete', false, () => deleteShipment(shipEl), 'ctx-danger'));
+      menu.appendChild(ctxDivider());
+      // Same idea as a card's own "Add/Edit Autoship" (see openCardCtxMenu),
+      // just on STATE.shipmentData instead of STATE.cardData -- a shipment
+      // has no ghost/root distinction, so unlike a card's this is never
+      // disabled for that reason, only when the shipment has no name at all.
+      const sData = STATE.shipmentData[shipEl.dataset.id] || {};
+      menu.appendChild(ctxItem(
+        sData.autoshipLink ? 'Edit Autoship' : 'Add Autoship',
+        !sData.name,
+        () => window.InventoryWriter?.openAutoshipModal({
+          id: shipEl.dataset.id,
+          name: sData.name,
+          link: sData.autoshipLink || '',
+          nextDate: sData.autoshipNextDate || '',
+          kind: 'ship',
+        })
+      ));
       menu.appendChild(ctxDivider());
       menu.appendChild(ctxItem('Move to Top', isFirst, () => {
         list.prepend(shipEl); recalcAll(); persist();
@@ -6365,6 +6448,21 @@
       // Keep the DOM stamp in lockstep -- see pushItem's dom-first read.
       const cardEl = board.querySelector(`.card[data-id="${id}"]`);
       if (cardEl) { cardEl.dataset.autoshipLink = link || ''; cardEl.dataset.autoshipNext = nextDate || ''; }
+      recalcAll();
+      persist();
+      return true;
+    },
+    // Same as saveCardAutoship, for a shipment's own Autoship link/date
+    // instead of a card's. Unlike cards, a shipment has no ghost/root
+    // distinction, so this is always a direct edit on whichever shipment
+    // instance the modal was opened for -- no propagation to other months.
+    saveShipAutoship(id, link, nextDate) {
+      const s = STATE.shipmentData[id];
+      if (!s) return false;
+      s.autoshipLink = link;
+      s.autoshipNextDate = nextDate;
+      const shipEl = board.querySelector(`.shipment[data-id="${id}"]`);
+      if (shipEl) { shipEl.dataset.autoshipLink = link || ''; shipEl.dataset.autoshipNext = nextDate || ''; }
       recalcAll();
       persist();
       return true;
@@ -6986,15 +7084,17 @@
     </div>`;
   document.body.appendChild(autoshipOv);
 
-  // This card's own data (STATE.cardData lives in the board module, not
-  // here), passed in directly by the caller rather than looked up from
-  // _INV_ITEM_MAP -- the link/date belong to this specific board item, not
-  // to whatever Inventory item it happens to be named after, so there's no
-  // shared record to read from. Saving calls back into the board module
-  // (window.SupplementBoard.saveCardAutoship), which is the one with access
-  // to STATE/persist -- this modal is otherwise just a dumb UI over
-  // whatever { id, name, link, nextDate } it was opened with.
+  // This card's (or shipment's) own data (STATE.cardData/shipmentData live
+  // in the board module, not here), passed in directly by the caller rather
+  // than looked up from _INV_ITEM_MAP -- the link/date belong to this
+  // specific board item/shipment, not to whatever Inventory item it happens
+  // to be named after, so there's no shared record to read from. Saving
+  // calls back into the board module (saveCardAutoship or saveShipAutoship,
+  // picked by _autoshipKind), which is the one with access to STATE/persist
+  // -- this modal is otherwise just a dumb UI over whatever
+  // { id, name, link, nextDate, kind } it was opened with.
   let _autoshipCardId = null;
+  let _autoshipKind = 'card';
   const dateTriggerEl = document.getElementById('autoship-date-trigger');
   const dateDisplayEl = document.getElementById('autoship-date-display');
   function setDateTrigger(iso) {
@@ -7014,9 +7114,10 @@
       onPick: (iso) => setDateTrigger(iso),
     });
   });
-  function openAutoshipModal({ id, name, link, nextDate } = {}) {
+  function openAutoshipModal({ id, name, link, nextDate, kind } = {}) {
     if (!id) return;
     _autoshipCardId = id;
+    _autoshipKind = kind === 'ship' ? 'ship' : 'card';
     document.getElementById('autoship-item-name').textContent = name || '';
     document.getElementById('autoship-link').value = link || '';
     setDateTrigger(nextDate || '');
@@ -7045,20 +7146,25 @@
     e.preventDefault();
     document.getElementById('autoship-save-btn').click();
   });
+  function saveAutoship(id, link, nextDate) {
+    return _autoshipKind === 'ship'
+      ? window.SupplementBoard?.saveShipAutoship(id, link, nextDate)
+      : window.SupplementBoard?.saveCardAutoship(id, link, nextDate);
+  }
   document.getElementById('autoship-save-btn').addEventListener('click', () => {
     if (!_autoshipCardId) return;
     const statusEl = document.getElementById('autoship-status-msg');
     const link = document.getElementById('autoship-link').value.trim();
     const nextDate = dateTriggerEl.dataset.value || '';
-    const ok = window.SupplementBoard?.saveCardAutoship(_autoshipCardId, link, nextDate);
-    if (ok === false) { statusEl.textContent = 'Save failed — card not found, try refreshing.'; return; }
+    const ok = saveAutoship(_autoshipCardId, link, nextDate);
+    if (ok === false) { statusEl.textContent = `Save failed — ${_autoshipKind === 'ship' ? 'shipment' : 'card'} not found, try refreshing.`; return; }
     closeAutoshipModal();
   });
   document.getElementById('autoship-clear-btn').addEventListener('click', () => {
     if (!_autoshipCardId) return;
     const statusEl = document.getElementById('autoship-status-msg');
-    const ok = window.SupplementBoard?.saveCardAutoship(_autoshipCardId, '', '');
-    if (ok === false) { statusEl.textContent = 'Clear failed — card not found, try refreshing.'; return; }
+    const ok = saveAutoship(_autoshipCardId, '', '');
+    if (ok === false) { statusEl.textContent = `Clear failed — ${_autoshipKind === 'ship' ? 'shipment' : 'card'} not found, try refreshing.`; return; }
     closeAutoshipModal();
   });
 
