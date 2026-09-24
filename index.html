@@ -3178,6 +3178,31 @@
 
   const STAGE_PRI = { ordered: 0, entered: 1, received: 2 };
 
+  // Places a shipment into a target month at the position render()'s own
+  // layout would give it, instead of always prepending to the very top
+  // regardless of lock state. An unlocked (still-staged) shipment goes to
+  // the top of the open section as before, but a locked/completed one
+  // (Status != null) belongs in the completed section at the bottom,
+  // sorted in with any other locked shipments there by stage priority
+  // (Ordered -> Entered -> Received) -- same placement rule
+  // applyShipmentStage's own locking transition already uses when a
+  // shipment locks in place, just applied here for a shipment arriving
+  // from a DIFFERENT month via Move to/Copy to (see moveShipToMonth/
+  // copyShipToMonth) rather than locking where it already sits.
+  function placeShipmentInMonth(shipEl, targetMonthEl) {
+    const list = targetMonthEl.querySelector('.month-list');
+    if (!shipEl.classList.contains('is-locked')) {
+      list.prepend(shipEl);
+      return;
+    }
+    const myPri = STAGE_PRI[(STATE.shipmentData[shipEl.dataset.id] || {}).stage] ?? 0;
+    const anchor = [...list.querySelectorAll(':scope > .shipment.is-locked')]
+      .filter((el) => el !== shipEl)
+      .find((el) => (STAGE_PRI[(STATE.shipmentData[el.dataset.id] || {}).stage] ?? 0) > myPri);
+    if (anchor) list.insertBefore(shipEl, anchor);
+    else list.appendChild(shipEl);
+  }
+
   function render() {
     board.innerHTML = structure.map(monthHTML).join('');
     board.querySelectorAll('.month-list').forEach(makeMonthSortable);
@@ -6339,7 +6364,7 @@
     // Shared by the Next/Previous items and the month picker, so a month several
     // steps away behaves exactly like the one-step case.
     function moveShipToMonth(targetMonthEl) {
-      targetMonthEl.querySelector('.month-list').prepend(shipEl);
+      placeShipmentInMonth(shipEl, targetMonthEl);
       reconcileMovedRecurring(shipEl);
       reapplySearchTo(monthEl);
       reapplySearchTo(targetMonthEl);
@@ -6355,7 +6380,7 @@
         return newId;
       });
       const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
-      targetMonthEl.querySelector('.month-list').prepend(newEl);
+      placeShipmentInMonth(newEl, targetMonthEl);
       makeShipSortable(newEl.querySelector('.ship-body'));
       reconcileMovedRecurring(newEl);
       reapplySearchTo(targetMonthEl);
