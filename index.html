@@ -748,14 +748,19 @@
     .autoship-cal-day.is-today { font-weight: 700; }
     .autoship-cal-day.is-selected, .autoship-cal-day.is-selected:hover { background: var(--teal); color: #fff; }
     .autoship-cal-footer {
-      display: flex; justify-content: center; padding-top: 6px; margin-top: 4px;
+      display: flex; justify-content: center; gap: 4px; padding-top: 6px; margin-top: 4px;
       border-top: 1px solid var(--ink-12);
     }
-    .autoship-cal-today-btn {
+    .autoship-cal-today-btn, .autoship-cal-clear-btn {
       appearance: none; border: 0; background: transparent; cursor: pointer;
-      font-family: inherit; font-size: 12px; color: #3f8f87; padding: 4px 8px; border-radius: 6px;
+      font-family: inherit; font-size: 12px; padding: 4px 8px; border-radius: 6px;
     }
+    .autoship-cal-today-btn { color: #3f8f87; }
     .autoship-cal-today-btn:hover { background: rgba(121,189,177,0.12); }
+    /* Destructive -- same red as .ctx-danger's hover treatment elsewhere,
+       since this wipes the whole saved link+date, not just today's pick. */
+    .autoship-cal-clear-btn { color: var(--ink-3); }
+    .autoship-cal-clear-btn:hover { background: #fbecea; color: #d6504a; }
 
     /* Scan success / error toast */
     .scan-toast {
@@ -2651,7 +2656,10 @@
           return `<button type="button" class="${cls.join(' ')}"${c.iso ? ` data-iso="${c.iso}"` : ' disabled'}>${c.day}</button>`;
         }).join('')}
       </div>
-      <div class="autoship-cal-footer"><button type="button" class="autoship-cal-today-btn">Today</button></div>
+      <div class="autoship-cal-footer">
+        <button type="button" class="autoship-cal-today-btn">Today</button>
+        ${state.onClear ? '<button type="button" class="autoship-cal-clear-btn">Clear Autoship</button>' : ''}
+      </div>
     `;
     popEl.querySelectorAll('.autoship-cal-nav').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -2674,19 +2682,33 @@
       state.onPick(todayISO);
       closeDatePicker();
     });
+    // Only present when the caller opted in (see openDatePicker's onClear) --
+    // the modal's own date field re-uses this same popover just to pick a
+    // date into an unsaved form, where "clear" only means the same as
+    // picking no date, not clearing a saved Autoship link/date outright, so
+    // it never passes onClear and never gets this button.
+    popEl.querySelector('.autoship-cal-clear-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.onClear();
+      closeDatePicker();
+    });
   }
 
   // anchorEl: element to position the popover under. value: current ISO
   // date string (or falsy for none -- opens on today's month). onPick(iso):
   // called with the chosen date; the caller decides what to do with it
-  // (this module has no idea what an "Autoship date" even means).
-  function openDatePicker({ anchorEl, value, onPick }) {
+  // (this module has no idea what an "Autoship date" even means). onClear
+  // (optional): when provided, shows a "Clear Autoship" footer button that
+  // calls it instead of onPick -- for the board's own inline hover/hold
+  // calendar, where clearing means wiping the whole saved link+date, not
+  // just picking an empty date (see openAutoshipCalFor).
+  function openDatePicker({ anchorEl, value, onPick, onClear }) {
     closeDatePicker();
     popEl = document.createElement('div');
     popEl.className = 'autoship-cal';
     document.body.appendChild(popEl);
     const d = value ? new Date(value + 'T00:00:00') : new Date();
-    state = { year: d.getFullYear(), month: d.getMonth(), selectedISO: value || null, onPick, anchorEl };
+    state = { year: d.getFullYear(), month: d.getMonth(), selectedISO: value || null, onPick, onClear, anchorEl };
     render();
     const r = anchorEl.getBoundingClientRect();
     popEl.style.left = r.left + 'px';
@@ -4464,6 +4486,8 @@
     onEnd: (evt) => {
       document.body.classList.remove('sb-dragging');
       reconcileMovedRecurring(evt.item);
+      reapplySearchTo(evt.from?.closest('.month'));
+      reapplySearchTo(evt.to?.closest('.month'));
       recalcAll(); persist();
     },
   };
@@ -4673,7 +4697,14 @@
   // saveShipAutoship.
   function openAutoshipCalFor(dateEl) {
     if (!dateEl || dateEl.style.display === 'none') return false;
-    const shipEl = dateEl.closest('.shipment[data-id]');
+    // Checking dateEl.matches(...) here, not just dateEl.closest('.shipment')
+    // truthiness -- a card's own .autoship-date/.autoship-date-badge is
+    // ALSO nested inside a .shipment for any card that lives in one (which
+    // is most of them), so closest('.shipment[data-id]') alone matched on
+    // ancestry regardless of which element was actually hovered/held,
+    // silently reading/writing the CONTAINING SHIPMENT's Autoship fields
+    // for a card's own date instead of the card's.
+    const shipEl = dateEl.matches('.ship-autoship-date') ? dateEl.closest('.shipment[data-id]') : null;
     if (shipEl) {
       const sId = shipEl.dataset.id;
       const sData = STATE.shipmentData[sId];
@@ -4682,6 +4713,7 @@
         anchorEl: dateEl,
         value: sData.autoshipNextDate || null,
         onPick: (iso) => window.SupplementBoard.saveShipAutoship(sId, sData.autoshipLink || '', iso),
+        onClear: () => window.SupplementBoard.saveShipAutoship(sId, '', ''),
       });
       return true;
     }
@@ -4694,6 +4726,7 @@
       anchorEl: dateEl,
       value: cData.autoshipNextDate || null,
       onPick: (iso) => window.SupplementBoard.saveCardAutoship(cId, cData.autoshipLink || '', iso),
+      onClear: () => window.SupplementBoard.saveCardAutoship(cId, '', ''),
     });
     return true;
   }
@@ -5415,6 +5448,23 @@
       !node.classList.contains('card--divider') && !node.classList.contains('search-hide'));
     monthEl.classList.toggle('search-hide', filterActive && !anyVisible);
     recalcTotalsFor(monthEl);
+  }
+
+  // A card/shipment carries its own search-hide class with it wherever it's
+  // moved to -- recalcAll only ever READS that class (via hiddenBySearch),
+  // it never re-evaluates it -- so moving something across months while a
+  // search/filter is active used to leave stale results behind: the
+  // destination month's real matches stayed hidden under whatever state
+  // they had before the move, and the origin month kept showing as
+  // non-empty even once nothing left in it actually matched. Called after
+  // every operation that changes which month a card or shipment lives in
+  // (Move to/Copy to a month, and drag-and-drop's onEnd below) so the
+  // filter gets a fresh pass over whichever month(s) were actually
+  // touched -- a no-op when no filter is active.
+  function reapplySearchTo(monthEl) {
+    if (!monthEl) return;
+    if (!globalAutoshipOnly && !globalSearchQuery.trim() && !globalPinnedMerchant) return;
+    applyMonthSearch(monthEl, globalSearchQuery);
   }
 
   // ── header search-all-months box: the only search UI now (per-month
@@ -6185,6 +6235,8 @@
         // actually in, so moving it here (not via drag) needs the same fixup
         // or the old month's ghost is left stranded/duplicated.
         reconcileMovedRecurring(cardEl);
+        reapplySearchTo(monthEl);
+        reapplySearchTo(targetMonthEl);
         recalcAll(); persist();
       }
       function copyCardToMonth(targetMonthEl) {
@@ -6193,6 +6245,7 @@
         const newEl = el(cardHTML(newId));
         cardDest(targetMonthEl).prepend(newEl);
         reconcileMovedRecurring(newEl);
+        reapplySearchTo(targetMonthEl);
         recalcAll(); persist();
       }
 
@@ -6288,6 +6341,8 @@
     function moveShipToMonth(targetMonthEl) {
       targetMonthEl.querySelector('.month-list').prepend(shipEl);
       reconcileMovedRecurring(shipEl);
+      reapplySearchTo(monthEl);
+      reapplySearchTo(targetMonthEl);
       recalcAll(); persist();
     }
     function copyShipToMonth(targetMonthEl) {
@@ -6303,6 +6358,7 @@
       targetMonthEl.querySelector('.month-list').prepend(newEl);
       makeShipSortable(newEl.querySelector('.ship-body'));
       reconcileMovedRecurring(newEl);
+      reapplySearchTo(targetMonthEl);
       recalcAll(); persist();
     }
 
