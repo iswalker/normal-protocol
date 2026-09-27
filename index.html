@@ -1090,6 +1090,11 @@
       font-family: var(--font-num); font-size: 14px; font-weight: 600;
       color: var(--accent-deep); text-align: right;
     }
+    /* Same idea as the month header's own Planned/Max split (.metric.is-max
+       .mv) -- the shipment's own "of all items, included or not" ceiling,
+       just inline as "$X / $Y" instead of a separate labeled metric since
+       there's no room for a header here. */
+    #tab-board .ship-total .ship-max { color: var(--ink-3); font-weight: 500; }
     #tab-board .ship-body { padding: 9px; display: flex; flex-direction: column; gap: 9px; min-height: 30px; }
     #tab-board .ship-body > * { flex: 0 0 auto; }
     #tab-board .ship-body:empty::after {
@@ -3168,7 +3173,7 @@
         <button class="notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         <span class="ship-min-date"></span>
         <span class="ship-row-break" aria-hidden="true"></span>
-        <div class="ship-total"><span class="amt">$0.00</span></div>
+        <div class="ship-total"><span class="amt">$0.00</span><span class="ship-max"> / $0.00</span></div>
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
         <button type="button" class="ship-grip block-grip" data-act="open-ship-menu" title="Drag to reorder, or open menu" aria-label="Shipment menu">${ICON.menu}</button>
       </div>
@@ -3664,12 +3669,13 @@
       [...list.children].forEach((node) => {
         if (node.classList.contains('shipment')) {
           const shipLocked = !!(STATE.shipmentData[node.dataset.id] || {}).stage;
-          let sTot = 0, sCount = 0, minRunOut = null;
+          let sTot = 0, sMax = 0, sCount = 0, minRunOut = null;
           node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
             const cost = updateCard(cardEl);
             const c = STATE.cardData[cardEl.dataset.id];
             const inc = c && c.includeInMonthTotal;
             const hiddenBySearch = cardEl.classList.contains('search-hide');
+            if (!hiddenBySearch) sMax += cost;
             if (!shipLocked) {
               if (!hiddenBySearch) {
                 maxItems += cost;
@@ -3688,6 +3694,7 @@
             }
           });
           node.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
+          node.querySelector('.ship-total .ship-max').textContent = ' / ' + SB.fmtMoney(sMax);
           node.querySelector('.scount').textContent = sCount;
           const md = node.querySelector('.ship-min-date');
           if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
@@ -5058,7 +5065,7 @@
     [...list.children].forEach((n) => {
       if (n.classList.contains('shipment')) {
         const shipLocked = !!(STATE.shipmentData[n.dataset.id] || {}).stage;
-        let sTot = 0, minRunOut = null;
+        let sTot = 0, sMax = 0, minRunOut = null;
         n.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           const c = STATE.cardData[cardEl.dataset.id];
           const r = c ? calcForCard(c) : null;
@@ -5068,8 +5075,10 @@
           // everything inside it regardless -- so sTot (badge) is unaffected,
           // only the Planned/Max figures this feeds into below skip
           // search-hidden items, the same way they'd skip an item that
-          // wasn't there at all.
+          // wasn't there at all. The shipment's own Max (sMax) mirrors the
+          // month's Max, not the badge -- it does skip search-hidden items.
           const hiddenBySearch = cardEl.classList.contains('search-hide');
+          if (!hiddenBySearch) sMax += cost;
           if (!shipLocked) {
             if (!hiddenBySearch) {
               maxItems += cost;
@@ -5082,6 +5091,7 @@
           } else if (c && c.includeInMonthTotal) { sTot += cost; }
         });
         n.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
+        n.querySelector('.ship-total .ship-max').textContent = ' / ' + SB.fmtMoney(sMax);
         const md = n.querySelector('.ship-min-date');
         if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
       } else if (n.classList.contains('card')) {
