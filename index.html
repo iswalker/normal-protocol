@@ -1638,8 +1638,11 @@
     #tab-board .card[data-recur]:not([data-recur=""]):not(.card--ghost) {
       background: #dbf0ee;
     }
-    #tab-board .card--ghost .card-grip { pointer-events: none; cursor: default; opacity: 0.35; }
-    #tab-board .board.layout-compact .card--ghost .card-grip { opacity: 0.35; }
+    /* Still draggable (see makeShipSortable/openCardCtxMenu's slimmed-down
+       ghost menu) -- just dimmed to match the rest of a ghost card, not
+       disabled the way it used to be. */
+    #tab-board .card--ghost .card-grip { opacity: 0.55; }
+    #tab-board .board.layout-compact .card--ghost .card-grip { opacity: 0.55; }
     /* Recur control  ev [N] mo */
     #tab-board .recur-ctl {
       display: inline-flex; align-items: center; gap: 2px;
@@ -4600,7 +4603,11 @@
   };
   function makeMonthSortable(listEl) {
     new Sortable(listEl, Object.assign({}, COMMON, {
-      group: { name: 'sb', pull: true, put: true },
+      // A ghost can be dragged between orders (see makeShipSortable) but
+      // never dropped here directly -- that would leave it as a loose,
+      // order-less card, which isn't a thing the "Move to [Order]" picker
+      // (its own slimmed context menu, see openCardCtxMenu) offers either.
+      group: { name: 'sb', pull: true, put: (to, from, drag) => !drag.classList.contains('card--ghost') },
       draggable: '.card:not(.card--ghost), .shipment',
       handle: '.block-grip',
       // Overrides COMMON's plain string filter with a function doing the
@@ -4623,8 +4630,21 @@
   }
   function makeShipSortable(bodyEl) {
     new Sortable(bodyEl, Object.assign({}, COMMON, {
-      group: { name: 'sb', pull: true, put: (to, from, drag) => drag.classList.contains('card') && !drag.classList.contains('card--ghost') },
-      draggable: '.card:not(.card--ghost)',
+      group: {
+        name: 'sb', pull: true,
+        put: (to, from, drag) => {
+          if (!drag.classList.contains('card')) return false;
+          // Ghosts can move between orders, but only within the month
+          // they're already a projection for -- crossing into a different
+          // month's shipment would separate them from the recurring
+          // series' own month-by-month projection (see reconcileMovedRecurring).
+          if (drag.classList.contains('card--ghost')) {
+            return to.el.closest('.month') === from.el.closest('.month');
+          }
+          return true;
+        },
+      },
+      draggable: '.card',
       handle: '.card-grip',
     }));
   }
@@ -6508,27 +6528,41 @@
         return row;
       }
 
+      // Lives on this specific card (STATE.cardData), not on the Inventory
+      // item it happens to be named after. Computed up front (rather than
+      // inside buildCtxMenu's callback, where it used to live) since it now
+      // also decides whether the callback builds the full menu or a ghost's
+      // slimmed-down one below.
+      const cData = STATE.cardData[cardEl.dataset.id] || {};
+      const isGhostCard = !!cData.ghostOf && !isCardLocked(cardEl.dataset.id);
+
       buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
+        // A ghost is just a projection of its recurring root, not a real
+        // card of its own -- Delete/Autoship/Duplicate/dividers/month moves
+        // all belong to the root instead. The one thing that's genuinely
+        // this ghost's own is which order it's filed under, so that's all
+        // this menu offers; dragging (now enabled for ghosts too, see
+        // makeShipSortable) covers the same "move to a different order"
+        // ground more directly.
+        if (isGhostCard) {
+          menu.appendChild(ctxItem('Move to Top', isFirst, () => { container.prepend(cardEl); recalcAll(); persist(); }));
+          menu.appendChild(ctxItem('Move to End', isLast, () => { container.append(cardEl); recalcAll(); persist(); }));
+          menu.appendChild(ctxOrderPickRow());
+          return;
+        }
         // Formerly the standalone × in card-end -- now this menu's own
         // opener (the card-grip button) replaced it, so the action itself
         // moved here as its own leading section instead.
         menu.appendChild(ctxItem('Delete', false, () => deleteCard(cardEl), 'ctx-danger'));
         menu.appendChild(ctxDivider());
-        // Lives on this specific card (STATE.cardData), not on the
-        // Inventory item it happens to be named after -- two unrelated
-        // cards for the same item never share a link, and this one's own
-        // recurring ghosts inherit it via syncGhosts, same as price/qty/
-        // notes. No actual Inventory dependency, so this works for an
-        // untracked/free-text card too. Only disabled for dividers (not
-        // real items) and for a ghost: a ghost's Autoship date/link is a
-        // straight copy from its root as of whenever it was created (see
-        // syncGhosts), same "locked until promoted" treatment as its
-        // "ev N mo" control (see cardHTML) -- it only ever shows that
-        // value (projected forward for the date) never edits it directly.
-        const cData = STATE.cardData[cardEl.dataset.id] || {};
-        const isGhostCard = !!cData.ghostOf && !isCardLocked(cardEl.dataset.id);
+        // Two unrelated cards for the same item never share a link, and
+        // this one's own recurring ghosts inherit it via syncGhosts, same
+        // as price/qty/notes. No actual Inventory dependency, so this works
+        // for an untracked/free-text card too. Only disabled for dividers
+        // (not real items) here -- a ghost never reaches this branch at all
+        // now (see isGhostCard above).
         const rootData = cData.ghostOf ? (STATE.cardData[cData.ghostOf] || cData) : cData;
-        const autoshipDisabled = !cData.name || cData.name === '__divider__' || isGhostCard;
+        const autoshipDisabled = !cData.name || cData.name === '__divider__';
         menu.appendChild(ctxItem(
           rootData.autoshipLink ? 'Edit Autoship' : 'Add Autoship',
           autoshipDisabled,
