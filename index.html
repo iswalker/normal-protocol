@@ -3768,7 +3768,7 @@
   // months -- scrollIntoView pins flush with no breathing room, so the
   // offset is computed by hand instead. Shared by the month-strip cell
   // click and the Spent/Planned metric jumps below.
-  function scrollElementIntoBoardView(targetEl) {
+  function scrollElementIntoBoardView(targetEl, instant) {
     const scroller = document.getElementById('tab-board');
     if (!scroller || !targetEl) return;
     const gap = parseFloat(getComputedStyle(board).columnGap) || 16;
@@ -3777,7 +3777,7 @@
     scroller.scrollTo({
       left: Math.max(0, scroller.scrollLeft + (targetRect.left - scrollerRect.left) - gap),
       top: Math.max(0, scroller.scrollTop + (targetRect.top - scrollerRect.top) - gap),
-      behavior: 'smooth',
+      behavior: instant ? 'auto' : 'smooth',
     });
   }
   // Planned jumps to the month's own top (same target as its month-strip
@@ -5418,10 +5418,24 @@
   function refreshBoardFilters() {
     const clearBtn = document.getElementById('global-search-clear');
     const autoshipBtn = document.getElementById('inv-autoship-btn');
+    // Whichever month is anchored at the scroller's leading edge right now
+    // (kept in sync by updateCurrentMonthFromScroll -- true whether it got
+    // there via a month-strip "jump" or an ordinary manual scroll) needs to
+    // stay right there after filtering. A month whose display flips to
+    // none (.month.search-hide) is pulled bodily out of the row/column
+    // flow, shifting every month after it by that month's full width/
+    // height -- scrollLeft/scrollTop themselves don't change, so the
+    // viewport silently lands on a different month than the one the user
+    // was just looking at.
+    const anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
     board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
     if (clearBtn) clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly || globalPinnedMerchant) ? 'block' : 'none';
     autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
     renderPinnedMerchants();
+    if (anchorId) {
+      const anchorEl = board.querySelector(`.month[data-id="${anchorId}"]`);
+      if (anchorEl && anchorEl.style.display !== 'none') scrollElementIntoBoardView(anchorEl, true);
+    }
   }
   // Activating a pinned-merchant chip (mouse click, or a quick tap -- these
   // chips aren't inside a Sortable drag handle, so unlike card/ship grips
