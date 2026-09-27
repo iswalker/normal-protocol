@@ -4022,6 +4022,20 @@
     return qty > 0 ? `${name} (${qty}) - ${amt}` : `${name} (${qty})`;
   }
 
+  // Reads a shipment's own live-rendered $ total (the same text
+  // formatOrderSummary/the header badge show) back into a number, so
+  // "largest order first" sorts off exactly what the user sees rather
+  // than recomputing it a second way.
+  function shipCostValue(shipEl) {
+    const t = shipEl.querySelector('.ship-total .amt')?.textContent || '';
+    return parseFloat(t.replace(/[^0-9.-]/g, '')) || 0;
+  }
+  // Shared by the month-count hover summary and the "Move to Order" picker
+  // so both list a month's orders in the same largest-to-smallest order.
+  function sortShipsByCostDesc(ships) {
+    return [...ships].sort((a, b) => shipCostValue(b) - shipCostValue(a));
+  }
+
   // Find the first shipment in a target month whose name matches (case-insensitive).
   function findShipByName(targetMonthIdx, name) {
     const lc = name.trim().toLowerCase();
@@ -4657,7 +4671,7 @@
   function openMonthOrderSummary(btn) {
     closeCtxMenu();
     const monthEl = btn.closest('.month');
-    const ships = [...monthEl.querySelectorAll(':scope > .month-list > .shipment')];
+    const ships = sortShipsByCostDesc(monthEl.querySelectorAll(':scope > .month-list > .shipment'));
     const menu = document.createElement('div');
     menu.className = 'ship-ctx-menu';
     menu._forBtn = btn;
@@ -4667,14 +4681,17 @@
       item.textContent = 'No orders this month';
       menu.appendChild(item);
     } else {
-      // Plain .ship-ctx-item (not ctx-disabled) -- purely informational, no
-      // click handler, but the request was specifically for the Status
-      // dropdown's own full-color/hover look, not the greyed-out disabled
-      // treatment a real unavailable choice gets.
+      // Largest order first (see sortShipsByCostDesc). Clicking a row jumps
+      // straight to that shipment -- same scrollIntoView pattern
+      // jumpToNextOrder already uses for an Inventory item's next order.
       ships.forEach((shipEl) => {
         const item = document.createElement('div');
         item.className = 'ship-ctx-item';
         item.textContent = formatOrderSummary(shipEl);
+        item.addEventListener('click', () => {
+          closeCtxMenu();
+          shipEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
         menu.appendChild(item);
       });
     }
@@ -6452,7 +6469,7 @@
       // an order that's Ordered/Entered/Received doesn't take new items).
       function ctxOrderPickRow() {
         const currentShipEl = container.closest('.shipment') || null;
-        const ships = [...monthEl.querySelectorAll(':scope > .month-list > .shipment')]
+        const ships = sortShipsByCostDesc(monthEl.querySelectorAll(':scope > .month-list > .shipment'))
           .filter((s) => s !== currentShipEl && !s.classList.contains('is-locked'));
         const row = document.createElement('div');
         row.className = 'ship-ctx-pick' + (ships.length ? '' : ' ctx-disabled');
