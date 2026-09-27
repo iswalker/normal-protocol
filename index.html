@@ -1537,20 +1537,24 @@
     /* ── COMPACT layout — one dense grid row per card ── */
     #tab-board .board.layout-compact .month-list { gap: 5px; }
     #tab-board .board.layout-compact .ship-body { gap: 5px; padding: 6px; }
-    /* Right padding widened to fit the visible circular grip/menu button,
-       pinned to the card's own top-right-ish corner (vertically centered)
-       -- the far side from the name, which now starts flush left instead. */
-    /* Desktop only: grip lives on the LEFT edge instead of the right --
-       everything that used to read "...notes, grip" at the card's right
-       side now reads "grip, ...notes" from the left instead. Swapping
-       .card's own left/right padding is what actually moves it: the grid
-       content (name/proj/order/foot/notes) shifts as a whole to start
-       further right, opening up room on the left for the grip without
-       needing to touch the grid's own column widths. Mobile keeps the grip
-       on the right (see the max-width:680px block, unchanged). */
-    #tab-board .board.layout-compact .card { position: relative; padding: 3px 6px 3px 28px; overflow: hidden; }
+    /* Desktop only: grip moved from the card's own right edge to sit right
+       before the "del" grid column (toggle/recur/notes) begins -- the
+       "...notes, grip" reading becomes "grip, ...notes" instead, same idea
+       as the shipment row's swap. Moving it to the card's OWN left edge
+       (right next to the name) was tried first and was wrong -- that read
+       as "grip, name", nowhere near notes at all. 459px = card's own
+       padding-left (6px) + the summed width of the top/proj/order/foot
+       columns and their gaps (155+9+155+9+94+9+39+9 = 479px) minus the
+       grip's own width+gap (20+6=26px) -- i.e. parked just to the left of
+       wherever the del column's own edge actually falls, so it never
+       overlaps the toggle/recur controls sitting at that column's start.
+       .card's own padding no longer needs the old lopsided 28px reserved
+       on one side for the grip -- it's a plain small padding now, and the
+       grid gets slightly more width as a result. Mobile keeps the grip on
+       the right (see the max-width:680px block, unchanged). */
+    #tab-board .board.layout-compact .card { position: relative; padding: 3px 6px; overflow: hidden; }
     #tab-board .board.layout-compact .card-grip {
-      position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
+      position: absolute; left: 459px; top: 50%; transform: translateY(-50%);
     }
     #tab-board .board.layout-compact .card-body {
       display: grid;
