@@ -3047,6 +3047,16 @@
     return t.content.firstElementChild;
   }
 
+  // Price/Qty use inputmode="text" (full keyboard), not "decimal"/"numeric"
+  // -- both accept typed expressions like "12*3" or "-15+2" (see evalExpr),
+  // and iOS's decimal/numeric keypads have no +, ×, ÷ keys at all (they're
+  // built for plain digit entry, closer to a phone-style pad than a
+  // calculator). The full keyboard is one tap further from the number row
+  // (via its own "123" key) but is the only iOS keyboard that actually
+  // exposes the operators these fields need to be usable for what they're
+  // for. Same reasoning applies to the Inventory tab's own On Hand/Bottle
+  // Size/Dose fields (see startEdit/startMetaEdit) -- all of them run
+  // through the same evalExpr.
   // ── builders ──
   function cardHTML(id) {
     const c = STATE.cardData[id];
@@ -3102,12 +3112,12 @@
             <label>Price <span class="lbl-sub">/ bottle</span></label>
             <div class="field-row">
               <button type="button" class="price-sign-toggle${Number(c.price) < 0 ? ' is-active' : ''}" data-act="toggle-price-sign" title="Make this a credit/negative amount" aria-label="Toggle negative amount"${dis}>${ICON.minus}</button>
-              <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="decimal" data-field="price" value="${c.price}"${dis}></div>
+              <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="text" data-field="price" value="${c.price}"${dis}></div>
             </div>
           </div>
           <div class="field">
             <label>Order <span class="lbl-sub">bottles</span></label>
-            <div class="input-wrap"><input type="text" inputmode="numeric" data-field="qty" value="${c.qty}"${dis}><span class="sfx">btl</span></div>
+            <div class="input-wrap"><input type="text" inputmode="text" data-field="qty" value="${c.qty}"${dis}><span class="sfx">btl</span></div>
           </div>
         </div>
         <div class="card-foot">
@@ -7838,7 +7848,7 @@
 
     cell.textContent = '';
     const inp = document.createElement('input');
-    inp.type = 'text'; inp.inputMode = 'decimal';
+    inp.type = 'text'; inp.inputMode = 'text'; // full keyboard, not decimal -- evalExpr accepts math operators too (see cardHTML's own comment on this)
     inp.value = val; inp.className = 'inv-edit-input';
     inp.placeholder = unit;
     cell.appendChild(inp);
@@ -7894,7 +7904,7 @@
 
     cell.textContent = '';
     const inp = document.createElement('input');
-    inp.type = 'text'; inp.inputMode = 'decimal';
+    inp.type = 'text'; inp.inputMode = 'text'; // full keyboard, not decimal -- evalExpr accepts math operators too (see cardHTML's own comment on this)
     inp.value = curVal; inp.className = 'inv-edit-input';
     inp.placeholder = field === 'bottle_size' ? 'caps/bottle' : 'caps/day';
     cell.appendChild(inp);
