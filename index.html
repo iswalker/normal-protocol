@@ -1736,6 +1736,12 @@
       opacity: 0.35; cursor: default; pointer-events: none;
     }
     #tab-board .shipment.is-locked .ship-add { display: none; }
+    /* Completed orders default to just their header row -- clicking the
+       item-count pill (scount) expands/collapses the items underneath.
+       Only locked shipments ever get is-collapsed (see applyShipmentStage/
+       commitStageChange), so this never hides an open order's own body. */
+    #tab-board .shipment.is-locked .ship-id .scount { cursor: pointer; }
+    #tab-board .shipment.is-locked.is-collapsed > .ship-body { display: none; }
 
     /* Divider above the first locked shipment */
     #tab-board .month-list > *:not(.shipment.is-locked) + .shipment.is-locked {
@@ -3160,11 +3166,11 @@
     // so promote/demote/confirm-receive all still run.
     const stageLabel = stage ? stage[0].toUpperCase() + stage.slice(1) : 'Status';
     return `
-    <div class="shipment${locked ? ' is-locked' : ''}${s.notes && s.notes.trim() ? ' notes-open' : ''}" data-id="${block.id}" data-kind="shipment" data-autoship-link="${esc(s.autoshipLink || '').replace(/"/g, '&quot;')}" data-autoship-next="${s.autoshipNextDate || ''}">
+    <div class="shipment${locked ? ' is-locked is-collapsed' : ''}${s.notes && s.notes.trim() ? ' notes-open' : ''}" data-id="${block.id}" data-kind="shipment" data-autoship-link="${esc(s.autoshipLink || '').replace(/"/g, '&quot;')}" data-autoship-next="${s.autoshipNextDate || ''}">
       <div class="ship-head">
         <div class="ship-id">
           <span class="ship-name" contenteditable="true" spellcheck="false" data-field="name">${esc(s.name)}</span>
-          <span class="scount">0</span>
+          <span class="scount" data-act="toggle-ship-collapse" title="Show/hide items">0</span>
         </div>
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <div class="ship-stage">${stageBtns}</div>
@@ -5201,8 +5207,14 @@
             const cd = STATE.cardData[cEl.dataset.id];
             if (cd && !cd.ghostOf && cd.recur) promoteFirstGhost(cEl.dataset.id);
           });
+          // Freshly locked -- defaults to collapsed, same as a locked
+          // shipment does on page load. Advancing Ordered -> Entered ->
+          // Received (oldStage already non-null) leaves whatever the user
+          // already chose alone.
+          shipEl.classList.add('is-collapsed');
         } else if (oldStage != null && newStage == null) {
           reconcileOnUnlock(shipEl);
+          shipEl.classList.remove('is-collapsed');
         }
 
         applyShipmentStage(shipEl, newStage);
@@ -5282,6 +5294,12 @@
       if (!cardEl) return;
       if (activeCtxMenu && activeCtxMenu._forBtn === cardEl) { closeCtxMenu(); return; }
       openCardCtxMenu(cardEl, e);
+      return;
+    }
+    if (a === 'toggle-ship-collapse') {
+      const shipEl = act.closest('.shipment');
+      if (!shipEl || !shipEl.classList.contains('is-locked')) return;
+      shipEl.classList.toggle('is-collapsed');
       return;
     }
     if (a === 'open-ship-menu') {
