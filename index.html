@@ -1469,16 +1469,19 @@
         position: absolute; top: 58%; transform: translateY(-50%);
         left: 0; width: 490px; pointer-events: none;
       }
+      /* Desktop only: grip moved from the row's right edge to sit right
+         where notes used to start (596px), with notes shifted to start
+         just past it instead -- "...notes, grip" reads as "grip, notes..."
+         now. right:9px on notes matches the row's other trailing edges
+         instead of the wider 32px clearance it used to reserve for the
+         grip sitting past its own end. Mobile is unaffected (its own
+         .ship-grip position comes from the max-width:680px block below,
+         untouched). */
       #tab-board .ship-notes {
         position: absolute; top: 58%; transform: translateY(-50%);
-        left: 596px; right: 32px;
+        left: 622px; right: 9px;
       }
-      /* Was static (inline right after ship-notes in flex order); now
-         pinned to the row's own right edge -- ship-notes is absolutely
-         positioned here and no longer guarantees the grip sits right after
-         it, since nothing's left in-flow to push it there once ship-notes/
-         ship-total/ship-min-date all left the flow above. */
-      #tab-board .ship-grip { position: absolute; top: 58%; right: 11px; transform: translateY(-50%); }
+      #tab-board .ship-grip { position: absolute; top: 58%; left: 596px; transform: translateY(-50%); }
     }
     /* month metrics: fixed-width columns so the alignment column is stable.
        PLANNED right edge = 14px (month-head pad) + 96px (MAX box) = 110px from month inner right.
@@ -1502,10 +1505,10 @@
     #tab-board .card.card--divider .card-grip { width: 18px; height: 18px; }
     #tab-board .card.card--divider .card-grip svg { width: 10px; height: 10px; }
     /* Divider rows only -- a plain item's grip (.board.layout-compact
-       .card-grip below) stays at its own right value; this just nudges the
+       .card-grip below) stays at its own left value; this just nudges the
        divider's smaller grip in slightly further since its own row is
        shorter and reads better a touch tighter to the edge. */
-    #tab-board .board.layout-compact .card.card--divider .card-grip { right: 6px; }
+    #tab-board .board.layout-compact .card.card--divider .card-grip { left: 6px; }
     /* .no-proj is set dynamically in updateCard() (not tied to the static
        card--untracked class) so it also covers a recurring ghost whose
        source item has no Inventory match -- ghosts never carry
@@ -1537,9 +1540,17 @@
     /* Right padding widened to fit the visible circular grip/menu button,
        pinned to the card's own top-right-ish corner (vertically centered)
        -- the far side from the name, which now starts flush left instead. */
-    #tab-board .board.layout-compact .card { position: relative; padding: 3px 28px 3px 6px; overflow: hidden; }
+    /* Desktop only: grip lives on the LEFT edge instead of the right --
+       everything that used to read "...notes, grip" at the card's right
+       side now reads "grip, ...notes" from the left instead. Swapping
+       .card's own left/right padding is what actually moves it: the grid
+       content (name/proj/order/foot/notes) shifts as a whole to start
+       further right, opening up room on the left for the grip without
+       needing to touch the grid's own column widths. Mobile keeps the grip
+       on the right (see the max-width:680px block, unchanged). */
+    #tab-board .board.layout-compact .card { position: relative; padding: 3px 6px 3px 28px; overflow: hidden; }
     #tab-board .board.layout-compact .card-grip {
-      position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+      position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
     }
     #tab-board .board.layout-compact .card-body {
       display: grid;
