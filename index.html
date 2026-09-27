@@ -1073,7 +1073,7 @@
       box-shadow: var(--shadow-card); overflow: hidden;
     }
     #tab-board .ship-head {
-      display: flex; align-items: center; gap: 8px; padding: 5px 9px 0px 6px;
+      display: flex; align-items: center; gap: 8px; padding: 5px 9px 5px 6px;
       background: transparent; position: relative;
     }
     #tab-board .ship-id { min-width: 0; flex: 0 1 auto; display: flex; align-items: baseline; gap: 7px; margin-right: 0; }
@@ -1546,7 +1546,7 @@
 
     /* ── COMPACT layout — one dense grid row per card ── */
     #tab-board .board.layout-compact .month-list { gap: 5px; }
-    #tab-board .board.layout-compact .ship-body { gap: 5px; padding: 6px; }
+    #tab-board .board.layout-compact .ship-body { gap: 5px; padding: 1px 6px 6px 6px; }
     /* Desktop: grip is a real DOM child of .card-end now (see cardHTML),
        sitting between .recur-ctl ("ev N mo") and .notes-toggle/.card-notes
        -- flows naturally in that row's own flex layout (gap:4px, see
