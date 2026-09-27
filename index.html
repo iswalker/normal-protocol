@@ -976,7 +976,7 @@
       display: none; font-family: var(--font-num); font-size: 11px; color: var(--ink-3);
     }
     #tab-board .month-title .mcount {
-      font-family: var(--font-num); font-size: 10px;
+      font-family: var(--font-num); font-size: 10px; cursor: pointer;
       color: var(--ink-2); background: #dbe2e3; padding: 1px 7px; border-radius: 20px;
     }
     #tab-board .month-metrics { margin-left: auto; margin-right: -9px; display: flex; align-items: center; }
@@ -3178,7 +3178,7 @@
         <div class="month-title">
           <span class="mname">${esc(m.name)}</span>
           <span class="msub">${esc(m.sub || '')}</span>
-          <span class="mcount">0</span>
+          <span class="mcount" data-act="open-month-orders" title="Orders this month">0</span>
         </div>
         <button class="add-btn month-add" data-act="add-ship">${ICON.plus} Order</button>
         <span class="month-notes month-notes--desktop" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
@@ -3993,6 +3993,18 @@
     });
   }
 
+  // Shared by the card's "Move to Order" picker and the month-count hover
+  // summary (both list a month's orders the same way) -- "Name (qty)" for
+  // an empty order, "Name (qty) - $price" once it actually holds something,
+  // matching .ship-total's own live-rendered $ text so this never drifts
+  // out of sync with what the shipment's own header already shows.
+  function formatOrderSummary(shipEl) {
+    const name = (shipEl.querySelector('.ship-name')?.textContent || '').trim() || 'Order';
+    const qty = shipEl.querySelectorAll(':scope .ship-body > .card[data-id]:not(.card--divider)').length;
+    const amt = shipEl.querySelector('.ship-total .amt')?.textContent || '';
+    return qty > 0 ? `${name} (${qty}) - ${amt}` : `${name} (${qty})`;
+  }
+
   // Find the first shipment in a target month whose name matches (case-insensitive).
   function findShipByName(targetMonthIdx, name) {
     const lc = name.trim().toLowerCase();
@@ -4620,6 +4632,47 @@
     });
   }
 
+  // Same popover chrome as the Status dropdown above (.ship-ctx-menu), just
+  // a read-only list of this month's orders instead of choices to click --
+  // hovering/tapping the month's own item-count badge (.mcount) shows what
+  // formatCardOptionLabel/formatOrderSummary already use for "Move to
+  // Order", so the two stay consistent with each other.
+  function openMonthOrderSummary(btn) {
+    closeCtxMenu();
+    const monthEl = btn.closest('.month');
+    const ships = [...monthEl.querySelectorAll(':scope > .month-list > .shipment')];
+    const menu = document.createElement('div');
+    menu.className = 'ship-ctx-menu';
+    menu._forBtn = btn;
+    if (!ships.length) {
+      const item = document.createElement('div');
+      item.className = 'ship-ctx-item ctx-disabled';
+      item.textContent = 'No orders this month';
+      menu.appendChild(item);
+    } else {
+      // Plain .ship-ctx-item (not ctx-disabled) -- purely informational, no
+      // click handler, but the request was specifically for the Status
+      // dropdown's own full-color/hover look, not the greyed-out disabled
+      // treatment a real unavailable choice gets.
+      ships.forEach((shipEl) => {
+        const item = document.createElement('div');
+        item.className = 'ship-ctx-item';
+        item.textContent = formatOrderSummary(shipEl);
+        menu.appendChild(item);
+      });
+    }
+    const r = btn.getBoundingClientRect();
+    menu.style.left = r.left + 'px';
+    menu.style.top = (r.bottom + 4) + 'px';
+    document.body.appendChild(menu);
+    activeCtxMenu = menu;
+    requestAnimationFrame(() => {
+      const mr = menu.getBoundingClientRect();
+      if (mr.right > window.innerWidth - 8) menu.style.left = Math.max(8, window.innerWidth - mr.width - 8) + 'px';
+      if (mr.bottom > window.innerHeight - 8) menu.style.top = Math.max(8, r.top - mr.height - 4) + 'px';
+    });
+  }
+
   // Hover-to-open for the stage dropdown -- only for mice/trackpads (a
   // touch tap already opens it via the click delegation below; hover events
   // on touch devices are unreliable/synthetic, so this is opt-in per device
@@ -4657,6 +4710,43 @@
       const rt = e.relatedTarget;
       if (rt && (rt.closest('.ship-ctx-menu') === activeCtxMenu || rt === activeCtxMenu._forBtn)) return;
       scheduleStageHoverClose();
+    });
+  }
+
+  // Hover-to-open for the month's own item-count badge (.mcount) -- same
+  // pattern as the stage dropdown above, sharing activeCtxMenu/closeCtxMenu
+  // (hovering from one onto the other just swaps which is open). Touch taps
+  // it via the click delegation below (see 'open-month-orders').
+  let monthCountHoverCloseTimer = null;
+  function cancelMonthCountHoverClose() {
+    if (monthCountHoverCloseTimer) { clearTimeout(monthCountHoverCloseTimer); monthCountHoverCloseTimer = null; }
+  }
+  function scheduleMonthCountHoverClose() {
+    cancelMonthCountHoverClose();
+    monthCountHoverCloseTimer = setTimeout(() => { closeCtxMenu(); monthCountHoverCloseTimer = null; }, 200);
+  }
+  if (HOVER_CAPABLE) {
+    board.addEventListener('mouseover', (e) => {
+      const btn = e.target.closest('.mcount');
+      if (!btn) return;
+      cancelMonthCountHoverClose();
+      if (activeCtxMenu && activeCtxMenu._forBtn === btn) return;
+      openMonthOrderSummary(btn);
+    });
+    board.addEventListener('mouseout', (e) => {
+      const btn = e.target.closest('.mcount');
+      if (!btn || (e.relatedTarget && e.relatedTarget.closest('.ship-ctx-menu'))) return;
+      scheduleMonthCountHoverClose();
+    });
+    document.addEventListener('mouseover', (e) => {
+      if (!activeCtxMenu || !activeCtxMenu._forBtn || e.target.closest('.ship-ctx-menu') !== activeCtxMenu) return;
+      cancelMonthCountHoverClose();
+    });
+    document.addEventListener('mouseout', (e) => {
+      if (!activeCtxMenu || !activeCtxMenu._forBtn || e.target.closest('.ship-ctx-menu') !== activeCtxMenu) return;
+      const rt = e.relatedTarget;
+      if (rt && (rt.closest('.ship-ctx-menu') === activeCtxMenu || rt === activeCtxMenu._forBtn)) return;
+      scheduleMonthCountHoverClose();
     });
   }
 
@@ -5184,6 +5274,12 @@
       e.stopPropagation();
       if (activeCtxMenu && activeCtxMenu._forBtn === act) { closeCtxMenu(); return; }
       openStageMenu(act);
+      return;
+    }
+    if (a === 'open-month-orders') {
+      e.stopPropagation();
+      if (activeCtxMenu && activeCtxMenu._forBtn === act) { closeCtxMenu(); return; }
+      openMonthOrderSummary(act);
       return;
     }
     if (a === 'open-autoship-link') {
@@ -6306,6 +6402,42 @@
         reapplySearchTo(targetMonthEl);
         recalcAll(); persist();
       }
+      function moveCardToOrder(targetShipEl) {
+        targetShipEl.querySelector('.ship-body').prepend(cardEl);
+        reconcileMovedRecurring(cardEl);
+        reapplySearchTo(monthEl);
+        recalcAll(); persist();
+      }
+      // Same shape as ctxMonthPick (see buildCtxMenu) but listing this
+      // month's OTHER orders instead of every month -- built locally rather
+      // than threaded through buildFn's own params since it needs
+      // card-specific context (monthEl, the card's current shipment to
+      // exclude) that the shipment context menu has no use for. Excludes
+      // the card's own current order (nothing to move "to" there) and any
+      // locked/completed one (same restriction "+ Item" already applies --
+      // an order that's Ordered/Entered/Received doesn't take new items).
+      function ctxOrderPickRow() {
+        const currentShipEl = container.closest('.shipment') || null;
+        const ships = [...monthEl.querySelectorAll(':scope > .month-list > .shipment')]
+          .filter((s) => s !== currentShipEl && !s.classList.contains('is-locked'));
+        const row = document.createElement('div');
+        row.className = 'ship-ctx-pick' + (ships.length ? '' : ' ctx-disabled');
+        const cap = document.createElement('span');
+        cap.textContent = 'Move to';
+        const sel = document.createElement('select');
+        sel.innerHTML = '<option value="">Order</option>' + ships.map((s, i) =>
+          `<option value="${i}">${esc(formatOrderSummary(s))}</option>`).join('');
+        if (!ships.length) sel.disabled = true;
+        ['mousedown', 'click'].forEach((t) => sel.addEventListener(t, (ev) => ev.stopPropagation()));
+        sel.addEventListener('change', () => {
+          const target = ships[Number(sel.value)];
+          if (!target) return;
+          closeCtxMenu();
+          moveCardToOrder(target);
+        });
+        row.append(cap, sel);
+        return row;
+      }
 
       buildCtxMenu(e, (menu, ctxItem, ctxDivider, ctxMonthPick) => {
         // Formerly the standalone × in card-end -- now this menu's own
@@ -6345,6 +6477,7 @@
         menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => moveCardToMonth(allMonths[monthIdx + 1])));
         menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => moveCardToMonth(allMonths[monthIdx - 1])));
         menu.appendChild(ctxMonthPick('Move to', monthEl, moveCardToMonth));
+        menu.appendChild(ctxOrderPickRow());
         menu.appendChild(ctxDivider());
         menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => copyCardToMonth(allMonths[monthIdx + 1])));
         menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => copyCardToMonth(allMonths[monthIdx - 1])));
