@@ -1504,11 +1504,16 @@
     #tab-board .card.card--divider .div-line { flex: 1; border: 0; border-top: 1px solid var(--ink-12); margin: 0; }
     #tab-board .card.card--divider .card-grip { width: 18px; height: 18px; }
     #tab-board .card.card--divider .card-grip svg { width: 10px; height: 10px; }
-    /* Divider rows only -- a plain item's grip (.board.layout-compact
-       .card-grip below) stays at its own left value; this just nudges the
-       divider's smaller grip in slightly further since its own row is
-       shorter and reads better a touch tighter to the edge. */
-    #tab-board .board.layout-compact .card.card--divider .card-grip { left: 6px; }
+    /* Divider rows only -- a self-contained position:absolute (a regular
+       item's own grip no longer carries this at all -- see the
+       .board.layout-compact .card-grip comment below -- so this can't rely
+       on inheriting it anymore). Dividers still want the grip pinned at
+       the card's own left edge, ahead of the horizontal rule (.div-line
+       comes first in the DOM but flex:1's own space just fills in behind
+       an absolutely-positioned sibling either way). */
+    #tab-board .board.layout-compact .card.card--divider .card-grip {
+      position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+    }
     /* .no-proj is set dynamically in updateCard() (not tied to the static
        card--untracked class) so it also covers a recurring ghost whose
        source item has no Inventory match -- ghosts never carry
@@ -1537,25 +1542,23 @@
     /* ── COMPACT layout — one dense grid row per card ── */
     #tab-board .board.layout-compact .month-list { gap: 5px; }
     #tab-board .board.layout-compact .ship-body { gap: 5px; padding: 6px; }
-    /* Desktop only: grip moved from the card's own right edge to sit right
-       before the "del" grid column (toggle/recur/notes) begins -- the
-       "...notes, grip" reading becomes "grip, ...notes" instead, same idea
-       as the shipment row's swap. Moving it to the card's OWN left edge
-       (right next to the name) was tried first and was wrong -- that read
-       as "grip, name", nowhere near notes at all. 459px = card's own
-       padding-left (6px) + the summed width of the top/proj/order/foot
-       columns and their gaps (155+9+155+9+94+9+39+9 = 479px) minus the
-       grip's own width+gap (20+6=26px) -- i.e. parked just to the left of
-       wherever the del column's own edge actually falls, so it never
-       overlaps the toggle/recur controls sitting at that column's start.
-       .card's own padding no longer needs the old lopsided 28px reserved
-       on one side for the grip -- it's a plain small padding now, and the
-       grid gets slightly more width as a result. Mobile keeps the grip on
-       the right (see the max-width:680px block, unchanged). */
+    /* Desktop: grip is a real DOM child of .card-end now (see cardHTML),
+       sitting between .recur-ctl ("ev N mo") and .notes-toggle/.card-notes
+       -- flows naturally in that row's own flex layout (gap:4px, see
+       .card-end below) instead of being absolutely positioned at a
+       computed pixel offset. That pixel-offset approach (tried first) only
+       accounted for the grid's FIXED-width columns and broke the instant a
+       card had wider variable content (e.g. a longer Price value) shift
+       its actual column boundaries -- interlacing it into the real flow
+       sidesteps that entirely, matching wherever "ev N mo" actually ends
+       on any given card. .card's own padding no longer needs the old
+       lopsided 28px reserved on one side for a floating grip -- it's a
+       plain small padding now, and the grid gets slightly more width as a
+       result. Mobile keeps its own separate treatment (see the
+       max-width:680px block) since .card-end unwraps via display:contents
+       there and the grip needs an explicit order to land back where it
+       used to (top-right, by the name) instead of between recur/notes. */
     #tab-board .board.layout-compact .card { position: relative; padding: 3px 6px; overflow: hidden; }
-    #tab-board .board.layout-compact .card-grip {
-      position: absolute; left: 459px; top: 50%; transform: translateY(-50%);
-    }
     #tab-board .board.layout-compact .card-body {
       display: grid;
       grid-template-columns: 155px 155px 94px 39px 1fr;
@@ -1944,6 +1947,17 @@
          becoming unreadable to stay on one. */
       #tab-board .board.layout-compact .card-top { flex: 0 1 0; min-width: 90px; }
       #tab-board .board.layout-compact .proj { flex: 0 0 auto; margin-left: auto; }
+      /* Grip moved in the DOM (see cardHTML) to sit between "ev N mo" and
+         Notes on DESKTOP -- left untouched here it would land in row 2 of
+         THIS layout instead (mobile unwraps .card-end's children via
+         display:contents, same flex context as everything else, and the
+         grip's new DOM position sits after .card-row-break in that tied
+         order:0 sequence, which is what actually decides the row1/row2
+         split when wrapping). order:-1 sorts it before .card-top/.proj and
+         the row-break, putting it back on row 1 where it always was on
+         mobile -- at the row's own start rather than end, but same row,
+         not stranded on row 2 among the price/qty controls. */
+      #tab-board .board.layout-compact .card-grip { order: -1; }
       /* The run-out projection's desktop-tuned type (13/12px, roomy gaps) is
          wide enough on its own to force the wrap this whole rule set exists
          to avoid -- shrink it further so it reliably fits next to a name on
@@ -3061,7 +3075,6 @@
           <span class="badge loose-tag">Loose</span>
           <span class="badge status">OK</span>
           <span class="autoship-date-badge" data-act="open-autoship-link" style="display:none"></span>
-          <button type="button" class="card-grip block-grip" data-act="open-card-menu" title="Drag to reorder, or open menu" aria-label="Card menu">${ICON.menu}</button>
         </div>
         <div class="proj">
           <div class="pk">Supply</div>
@@ -3104,6 +3117,7 @@
         <div class="card-end">
           <button class="incl-toggle" data-act="toggle-include" title="Count this item in the month's Planned total" aria-label="Count in Planned total"><span class="sw"><i></i></span></button>
           <span class="recur-ctl" title="Repeat every N months">ev<input class="recur-ctl-n" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="—" value="${c.recur || ''}"${isGhost ? ' disabled' : ''}>mo</span>
+          <button type="button" class="card-grip block-grip" data-act="open-card-menu" title="Drag to reorder, or open menu" aria-label="Card menu">${ICON.menu}</button>
           <button class="notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
           <span class="card-notes" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(c.notes || '')}</span>
         </div>
@@ -6097,7 +6111,7 @@
       const cap = document.createElement('span');
       cap.textContent = label;
       const sel = document.createElement('select');
-      sel.innerHTML = '<option value=""></option>' + months.map((m, i) =>
+      sel.innerHTML = '<option value="">Month</option>' + months.map((m, i) =>
         `<option value="${i}">${m.querySelector('.mname')?.textContent.trim() || ''}</option>`).join('');
       if (!months.length) sel.disabled = true;
       // Keep the context menu from closing when the native dropdown is used
