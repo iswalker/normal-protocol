@@ -6806,8 +6806,33 @@
       if (!STATE || !STATE.cardData) return 0;
       INV_MAP = invMap; // keep for the add-item picker
       let matched = 0;
-      Object.values(STATE.cardData).forEach((c) => {
+      Object.entries(STATE.cardData).forEach(([id, c]) => {
         const inv = invMap[String(c.name || '').trim().toLowerCase()];
+        // A card (or a recurring ghost, which copies untracked from its root
+        // at creation -- see syncGhosts) created before this name existed in
+        // the Inventory catalog gets stamped untracked (free-text) for good
+        // at that point (see newCard) -- this loop used to only ever refresh
+        // amount/dose/bottleSize/loggedOn below, never re-check whether the
+        // name has since gained a real catalog match, so adding the
+        // Inventory item never reached a card already on the board under
+        // that name until the card itself was deleted and re-added. Ghosts
+        // never carry the card--untracked DOM class or the free-text
+        // contenteditable name (see cardHTML) even when untracked in STATE,
+        // so only a real card's own DOM needs updating here.
+        if (inv && c.untracked) {
+          c.untracked = false;
+          const cardEl = board.querySelector(`.card[data-id="${id}"]`);
+          if (cardEl && !cardEl.classList.contains('card--ghost')) {
+            cardEl.classList.remove('card--untracked');
+            const nameEl = cardEl.querySelector('.card-name');
+            if (nameEl) {
+              nameEl.removeAttribute('contenteditable');
+              nameEl.removeAttribute('spellcheck');
+              nameEl.dataset.act = 'open-inv-item';
+              nameEl.title = 'Open in Inventory';
+            }
+          }
+        }
         // No dose > 0 requirement here — a matched item with no Dose/Day set
         // still needs its amount/bottleSize/loggedOn synced on, just routed
         // through quantity mode (see updateCard's isQtyMode) instead of the
@@ -7309,6 +7334,13 @@
     // Reload from Turso to get the new id
     const fresh = await fetch('/api/inventory-items').then(x => x.json());
     buildMapsFromItems(fresh);
+    // Without this, board cards already named after this item (incl.
+    // recurring ghosts) kept showing no On Hand/run-out until *something
+    // else* happened to call fetchLogAndApply (e.g. reloading the page) --
+    // buildMapsFromItems alone only refreshes window._INV_ITEM_MAP, not the
+    // board's own INV_MAP (see SupplementBoard.applyInventory). Same full
+    // refresh startNameEdit's rename path already gets via InventoryWriter.run().
+    await fetchLogAndApply();
     return name.toLowerCase();
   }
 
