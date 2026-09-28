@@ -7110,6 +7110,21 @@
     if (!newStage) return;
     const today = new Date().toISOString().slice(0, 10);
     try {
+      if (oldStage == null) {
+        // Freshly locking (Ordered/Entered, or straight to Received) -- any
+        // inventory_log rows still tied to this order_id are leftovers from
+        // a PREVIOUS lock cycle. Unlocking a shipment (see reconcileOnUnlock)
+        // never cleans those up, so lock -> unlock -> edit -> relock left the
+        // old "Ordered" row sitting right next to the new one this lock is
+        // about to post. The 'received' branch below finds ALL Ordered rows
+        // for this order_id and flips every one of them, so both get counted
+        // -- On Hand ends up double what the Confirm Receive preview showed
+        // (which only ever reads the live card list, not what's already in
+        // Turso). Purging first guarantees a clean slate for this order on
+        // every lock cycle, no matter how many times it's been unlocked and
+        // relocked before.
+        await fetch('/api/inventory?order_id=' + encodeURIComponent(orderId), { method: 'DELETE' }).catch(() => {});
+      }
       if (newStage === 'received') {
         const r = await fetch('/api/inventory?order_id=' + encodeURIComponent(orderId));
         const existing = r.ok ? await r.json() : [];

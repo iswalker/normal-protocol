@@ -1,4 +1,4 @@
-/* GET ?order_id= filter, POST insert, PATCH ?id=N update type, DELETE ?item= remove all rows */
+/* GET ?order_id= filter, POST insert, PATCH ?id=N update type, DELETE ?item= or ?order_id= remove rows */
 import { touchSyncMeta } from './meta.js';
 
 function httpUrl(env) {
@@ -57,7 +57,12 @@ export async function onRequestPost({ request, env }) {
 export async function onRequestDelete({ request, env }) {
   const url = new URL(request.url);
   const item = url.searchParams.get('item');
-  if (!item) return Response.json({ error: 'missing ?item=' }, { status: 400 });
+  const orderId = url.searchParams.get('order_id');
+  if (orderId) {
+    await pipeline(env, [CREATE, exec('DELETE FROM inventory_log WHERE order_id = ?', [T(orderId)])]);
+    return Response.json({ ok: true });
+  }
+  if (!item) return Response.json({ error: 'missing ?item= or ?order_id=' }, { status: 400 });
   await pipeline(env, [CREATE, exec('DELETE FROM inventory_log WHERE item = ?', [T(item)])]);
   return Response.json({ ok: true });
 }
