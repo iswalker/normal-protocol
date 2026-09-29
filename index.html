@@ -7106,6 +7106,24 @@
     return r.json();
   }
 
+  // A shipment's cards can mix real orders (a populated, non-negative Price
+  // -- a new bottle being bought) with quantity-mode usage/decrement entries
+  // (blank Price -- see the board's own calcQtyCard/isQtyMode, e.g. a
+  // "Nutrition Visits" card logging 1 visit consumed, not 1 bottle bought).
+  // Locking/receiving a shipment used to always log bottleSize*qty as a
+  // straight increase for every eligible card regardless of which kind it
+  // was, so a decrement card would show its correct "2 -> 1" on the board
+  // itself but silently log a "2 -> 5"-style INCREASE to Turso the moment
+  // the shipment was marked Received. Mirrors calcQtyCard's own sign rule
+  // exactly so what gets written always matches what the board predicted.
+  function receiveDelta(c) {
+    const qty = Number(c.qty) || 0;
+    const isBlank = c.price === '' || c.price == null;
+    if (isBlank) return -qty;
+    if (Number(c.price) >= 0) return qty * (Number(c.bottleSize) || 0);
+    return 0; // negative Price (credit/discount) -- no on-hand change
+  }
+
   async function writeShipment({ orderId, cards, newStage, oldStage }) {
     if (!newStage) return;
     const today = new Date().toISOString().slice(0, 10);
@@ -7143,14 +7161,14 @@
         } else {
           const eligible = cards.filter((c) => c.name && c.qty > 0);
           await Promise.all(eligible.map((c) => postToTurso({
-            item: c.name, amount: (c.bottleSize || 0) * (c.qty || 0),
+            item: c.name, amount: receiveDelta(c),
             type: 'Received', logged_on: today, order_id: orderId,
           })));
         }
       } else if (oldStage == null) {
         const eligible = cards.filter((c) => c.name && c.qty > 0);
         await Promise.all(eligible.map((c) => postToTurso({
-          item: c.name, amount: (c.bottleSize || 0) * (c.qty || 0),
+          item: c.name, amount: receiveDelta(c),
           type: 'Ordered', logged_on: today, order_id: orderId,
         })));
       }
@@ -7522,9 +7540,13 @@
             ? Math.max(0, Math.floor((today - new Date(amt.loggedOn + 'T00:00:00')) / 86400000))
             : 0;
           const before = dose > 0 ? Math.max(0, raw - dose * elapsed) : raw;
-          const add = willWrite ? (c.bottleSize || 0) * (c.qty || 0) : 0;
+          // Mirrors writeShipment's own receiveDelta -- a quantity-mode
+          // decrement card (blank Price) shows its real "2 -> 1" here
+          // instead of assuming every card is a new bottle being received.
+          const add = willWrite ? receiveDelta(c) : 0;
           const after = before + add;
-          body.appendChild(rcRow(c.name, Math.round(before), Math.round(after), willWrite ? '(+' + Math.round(add) + ')' : null));
+          const deltaTxt = willWrite ? '(' + (add >= 0 ? '+' : '') + Math.round(add) + ')' : null;
+          body.appendChild(rcRow(c.name, Math.round(before), Math.round(after), deltaTxt));
         });
 
         if (alreadyReceived) {
