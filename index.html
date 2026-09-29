@@ -7872,6 +7872,15 @@
         const card = document.createElement('div');
         card.className = 'inv-card';
         card.dataset.key = key;
+        // Mirrors the desktop table's own searchable columns (see
+        // SEARCH_COL_IDXS/matchesInvSearch) as individual fields, not just
+        // the joined display string below -- keeps card search exactly as
+        // precise as the table's per-column checks instead of one merged
+        // "name · annual · off-cycle · anyday" string that could bleed
+        // across field boundaries on an unlucky query.
+        card.dataset.annual = meta.annualSale || '';
+        card.dataset.offcycle = meta.offCycleSale || '';
+        card.dataset.anyday = meta.anyday || '';
         card.innerHTML =
           '<button class="inv-card-del-btn" data-key="' + key + '" data-id="' + (meta._id || '') + '" data-name="' + name.replace(/"/g, '&quot;') + '" title="Delete item" aria-label="Delete item">✕</button>' +
           '<div class="inv-card-header">' +
@@ -8060,12 +8069,14 @@
       const parsed = inp.value.trim() === '' ? 0 : evalExpr(inp.value);
       if (isNaN(parsed) || parsed < 0) { cell.textContent = curVal || '—'; return; }
 
+      const tr = body.querySelector('tr[data-key="' + key + '"]');
+      const onHandCell = tr && tr.querySelector('.inv-onhand');
+      const currentCaps = onHandCell ? (Number(onHandCell.dataset.amount) || 0) : 0;
+      const doseChanged = field === 'daily_dose' && parsed !== Number(curVal);
+
       // When dose changes, snapshot current on-hand as a new Reset dated today so the
       // new dose only applies going forward — not retroactively from the last Reset date.
-      if (field === 'daily_dose' && parsed !== Number(curVal)) {
-        const tr = body.querySelector('tr[data-key="' + key + '"]');
-        const onHandCell = tr && tr.querySelector('.inv-onhand');
-        const currentCaps = onHandCell ? (Number(onHandCell.dataset.amount) || 0) : 0;
+      if (doseChanged) {
         await fetch('/api/inventory', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -8077,9 +8088,12 @@
       if (field === 'bottle_size') meta.bottleSize = parsed;
       else                          meta.dose       = parsed;
 
-      // Update this cell and the days-per-bottle cell
-      cell.textContent = parsed || '—';
-      const tr = body.querySelector('tr[data-key="' + key + '"]');
+      // Update every element showing this field -- the desktop <td> and the
+      // mobile card's <span> share the same class (see attachEditHandlers),
+      // so whichever one wasn't actually clicked needs updating by hand too
+      // -- plus the days-per-bottle cell (desktop table only).
+      document.querySelectorAll('.' + (field === 'bottle_size' ? 'inv-bs' : 'inv-dose') + '[data-key="' + key + '"]')
+        .forEach((el) => { el.textContent = parsed || '—'; });
       if (tr) {
         const dpbCell = tr.querySelector('.inv-dpb');
         const bs = meta.bottleSize || 0, dose = meta.dose || 0;
@@ -8092,8 +8106,18 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [field]: parsed }),
         });
-        // Full re-render to recalculate run-out, bottles, etc.
-        renderInventory();
+        // Run-out depends on dose/bottleSize -- refresh just this row/card
+        // in place (same targeted pattern startEdit's own On Hand save
+        // already uses, see refreshRow) instead of a full renderInventory(),
+        // which tore down and rebuilt the ENTIRE table/card list on every
+        // save. If you'd already clicked into a different item's field by
+        // the time that finished (a fetch + full rebuild, not instant),
+        // its freshly-opened <input> got wiped out from under you mid-edit
+        // -- the "stutter"/unfocus this was reported as.
+        const loggedOn = doseChanged
+          ? isoToday() // just posted a fresh Reset dated today, above
+          : (computeOnHand(window._INV_LOG_ROWS || [])[key] || {}).loggedOn || null;
+        refreshRow(key, currentCaps, loggedOn, itemMap);
       } catch (e) {
         console.error('Meta save failed:', e);
         renderInventory();
@@ -8138,7 +8162,33 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [field]: val }),
         });
-        renderInventory();
+        // In-place update instead of a full renderInventory() -- see
+        // startMetaEdit's own comment on why tearing down and rebuilding
+        // the ENTIRE table/card list after every single-field save was
+        // disruptive (stole focus mid-edit) if you'd already clicked into a
+        // different item's field before that fetch+rebuild finished. The
+        // desktop cell above is already updated in place; only the mobile
+        // card's combined suppliers line (and its search dataset -- see
+        // matchesInvSearch) needs syncing here.
+        const card = [...document.getElementById('inv-cards')?.querySelectorAll('.inv-card') || []]
+          .find((c) => c.dataset.key === key);
+        if (card) {
+          card.dataset.annual = meta.annualSale || '';
+          card.dataset.offcycle = meta.offCycleSale || '';
+          card.dataset.anyday = meta.anyday || '';
+          const suppliersText = [meta.annualSale, meta.offCycleSale, meta.anyday].filter(Boolean).join(' · ');
+          let suppliersEl = card.querySelector('.inv-card-suppliers');
+          if (suppliersText) {
+            if (!suppliersEl) {
+              suppliersEl = document.createElement('div');
+              suppliersEl.className = 'inv-card-suppliers';
+              card.querySelector('.inv-card-header')?.appendChild(suppliersEl);
+            }
+            suppliersEl.textContent = suppliersText;
+          } else if (suppliersEl) {
+            suppliersEl.remove();
+          }
+        }
       } catch (e) {
         console.error('Supplier save failed:', e);
         renderInventory();
@@ -8228,6 +8278,15 @@
   // Run-Out" -- these were [0,8,9,10] before that column existed.
   const SEARCH_COL_IDXS = [0, 9, 10, 11]; // Item, Annual Sale, Off-Cycle, Anyday
 
+  // One shared match rule for both the desktop table and the mobile card
+  // list (see applyFilters below) -- desktop used to check these 4 columns
+  // while mobile only ever checked the item name, silently dropping Annual
+  // Sale/Off-Cycle/Anyday from mobile search. Both views now call this same
+  // function so "search" means the same thing everywhere.
+  function matchesInvSearch(fields, q) {
+    return !q || fields.some((t) => (t || '').toLowerCase().includes(q));
+  }
+
   let soonOnly = false;
   const soonBtn = document.getElementById('inv-soon-btn');
   if (soonBtn) soonBtn.addEventListener('click', () => {
@@ -8259,9 +8318,7 @@
     body.querySelectorAll('tr').forEach((tr) => {
       const cells = tr.querySelectorAll('td');
       if (!cells.length) return;
-      const passesText = !q || SEARCH_COL_IDXS.some((colIdx) =>
-        cells[colIdx] && cells[colIdx].textContent.toLowerCase().includes(q)
-      );
+      const passesText = matchesInvSearch(SEARCH_COL_IDXS.map((colIdx) => cells[colIdx]?.textContent), q);
       const passesSoon = !soonOnly || (cells[1] && (cells[1].classList.contains('inv-soon') || cells[1].classList.contains('inv-empty')));
       const passesNoOrder = !noOrderOnly || (cells[2] && cells[2].classList.contains('inv-no-data'));
       const show = passesText && passesSoon && passesNoOrder;
@@ -8293,11 +8350,12 @@
     const cardQ = (document.getElementById('inv-filter-item')?.value || '').trim().toLowerCase();
     let visibleCardCount = 0;
     document.getElementById('inv-cards')?.querySelectorAll('.inv-card').forEach((card) => {
-      const name = (card.querySelector('.inv-card-name')?.textContent || '').toLowerCase();
+      const name = card.querySelector('.inv-card-name')?.textContent || '';
       const roEl = card.querySelector('.inv-card-runout');
       const passesSoon = !soonOnly || (roEl && (roEl.classList.contains('inv-soon') || roEl.classList.contains('inv-empty')));
       const passesNoOrder = !noOrderOnly || !card.querySelector('.inv-card-nextorder');
-      const show = (!cardQ || name.includes(cardQ)) && passesSoon && passesNoOrder;
+      const passesText = matchesInvSearch([name, card.dataset.annual, card.dataset.offcycle, card.dataset.anyday], cardQ);
+      const show = passesText && passesSoon && passesNoOrder;
       card.style.display = show ? '' : 'none';
       if (show) visibleCardCount++;
     });
