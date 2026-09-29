@@ -65,6 +65,15 @@ async function ensureSchema(env) {
     "ALTER TABLE order_items ADD COLUMN autoship_next_date TEXT",
     "ALTER TABLE orders ADD COLUMN autoship_link TEXT",
     "ALTER TABLE orders ADD COLUMN autoship_next_date TEXT",
+    // Orders/items used to be matched to their month by NAME ALONE ("Jun"),
+    // ambiguous once two different calendar years' "Jun" coexist on the
+    // board (the forward-fill window and recurring projections both
+    // routinely cross a year boundary) -- see fromApi's own comment on the
+    // client side for the full story. These let the client key by
+    // (month, year) instead, self-healing existing NULL-year rows the next
+    // time the board is edited (every save rewrites the whole board).
+    "ALTER TABLE orders ADD COLUMN year INTEGER",
+    "ALTER TABLE order_items ADD COLUMN year INTEGER",
   ]) {
     try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
   }
@@ -76,9 +85,9 @@ export async function onRequestGet({ env }) {
     await ensureSchema(env);
     const results = await pipeline(env, [
       exec("SELECT month, year, position, notes FROM order_months ORDER BY position"),
-      exec("SELECT order_id, month, merchant, position, status, notes, autoship_link, autoship_next_date FROM orders ORDER BY position"),
+      exec("SELECT order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date FROM orders ORDER BY position"),
       exec(
-        `SELECT order_item_id, order_id, month, block_position, item_position, supplement,
+        `SELECT order_item_id, order_id, month, year, block_position, item_position, supplement,
                 price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
                 recur, recur_source, autoship_link, autoship_next_date
          FROM order_items ORDER BY block_position, item_position`
@@ -88,13 +97,13 @@ export async function onRequestGet({ env }) {
       month: m.month, year: num(m.year), position: num(m.position), notes: m.notes || "",
     }));
     const orders = rowsFrom(results[1]).map((o) => ({
-      order_id: o.order_id, month: o.month, merchant: o.merchant,
+      order_id: o.order_id, month: o.month, year: num(o.year), merchant: o.merchant,
       position: num(o.position), status: o.status, notes: o.notes,
       autoship_link: o.autoship_link || null,
       autoship_next_date: o.autoship_next_date || null,
     }));
     const items = rowsFrom(results[2]).map((it) => ({
-      order_item_id: it.order_item_id, order_id: it.order_id, month: it.month,
+      order_item_id: it.order_item_id, order_id: it.order_id, month: it.month, year: num(it.year),
       block_position: num(it.block_position), item_position: num(it.item_position),
       supplement: it.supplement,
       // Preserve a genuinely NULL price as null (not 0) -- the board uses a
@@ -139,18 +148,18 @@ export async function onRequestPut({ request, env }) {
   }
   for (const o of orders) {
     reqs.push(exec(
-      "INSERT INTO orders (order_id, month, merchant, position, status, notes, autoship_link, autoship_next_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [T(o.order_id), T(o.month), T(o.merchant), I(o.position), T(o.status), T(o.notes), T(o.autoship_link), T(o.autoship_next_date)]
+      "INSERT INTO orders (order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [T(o.order_id), T(o.month), I(o.year), T(o.merchant), I(o.position), T(o.status), T(o.notes), T(o.autoship_link), T(o.autoship_next_date)]
     ));
   }
   for (const it of items) {
     reqs.push(exec(
       `INSERT INTO order_items
-         (order_item_id, order_id, month, block_position, item_position, supplement,
+         (order_item_id, order_id, month, year, block_position, item_position, supplement,
           price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
           recur, recur_source, autoship_link, autoship_next_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [T(it.order_item_id), T(it.order_id), T(it.month), I(it.block_position), I(it.item_position),
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [T(it.order_item_id), T(it.order_id), T(it.month), I(it.year), I(it.block_position), I(it.item_position),
        T(it.supplement), F(it.price_per_bottle), F(it.order_qty_bottles), I(it.include_in_total ? 1 : 0),
        T(it.notes), I(it.untracked ? 1 : 0),
        it.recur ? I(it.recur) : { type: "null" }, it.recur_source ? T(it.recur_source) : { type: "null" },

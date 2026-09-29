@@ -2949,20 +2949,56 @@
       };
     });
 
+    // Orders/items used to be matched to a month by NAME ALONE ("Jun"), with
+    // no year -- harmless while only one calendar year was ever on the board
+    // at once, but the board's own forward window (padMonths(10)) and a
+    // recurring item's own projection routinely span a year boundary, so two
+    // *different* "Jun" months coexist and every order/item literally named
+    // "Jun" matched BOTH of them at once (duplicated across both, since this
+    // .filter() runs once per month with no memory of what an earlier month
+    // already claimed). An item "scheduled for June 2027" was never actually
+    // distinguishable in storage from one meant for June 2026 -- moving it
+    // between the two on the board didn't help, since toApi() only ever
+    // wrote the bare name back out either way.
+    //
+    // orders.year/order_items.year (added alongside this fix) close that
+    // gap going forward -- matched here by the (month, year) pair, same as
+    // order_months already was. A row saved before this fix has no year yet
+    // (NULL): claimedOrders/claimedItems below give each of those legacy
+    // rows to the FIRST same-named month it matches (in position order,
+    // i.e. chronologically) rather than duplicating it into every one --
+    // the very next save (persist() rewrites the whole board on every
+    // change) stamps a real year onto it, so this fallback only ever
+    // matters for whatever hasn't been touched since this fix shipped.
+    const claimedOrders = new Set();
+    const claimedItems = new Set();
     structure = months.map((m) => {
       const blocks = [];
-      orders.filter((o) => o.month === m.month).forEach((o) => {
-        const cards = items
-          .filter((it) => it.order_id === o.order_id)
-          .sort((a, b) => a.item_position - b.item_position)
-          .map((it) => it.order_item_id);
-        blocks.push({ _pos: o.position, type: 'shipment', id: o.order_id, cards });
-      });
-      items.filter((it) => it.month === m.month && (it.order_id == null || it.order_id === ''))
-        .forEach((it) => blocks.push({ _pos: it.block_position, type: 'card', id: it.order_item_id }));
+      orders
+        .filter((o) => o.month === m.month && (o.year != null
+          ? Number(o.year) === Number(m.year)
+          : !claimedOrders.has(o.order_id)))
+        .forEach((o) => {
+          if (o.year == null) claimedOrders.add(o.order_id);
+          const cards = items
+            .filter((it) => it.order_id === o.order_id)
+            .sort((a, b) => a.item_position - b.item_position)
+            .map((it) => it.order_item_id);
+          blocks.push({ _pos: o.position, type: 'shipment', id: o.order_id, cards });
+        });
+      items
+        .filter((it) => it.month === m.month && (it.order_id == null || it.order_id === '')
+          && (it.year != null ? Number(it.year) === Number(m.year) : !claimedItems.has(it.order_item_id)))
+        .forEach((it) => {
+          if (it.year == null) claimedItems.add(it.order_item_id);
+          blocks.push({ _pos: it.block_position, type: 'card', id: it.order_item_id });
+        });
       blocks.sort((a, b) => (a._pos || 0) - (b._pos || 0));
       blocks.forEach((b) => delete b._pos);
-      return { id: m.month, name: m.month, sub: String(m.year || ''), notes: m.notes || '', blocks };
+      // Same composite key padMonths already uses for its own dedup, so a
+      // month's identity is consistent everywhere it's referenced by id
+      // (month-strip jumps, drag/drop, scroll-anchor restore, etc.).
+      return { id: m.month + '_' + (m.year || ''), name: m.month, sub: String(m.year || ''), notes: m.notes || '', blocks };
     });
     STATE = { cardData, shipmentData };
     padMonths(10);
@@ -4445,7 +4481,7 @@
   }
 
   // ── persistence: serialize the DOM to the /api/orders shape and PUT it ──
-  function pushItem(items, id, orderId, month, blockPos, itemPos) {
+  function pushItem(items, id, orderId, month, year, blockPos, itemPos) {
     const c = STATE.cardData[id] || {};
     // Read recur/ghostOf/autoship from DOM attributes (stamped at render/
     // create time and on every change -- see cardHTML, the recur-ctl-n
@@ -4464,6 +4500,7 @@
       order_item_id: id,
       order_id: orderId,
       month,
+      year,
       block_position: blockPos,
       item_position: itemPos,
       supplement: c.name || '',
@@ -4486,9 +4523,10 @@
     const months = [], orders = [], items = [];
     [...board.querySelectorAll('.month')].forEach((m, mi) => {
       const month = m.querySelector('.mname').textContent.trim();
+      const year = parseInt(m.querySelector('.msub').textContent.trim(), 10) || null;
       months.push({
         month,
-        year: parseInt(m.querySelector('.msub').textContent.trim(), 10) || null,
+        year,
         position: mi + 1,
         notes: m.querySelector('.month-notes')?.textContent || '',
       });
@@ -4507,15 +4545,15 @@
           const domAutoshipLink = n.dataset.autoshipLink ? n.dataset.autoshipLink : null;
           const domAutoshipNext = n.dataset.autoshipNext ? n.dataset.autoshipNext : null;
           orders.push({
-            order_id: oid, month, merchant: s.name || '', position: blockPos, status: stageStatus, notes: s.notes || '',
+            order_id: oid, month, year, merchant: s.name || '', position: blockPos, status: stageStatus, notes: s.notes || '',
             autoship_link: domAutoshipLink !== null ? (domAutoshipLink || null) : (s.autoshipLink || null),
             autoship_next_date: domAutoshipNext !== null ? (domAutoshipNext || null) : (s.autoshipNextDate || null),
           });
           [...n.querySelectorAll(':scope .ship-body > .card')].forEach((cardEl, ci) => {
-            pushItem(items, cardEl.dataset.id, oid, month, blockPos, ci + 1);
+            pushItem(items, cardEl.dataset.id, oid, month, year, blockPos, ci + 1);
           });
         } else {
-          pushItem(items, n.dataset.id, null, month, blockPos, 1);
+          pushItem(items, n.dataset.id, null, month, year, blockPos, 1);
         }
       });
     });
