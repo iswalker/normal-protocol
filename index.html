@@ -7134,16 +7134,6 @@
     return r.json();
   }
 
-  async function patchTurso(id, body) {
-    const r = await fetch('/api/inventory?id=' + id, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) throw new Error('PATCH /api/inventory?id=' + id + ' ' + r.status);
-    return r.json();
-  }
-
   // A shipment's cards can mix real orders (a normal dose-tracked item --
   // any Price, including blank/not-yet-entered, always means a new bottle
   // being bought) with quantity-mode usage/decrement entries (an item
@@ -7194,22 +7184,9 @@
       if (newStage === 'received') {
         const r = await fetch('/api/inventory?order_id=' + encodeURIComponent(orderId));
         const existing = r.ok ? await r.json() : [];
-        const orderedRows = existing.filter((row) => (row.type || '').toLowerCase() === 'ordered');
+        const hasOrdered = existing.some((row) => (row.type || '').toLowerCase() === 'ordered');
         const alreadyReceived = existing.some((row) => (row.type || '').toLowerCase() === 'received');
-        if (orderedRows.length) {
-          // Flipping type alone used to leave `amount` exactly as it was
-          // the day this row was first posted (when the shipment locked as
-          // Ordered) -- if the card's Price/Qty/Bottle Size (or which
-          // Inventory item it even matched) changed anytime between then
-          // and now, that stale amount silently diverges from what the
-          // Confirm Receive preview just promised, which always computes
-          // fresh from the CURRENT card state. Recomputing it here the same
-          // way keeps the actual write honest with what was shown.
-          await Promise.all(orderedRows.map((row) => {
-            const c = cards.find((cc) => cc.name === row.item);
-            return patchTurso(row.id, { type: 'Received', amount: c ? receiveDelta(c) : row.amount });
-          }));
-        } else if (alreadyReceived) {
+        if (alreadyReceived && !hasOrdered) {
           // Nothing left to flip and this order already has a Received row: the
           // shipment was marked Received before. Posting again here is exactly
           // the bug the Confirm Receive gate exists to catch — it used to fall
@@ -7218,6 +7195,22 @@
           // records the stage change; only the duplicate log write is skipped).
           console.log('[Inventory] orderId=' + orderId + ' already has a Received row — skipping duplicate write.');
         } else {
+          // Used to PATCH any existing "Ordered" placeholder row(s) in
+          // place (type -> Received) instead of writing fresh ones. That
+          // kept the row's ORIGINAL id -- assigned whenever the shipment
+          // was first locked, which can be long before "now" -- and
+          // computeOnHand uses id purely as insertion-order to know what
+          // happened after the most recent Reset (logged_on is only a
+          // date, no time of day, so id is the sole tiebreaker). A row
+          // whose id predates a LATER Reset is silently excluded from On
+          // Hand no matter what its type/amount say once flipped: the
+          // receive looks like it did nothing, exactly matching a report
+          // where the Confirm Receive preview promised "+120" and On Hand
+          // never moved. Deleting whatever's logged for this order and
+          // writing fresh Received rows dated today instead guarantees a
+          // receive that happens now always sorts as after anything
+          // that happened before now, Reset included.
+          await fetch('/api/inventory?order_id=' + encodeURIComponent(orderId), { method: 'DELETE' }).catch(() => {});
           const eligible = cards.filter((c) => c.name && c.qty > 0);
           await Promise.all(eligible.map((c) => postToTurso({
             item: c.name, amount: receiveDelta(c),
