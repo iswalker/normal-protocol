@@ -5532,7 +5532,11 @@
     // was just looking at.
     const anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
     board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
-    if (clearBtn) clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly || globalPinnedMerchant) ? 'block' : 'none';
+    // A pinned merchant alone no longer shows the × -- tapping the active
+    // chip again already clears it, so a second affordance for the exact
+    // same action was redundant. The × still shows for text/Autoship,
+    // since those have no other "tap to clear" control of their own.
+    if (clearBtn) clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly) ? 'block' : 'none';
     autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
     renderPinnedMerchants();
     if (anchorId) {
@@ -5761,11 +5765,15 @@
     if (!input || !box) return;
     const refresh = refreshBoardFilters;
     // Any text-search entry point turns the Autoship filter back off -- the
-    // two are mutually exclusive views over the same board. A pinned
-    // merchant is left alone here -- it stacks with text, doesn't reset it.
+    // two are mutually exclusive views over the same board. Typing here
+    // also drops an active pinned-merchant filter straight into plain
+    // freeform text search, rather than stacking "pinned merchant AND
+    // text" the way it used to -- the pin chip itself stays pinned, just
+    // deselected (same as unpinning-by-tap already does).
     function applyToAllMonths(q) {
       globalSearchQuery = q;
       globalAutoshipOnly = false;
+      globalPinnedMerchant = '';
       refresh();
     }
     box.addEventListener('click', (e) => {
