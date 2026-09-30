@@ -4288,14 +4288,11 @@
     });
     removeCards(strays);
 
-    let added = 0;
-    for (const tMi of wanted) {
-      if (kept.has(tMi)) continue;
-      const tMonth = structure[tMi];
-      const tMonthEl = monthEls[tMi] || null;
-      if (!tMonth) break;
-
-      // Find or create ghost shipment
+    // Finds (or creates, "gs_"-prefixed so dropEmptyGhostShipments can clean
+    // it up once empty -- see removeCards) the shipment named srcShipName in
+    // month tMi, seeding its Autoship date/link from the root's own
+    // shipment the same way a brand-new ghost instance already does.
+    function ghostShipFor(tMi, tMonth, tMonthEl) {
       let tShipId = srcShipName ? findShipByName(tMi, srcShipName) : null;
       if (!tShipId && srcShipName) {
         tShipId = uid('gs_');
@@ -4320,6 +4317,55 @@
           makeShipSortable(sEl.querySelector('.ship-body'));
         }
       }
+      return tShipId;
+    }
+
+    let added = 0;
+    let reparented = false;
+    for (const tMi of wanted) {
+      const tMonth = structure[tMi];
+      const tMonthEl = monthEls[tMi] || null;
+      if (!tMonth) break;
+
+      if (kept.has(tMi)) {
+        // An existing projection already covers this month -- but if the
+        // root itself has since moved to a different order (e.g. "Neurogan
+        // Health" -> "iHerb", by drag or "Move to [Order]"), this ghost is
+        // still sitting under the OLD merchant's shipment from whenever it
+        // was created, since the loop below only ever ran for months that
+        // didn't have a ghost yet. Follow the root: move it into whichever
+        // shipment currently matches srcShipName (or out to a loose card if
+        // the root itself is loose now), same find-or-create rule a
+        // brand-new instance already gets.
+        const gId = kept.get(tMi);
+        const gEl = tMonthEl?.querySelector(`.card[data-id="${gId}"]`);
+        const curShipEl = gEl?.closest('.shipment') || null;
+        const curShipId = curShipEl?.dataset.id || null;
+        const curShipName = curShipId ? (STATE.shipmentData[curShipId]?.name || '').trim() : null;
+        if (curShipName !== srcShipName) {
+          const tShipId = ghostShipFor(tMi, tMonth, tMonthEl);
+          if (curShipId) {
+            const oldBlock = tMonth.blocks.find((b) => b.type === 'shipment' && b.id === curShipId);
+            if (oldBlock) oldBlock.cards = oldBlock.cards.filter((cid) => cid !== gId);
+          } else {
+            const idx = tMonth.blocks.findIndex((b) => b.type === 'card' && b.id === gId);
+            if (idx !== -1) tMonth.blocks.splice(idx, 1);
+          }
+          if (tShipId) {
+            const newBlock = tMonth.blocks.find((b) => b.type === 'shipment' && b.id === tShipId);
+            if (newBlock) newBlock.cards.push(gId);
+            const shipBody = tMonthEl?.querySelector(`.shipment[data-id="${tShipId}"] .ship-body`);
+            if (gEl && shipBody) shipBody.appendChild(gEl);
+          } else {
+            tMonth.blocks.push({ type: 'card', id: gId });
+            if (gEl && tMonthEl) tMonthEl.querySelector('.month-list').appendChild(gEl);
+          }
+          reparented = true;
+        }
+        continue;
+      }
+
+      const tShipId = ghostShipFor(tMi, tMonth, tMonthEl);
 
       // Create ghost card in STATE
       const gId = uid('g_');
@@ -4346,10 +4392,11 @@
       }
       added++;
     }
+    if (reparented) dropEmptyGhostShipments();
     if (!skipRecalc) recalcAll();
     // Only save when the ghost set actually changed, so a plain page load that
     // reconciles to the same result doesn't rewrite Turso.
-    if (added || strays.length) persistSoon();
+    if (added || strays.length || reparented) persistSoon();
   }
 
   // On initial load: auto-promote ghosts whose source is already in an ordered shipment.
