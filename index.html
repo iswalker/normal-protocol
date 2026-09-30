@@ -7197,7 +7197,18 @@
         const orderedRows = existing.filter((row) => (row.type || '').toLowerCase() === 'ordered');
         const alreadyReceived = existing.some((row) => (row.type || '').toLowerCase() === 'received');
         if (orderedRows.length) {
-          await Promise.all(orderedRows.map((row) => patchTurso(row.id, { type: 'Received' })));
+          // Flipping type alone used to leave `amount` exactly as it was
+          // the day this row was first posted (when the shipment locked as
+          // Ordered) -- if the card's Price/Qty/Bottle Size (or which
+          // Inventory item it even matched) changed anytime between then
+          // and now, that stale amount silently diverges from what the
+          // Confirm Receive preview just promised, which always computes
+          // fresh from the CURRENT card state. Recomputing it here the same
+          // way keeps the actual write honest with what was shown.
+          await Promise.all(orderedRows.map((row) => {
+            const c = cards.find((cc) => cc.name === row.item);
+            return patchTurso(row.id, { type: 'Received', amount: c ? receiveDelta(c) : row.amount });
+          }));
         } else if (alreadyReceived) {
           // Nothing left to flip and this order already has a Received row: the
           // shipment was marked Received before. Posting again here is exactly
