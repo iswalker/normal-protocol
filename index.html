@@ -4361,6 +4361,11 @@
             if (gEl && tMonthEl) tMonthEl.querySelector('.month-list').appendChild(gEl);
           }
           reparented = true;
+          // Same reason the "Move to Order" path already calls this after
+          // relocating a card: a search/filter's search-hide state is
+          // computed per-card/shipment at the time it's set, and stays
+          // stale on anything moved afterward without a fresh pass.
+          reapplySearchTo(tMonthEl);
         }
         continue;
       }
@@ -4391,6 +4396,13 @@
         if (tMonthEl) tMonthEl.querySelector('.month-list').appendChild(el(cardHTML(gId)));
       }
       added++;
+      // A freshly created ghost (and its shipment, if also new) starts with
+      // no search-hide state at all -- correct by accident while nothing's
+      // filtered, but under an active search/filter it needs the same pass
+      // every other card already got, or it (and a month that had nothing
+      // else matching) stays wrongly hidden/shown until something else
+      // happens to trigger a refresh.
+      if (tMonthEl) reapplySearchTo(tMonthEl);
     }
     if (reparented) dropEmptyGhostShipments();
     if (!skipRecalc) recalcAll();
