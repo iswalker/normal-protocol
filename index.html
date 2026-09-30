@@ -7144,21 +7144,31 @@
     return r.json();
   }
 
-  // A shipment's cards can mix real orders (a populated, non-negative Price
-  // -- a new bottle being bought) with quantity-mode usage/decrement entries
-  // (blank Price -- see the board's own calcQtyCard/isQtyMode, e.g. a
-  // "Nutrition Visits" card logging 1 visit consumed, not 1 bottle bought).
-  // Locking/receiving a shipment used to always log bottleSize*qty as a
-  // straight increase for every eligible card regardless of which kind it
-  // was, so a decrement card would show its correct "2 -> 1" on the board
-  // itself but silently log a "2 -> 5"-style INCREASE to Turso the moment
-  // the shipment was marked Received. Mirrors calcQtyCard's own sign rule
-  // exactly so what gets written always matches what the board predicted.
+  // A shipment's cards can mix real orders (a normal dose-tracked item --
+  // any Price, including blank/not-yet-entered, always means a new bottle
+  // being bought) with quantity-mode usage/decrement entries (an item
+  // matched to Inventory with NO Dose/Day set -- see the board's own
+  // calcQtyCard/isQtyMode, e.g. a "Nutrition Visits" card logging 1 visit
+  // consumed, not 1 bottle bought; there, and ONLY there, a blank Price
+  // means withdraw). Locking/receiving a shipment used to always log
+  // bottleSize*qty as a straight increase for every eligible card, so a
+  // decrement card showed its correct "2 -> 1" on the board itself but
+  // silently logged a "2 -> 5"-style INCREASE to Turso once Received. That
+  // got fixed by checking for a blank Price -- but blank Price only means
+  // "withdraw" inside quantity mode; treating it as a universal rule
+  // instead broke ordinary dose-tracked items priced at $0 or not yet
+  // priced, which used to receive normally and started reading as
+  // decrements instead. isQtyMode here is the exact same condition
+  // updateCard/calcQtyCard already gate on, so this only ever applies
+  // where the board itself would.
   function receiveDelta(c) {
     const qty = Number(c.qty) || 0;
+    const bottle = Number(c.bottleSize) || 0;
+    const isQtyMode = !c.untracked && !c.dose && !!c.loggedOn;
+    if (!isQtyMode) return qty * bottle;
     const isBlank = c.price === '' || c.price == null;
     if (isBlank) return -qty;
-    if (Number(c.price) >= 0) return qty * (Number(c.bottleSize) || 0);
+    if (Number(c.price) >= 0) return qty * bottle;
     return 0; // negative Price (credit/discount) -- no on-hand change
   }
 
