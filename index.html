@@ -5160,7 +5160,15 @@
       recalcAll();
       persistSoon();
     } else if (t.matches('.card-name')) {
-      STATE.cardData[t.closest('.card').dataset.id].name = t.textContent;
+      const id = t.closest('.card').dataset.id;
+      const c = STATE.cardData[id];
+      c.name = t.textContent;
+      // Only reachable for an untracked/free-text card in the first place
+      // (an Inventory-matched one opens the Inventory item instead of
+      // editing inline here -- see cardHTML's data-act="open-inv-item"),
+      // same recurring-root propagation every other editable field here
+      // already gets.
+      if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, 'name', c.name);
       persistSoon();
     } else if (t.matches('.ship-name')) {
       const ship = t.closest('.shipment');
