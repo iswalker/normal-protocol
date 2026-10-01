@@ -5950,6 +5950,25 @@
     }
   }
 
+  // Earliest current-or-future month (abbreviated name, e.g. "Oct") where
+  // `matchesMonth` finds a hit -- same month-abbreviation display the
+  // Inventory tab's own "Next Order" column already uses, reused here so
+  // the +Item/+Order pickers can show e.g. "Oct" instead of a plain "In
+  // List" tag for something that already has an upcoming occurrence.
+  function nextBoardMonth(matchesMonth) {
+    const today = SB.today();
+    const curMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    for (const m of board.querySelectorAll('.month')) {
+      const mname = m.querySelector('.mname')?.textContent.trim();
+      const year = parseInt(m.querySelector('.msub')?.textContent.trim(), 10);
+      const mIdx = mname ? MONTH_NAMES.indexOf(mname) : -1;
+      if (mIdx < 0 || !year) continue;
+      if (new Date(year, mIdx, 1) < curMonthStart) continue;
+      if (matchesMonth(m)) return mname;
+    }
+    return null;
+  }
+
   // ── Inventory picklist shown when "+ Item" is clicked ──────────────────
   let activePicker = null;
   function showItemPicker(anchor, onSelect, fromFilter = null) {
@@ -6000,8 +6019,16 @@
         meta = `${Math.round(daysLeft)}d · ${SB.fmtDateShort(runOut)}`;
         bars = countCoveredMonths(runOut);
       }
-      const inList = onBoard.has(inv.name.trim().toLowerCase());
-      return { name: inv.name, froms: inv.froms || [], tier, meta, bars, inList };
+      const key = inv.name.trim().toLowerCase();
+      const inList = onBoard.has(key);
+      // Only worth scanning the board for a next-occurrence month when the
+      // item is actually in play somewhere -- otherwise there's nothing to
+      // find and nextBoardMonth would just return null anyway.
+      const nextOrder = inList ? nextBoardMonth((m) => [...m.querySelectorAll('.card[data-id]')].some((el) => {
+        const c = STATE.cardData[el.dataset.id];
+        return c && c.name.trim().toLowerCase() === key;
+      })) : null;
+      return { name: inv.name, froms: inv.froms || [], tier, meta, bars, inList, nextOrder };
     }).sort((a, b) => a.name.localeCompare(b.name));
 
     // When called from a shipment, limit to items whose From matches the merchant name
@@ -6033,7 +6060,7 @@
         li.dataset.name = q;
         list.appendChild(li);
       }
-      matches.slice(0, 50).forEach(({ name, tier, meta, bars, inList }) => {
+      matches.slice(0, 50).forEach(({ name, tier, meta, bars, inList, nextOrder }) => {
         const li = document.createElement('li');
         li.className = 'inv-picker-opt' + (tier !== 'ok' && !inList ? ` is-${tier}` : '') + (inList ? ' is-inlist' : '');
         li.tabIndex = 0;
@@ -6047,7 +6074,13 @@
         if (inList) {
           const tag = document.createElement('em');
           tag.className = 'ipm-inlist';
-          tag.textContent = 'In List';
+          // The month of its next upcoming occurrence (same abbreviated
+          // display the Inventory tab's own "Next Order" column uses) is
+          // more useful here than a bare "already in list" flag -- it's on
+          // the board regardless, this says *when*. Falls back to the old
+          // label only in the edge case where it's on the board solely as
+          // a locked/past order with nothing current or upcoming.
+          tag.textContent = nextOrder || 'In List';
           left.appendChild(tag);
         }
         li.appendChild(left);
@@ -6144,14 +6177,14 @@
   // ── Merchant picklist shown when "+ Order" is clicked ──────────────────
   // Same look/behavior as the "+ Item" picker above, but the list comes from
   // the distinct Annual Sale / Off-Cycle / Anyday values across Inventory
-  // rather than item names, and "already in list" is scoped to this month's
-  // shipments (not the whole board) since a merchant can reasonably recur
-  // across different months.
+  // rather than item names, and "already on the board" is checked board-wide
+  // (not just this month) so its own next-order month, shown below, can
+  // genuinely differ from whichever month's "+ Order" button opened this.
   function showMerchantPicker(anchor, monthEl) {
     closeItemPicker();
 
-    const inMonth = new Set(
-      [...monthEl.querySelectorAll('.shipment .ship-name')].map((n) => n.textContent.trim().toLowerCase()).filter(Boolean)
+    const onBoard = new Set(
+      [...board.querySelectorAll('.shipment .ship-name')].map((n) => n.textContent.trim().toLowerCase()).filter(Boolean)
     );
 
     const seen = new Set();
@@ -6188,7 +6221,12 @@
         list.appendChild(li);
       }
       matches.slice(0, 50).forEach((name) => {
-        const inList = inMonth.has(name.toLowerCase());
+        const key = name.toLowerCase();
+        const inList = onBoard.has(key);
+        // Same next-occurrence-month substitution as the "+ Item" picker,
+        // just matched against shipment names instead of card names.
+        const nextOrder = inList ? nextBoardMonth((m) => [...m.querySelectorAll('.shipment .ship-name')]
+          .some((n) => n.textContent.trim().toLowerCase() === key)) : null;
         const li = document.createElement('li');
         li.className = 'inv-picker-opt' + (inList ? ' is-inlist' : '');
         li.tabIndex = 0;
@@ -6202,7 +6240,7 @@
         if (inList) {
           const tag = document.createElement('em');
           tag.className = 'ipm-inlist';
-          tag.textContent = 'In List';
+          tag.textContent = nextOrder || 'In List';
           left.appendChild(tag);
         }
         li.appendChild(left);
