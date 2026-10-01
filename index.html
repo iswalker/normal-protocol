@@ -7080,6 +7080,44 @@
     return r.json();
   }
 
+  // Full category list (not the per-month one) -- scheduled transactions
+  // give a category_id but not the category_group_name the per-month
+  // /months/{month} categories conveniently include, so this builds that
+  // mapping once up front instead of guessing at an undocumented field.
+  async function fetchCategoryGroupMap(budgetId, token) {
+    const data = await ynabFetch(`/budgets/${budgetId}/categories`, token);
+    const map = {};
+    for (const group of data.data.category_groups || []) {
+      for (const cat of group.categories || []) map[cat.id] = group.name;
+    }
+    return map;
+  }
+
+  // A scheduled (not-yet-posted) transaction never shows up in a month's
+  // own activity total -- that only reflects transactions YNAB has
+  // actually entered. date_next is always the single upcoming occurrence
+  // (past ones have already posted as real transactions and advanced past
+  // it), so bucketing by date_next's month can't double-count anything
+  // already counted in activityMilliunits below. A split scheduled
+  // transaction carries its real categorization on subtransactions, not
+  // the parent (same shape as a regular split transaction).
+  async function fetchScheduledByMonth(budgetId, token, groupName, categoryGroupMap) {
+    const data = await ynabFetch(`/budgets/${budgetId}/scheduled_transactions`, token);
+    const byMonth = {};
+    for (const st of data.data.scheduled_transactions || []) {
+      if (st.deleted || !st.date_next) continue;
+      const key = st.date_next.slice(0, 7); // 'YYYY-MM'
+      const lines = (st.subtransactions && st.subtransactions.length)
+        ? st.subtransactions.filter((sub) => !sub.deleted)
+        : [st];
+      for (const line of lines) {
+        if (categoryGroupMap[line.category_id] !== groupName) continue;
+        byMonth[key] = (byMonth[key] || 0) + (line.amount || 0);
+      }
+    }
+    return byMonth;
+  }
+
   async function sync(token) {
     setStatus('Syncing…');
     // resolve budget ID (cached to avoid an extra round-trip)
@@ -7089,6 +7127,10 @@
       budgetId = data.data.budget.id;
       try { localStorage.setItem(BUDGET_KEY, budgetId); } catch {}
     }
+
+    const groupName = getGroupName();
+    const categoryGroupMap = await fetchCategoryGroupMap(budgetId, token);
+    const scheduledByMonth = await fetchScheduledByMonth(budgetId, token, groupName, categoryGroupMap);
 
     // collect visible months from the board DOM
     const board = document.getElementById('board');
@@ -7103,23 +7145,31 @@
       if (!mm || !year) continue;
 
       const ynabMonth = `${year}-${mm}-01`;
+      const scheduledMilliunits = scheduledByMonth[`${year}-${mm}`] || 0;
       let cats = [];
       try {
         const data = await ynabFetch(`/budgets/${budgetId}/months/${ynabMonth}`, token);
         cats = data.data.month.categories || [];
       } catch (e) {
-        if (e.message.includes('404')) { spentByMonth[name] = 0; continue; } // month not in YNAB yet
+        if (e.message.includes('404')) {
+          // Month not in YNAB yet -- no posted activity, but a scheduled
+          // transaction can still land here (e.g. a future month YNAB
+          // hasn't auto-created a budget row for) and should still count.
+          spentByMonth[name] = Math.round(Math.abs(scheduledMilliunits)) / 1000;
+          continue;
+        }
         throw e; // re-throw real errors (401, network, etc.)
       }
-      const groupName = getGroupName();
       const allGroups = [...new Set(cats.map(c => c.category_group_name).filter(Boolean))];
       console.log(`YNAB ${ynabMonth}: ${cats.length} categories across groups:`, allGroups, `— filtering by "${groupName}"`);
       const activityMilliunits = cats
         .filter(c => c.category_group_name === groupName && !c.deleted)
         .reduce((s, c) => s + c.activity, 0);
 
-      // YNAB spending = negative activity; negate to get positive "spent"
-      spentByMonth[name] = Math.round(Math.abs(activityMilliunits)) / 1000;
+      // YNAB spending = negative activity; negate to get positive "spent".
+      // scheduledMilliunits is likewise negative for an outflow, so it adds
+      // the same way activity already does.
+      spentByMonth[name] = Math.round(Math.abs(activityMilliunits + scheduledMilliunits)) / 1000;
     }
 
     if (window.SupplementBoard?.applyYnabSpent) {
