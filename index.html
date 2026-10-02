@@ -3566,7 +3566,14 @@
         shipEl.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           if (searchAware && cardEl.classList.contains('search-hide')) return;
           const c = STATE.cardData[cardEl.dataset.id];
-          if (c) base += (Number(c.price) || 0) * (Number(c.qty) || 0);
+          // Only items with the Include toggle on actually count toward
+          // this order's own total (see recalcAll's identical gate on
+          // inc for a locked shipment's own $ badge) -- this was summing
+          // every card in the shipment regardless, so an Ordered shipment
+          // with some items toggled off still added their full price*qty
+          // to Spent, inflating it past what the shipment's own badge
+          // (and the Confirm Receive preview) ever showed.
+          if (c && c.includeInMonthTotal) base += (Number(c.price) || 0) * (Number(c.qty) || 0);
         });
       }
     });
