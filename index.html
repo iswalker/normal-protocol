@@ -1512,12 +1512,12 @@
     /* Divider rows only -- a self-contained position:absolute (a regular
        item's own grip no longer carries this at all -- see the
        .board.layout-compact .card-grip comment below -- so this can't rely
-       on inheriting it anymore). Dividers still want the grip pinned at
-       the card's own left edge, ahead of the horizontal rule (.div-line
-       comes first in the DOM but flex:1's own space just fills in behind
-       an absolutely-positioned sibling either way). */
+       on inheriting it anymore). Right edge, same side every other grip
+       (card and shipment) now sits on -- .div-line (flex:1) fills the rest
+       of the row regardless of which end the absolutely-positioned grip
+       anchors to. */
     #tab-board .board.layout-compact .card.card--divider .card-grip {
-      position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
     }
     /* .no-proj is set dynamically in updateCard() (not tied to the static
        card--untracked class) so it also covers a recurring ghost whose
