@@ -1929,6 +1929,13 @@
         display: flex; flex-wrap: wrap; align-items: center;
         column-gap: 8px; row-gap: 1px; padding-top: 2px;
       }
+      /* Clearance for the grip, pinned to the card's own top-right corner
+         below (same treatment .ship-grip already gets) -- without this,
+         .proj's right-aligned run-out text on row 1 runs underneath it.
+         Excludes dividers: their own grip stays left-anchored (see the
+         card--divider .card-grip rule) and their padding is already
+         collapsed down to near nothing for the thin rule-line look. */
+      #tab-board .board.layout-compact .card:not(.card--divider) { padding-right: 34px; }
       /* grid-area (set unconditionally above) does nothing once card-body
          switches to flex here -- flex-wrap needs its own basis:100% to push
          a wrap-eligible child onto a new line the same way. */
@@ -1961,17 +1968,14 @@
          becoming unreadable to stay on one. */
       #tab-board .board.layout-compact .card-top { flex: 0 1 0; min-width: 90px; }
       #tab-board .board.layout-compact .proj { flex: 0 0 auto; margin-left: auto; }
-      /* Grip moved in the DOM (see cardHTML) to sit between "ev N mo" and
-         Notes on DESKTOP -- left untouched here it would land in row 2 of
-         THIS layout instead (mobile unwraps .card-end's children via
-         display:contents, same flex context as everything else, and the
-         grip's new DOM position sits after .card-row-break in that tied
-         order:0 sequence, which is what actually decides the row1/row2
-         split when wrapping). order:-1 sorts it before .card-top/.proj and
-         the row-break, putting it back on row 1 where it always was on
-         mobile -- at the row's own start rather than end, but same row,
-         not stranded on row 2 among the price/qty controls. */
-      #tab-board .board.layout-compact .card-grip { order: -1; }
+      /* Pinned to the card's own top-right corner, out of the row1/row2
+         flex flow entirely -- same treatment .ship-grip already gets on
+         mobile (see its own comment above), so a card's grip reads the
+         same place a shipment's does: right-aligned, after the Notes
+         icon, not left-aligned next to the name the way order:-1 used to
+         put it (sorted before .card-top/.proj to land on row 1, but at
+         the row's own start rather than end). */
+      #tab-board .board.layout-compact .card-grip { position: absolute; top: 8px; right: 8px; margin: 0; }
       /* The run-out projection's desktop-tuned type (13/12px, roomy gaps) is
          wide enough on its own to force the wrap this whole rule set exists
          to avoid -- shrink it further so it reliably fits next to a name on
