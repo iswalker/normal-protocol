@@ -6659,6 +6659,15 @@
         reapplySearchTo(monthEl);
         recalcAll(); persist();
       }
+      function copyCardToOrder(targetShipEl) {
+        const newId = uid('c_');
+        STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
+        const newEl = el(cardHTML(newId));
+        targetShipEl.querySelector('.ship-body').prepend(newEl);
+        reconcileMovedRecurring(newEl);
+        reapplySearchTo(monthEl);
+        recalcAll(); persist();
+      }
       // Same shape as ctxMonthPick (see buildCtxMenu) but listing this
       // month's OTHER orders instead of every month -- built locally rather
       // than threaded through buildFn's own params since it needs
@@ -6667,14 +6676,14 @@
       // the card's own current order (nothing to move "to" there) and any
       // locked/completed one (same restriction "+ Item" already applies --
       // an order that's Ordered/Entered/Received doesn't take new items).
-      function ctxOrderPickRow() {
+      function ctxOrderPickRow(caption = 'Move to', action = moveCardToOrder) {
         const currentShipEl = container.closest('.shipment') || null;
         const ships = sortShipsByCostDesc(monthEl.querySelectorAll(':scope > .month-list > .shipment'))
           .filter((s) => s !== currentShipEl && !s.classList.contains('is-locked'));
         const row = document.createElement('div');
         row.className = 'ship-ctx-pick' + (ships.length ? '' : ' ctx-disabled');
         const cap = document.createElement('span');
-        cap.textContent = 'Move to';
+        cap.textContent = caption;
         const sel = document.createElement('select');
         sel.innerHTML = '<option value="">Order</option>' + ships.map((s, i) =>
           `<option value="${i}">${esc(formatOrderSummary(s))}</option>`).join('');
@@ -6684,7 +6693,7 @@
           const target = ships[Number(sel.value)];
           if (!target) return;
           closeCtxMenu();
-          moveCardToOrder(target);
+          action(target);
         });
         row.append(cap, sel);
         return row;
@@ -6747,6 +6756,7 @@
         menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => copyCardToMonth(allMonths[monthIdx + 1])));
         menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => copyCardToMonth(allMonths[monthIdx - 1])));
         menu.appendChild(ctxMonthPick('Copy to', monthEl, copyCardToMonth));
+        menu.appendChild(ctxOrderPickRow('Copy to', copyCardToOrder));
         menu.appendChild(ctxItem('Duplicate', false, () => {
           const newId = uid('c_');
           STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
