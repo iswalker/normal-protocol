@@ -1819,6 +1819,17 @@
          without touching how content scrolls normally. */
       html, body { overscroll-behavior-y: none; }
 
+      /* The header is a sibling of #tab-board (the real scroll pane), not
+         inside it, so a vertical drag that starts on the header scrolled the
+         DOCUMENT instead -- shifting the board without ever scrolling
+         #tab-board itself, which is what the month's sticky head keys off.
+         pan-x keeps its own horizontally-scrolling bits (pinned chips, month
+         strip) working while vertical drags starting here do nothing, and
+         contain stops a board drag that hits its end from chaining out to
+         the document the same way. */
+      header { touch-action: pan-x; }
+      #tab-board { overscroll-behavior: contain; }
+
       /* iOS Safari auto-zooms the whole page in whenever a focused text
          field's font-size is under 16px -- true of nearly every input/
          notes field in this app's compact mobile UI (12-14px). Bumping to
