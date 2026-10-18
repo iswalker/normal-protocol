@@ -3963,7 +3963,7 @@
   function computeWarnings(monthEls, wins) {
     const per = wins.map((w) => (w ? { autoship: [], runout: [], ignored: 0 } : null));
     const inWindow = (d, w) => d < w.end && (w.isCurrent || d >= w.start);
-    const addAutoship = (row) => wins.forEach((w, mi) => { if (w && inWindow(row.date, w)) per[mi].autoship.push(row); });
+    const addAutoship = (row) => wins.forEach((w, mi) => { if (w && inWindow(row.date, w)) per[mi].autoship.push({ ...row, targets: [{ kind: row.kind, id: row.id }], homeMis: [row.homeMi] }); });
 
     monthEls.forEach((monthEl, homeMi) => {
       monthEl.querySelectorAll('.card[data-id]').forEach((cardEl) => {
@@ -3985,6 +3985,25 @@
         if (cards.length && cards.every((c) => c.ghostOf)) return; // only holds projections
         addAutoship({ kind: 'ship', id: shipEl.dataset.id, name: sd.name || 'Order', date: SB.parseDate(sd.autoshipNextDate), where: '', homeMi, link: sd.autoshipLink || '' });
       });
+    });
+
+    // One row per item + date in a month, however many places it's stored:
+    // a shipment's autoship is pushed onto every later month's instance of
+    // it (see propagateShipmentAutoship), and a recurring series can leave
+    // several records on the same date. Approving the row approves them all
+    // (targets), so no twin is left behind to pop back up.
+    per.forEach((p) => {
+      if (!p) return;
+      const byKey = new Map();
+      p.autoship.forEach((r) => {
+        const key = r.name.trim().toLowerCase() + '|' + toISODate(r.date);
+        const first = byKey.get(key);
+        if (!first) { byKey.set(key, r); return; }
+        first.targets.push(...r.targets);
+        first.homeMis.push(...r.homeMis);
+        if (!first.link) first.link = r.link;
+      });
+      p.autoship = [...byKey.values()];
     });
 
     const invs = Object.values(INV_MAP).filter((inv) => inv && inv.name && Number(inv.dose) > 0 && inv.loggedOn);
@@ -4015,6 +4034,10 @@
   const escAttr = (v) => esc(v).replace(/"/g, '&quot;');
   const WARN_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 14.2 13H1.8L8 2.2Z"/><path d="M8 6.6v3.2M8 11.6v.2"/></svg>';
 
+  // "kind:id,kind:id" -- a row can stand for several stored records
+  const targetsAttr = (ts) => ts.map((t) => t.kind + ':' + t.id).join(',');
+  const parseTargets = (str) => String(str || '').split(',').filter(Boolean).map((p) => ({ kind: p.slice(0, p.indexOf(':')), id: p.slice(p.indexOf(':') + 1) }));
+
   function warnPanelHTML(w, p, mi, monthNames) {
     const today = SB.today();
     // Same m/d vs "Mmm d" choice the board's own dates make (see updateCard)
@@ -4023,14 +4046,15 @@
     const rows = [];
     p.autoship.sort((a, b) => a.date - b.date).forEach((r) => {
       const overdue = r.date < today;
-      const where = [r.where, r.homeMi !== mi ? monthNames[r.homeMi] : ''].filter(Boolean).join(' · ');
+      const otherMonths = [...new Set(r.homeMis)].filter((m) => m !== mi).map((m) => monthNames[m]).join(', ');
+      const where = [r.where, otherMonths].filter(Boolean).join(' · ');
       rows.push(`<div class="warn-row">
         <span class="warn-tag is-autoship">Autoship</span>
         <span class="warn-main">
-          <span class="warn-name" data-act="warn-goto" data-wkind="${r.kind}" data-wid="${escAttr(r.id)}" title="Jump to it">${esc(r.name)}</span>
+          <span class="warn-name" data-act="warn-goto" data-wtargets="${escAttr(targetsAttr(r.targets))}" title="Jump to it">${esc(r.name)}</span>
           <span class="warn-detail${overdue ? ' is-overdue' : ''}">${overdue ? 'Overdue · ' : ''}${r.link ? `<span class="warn-date has-link" data-act="open-autoship-link" data-link="${escAttr(r.link)}" title="Open Autoship link">${df(r.date)}</span>` : df(r.date)}${where ? ' · ' + esc(where) : ''}</span>
         </span>
-        <button type="button" class="warn-btn is-approve" data-act="warn-approve" data-wkind="${r.kind}" data-wid="${escAttr(r.id)}" title="Mark this ship date as approved">Approve</button>
+        <button type="button" class="warn-btn is-approve" data-act="warn-approve" data-wtargets="${escAttr(targetsAttr(r.targets))}" title="Mark this ship date as approved">Approve</button>
       </div>`);
     });
     p.runout.sort((a, b) => a.date - b.date).forEach((r) => {
@@ -4090,14 +4114,20 @@
     }
   }
 
-  function setAutoshipApproved(kind, id, on) {
-    const d = kind === 'ship' ? STATE.shipmentData[id] : STATE.cardData[id];
-    if (!d || !d.autoshipNextDate) return false;
-    d.autoshipApproved = on ? d.autoshipNextDate : '';
+  function setAutoshipApprovedMany(targets, on) {
+    let any = false;
+    targets.forEach(({ kind, id }) => {
+      const d = kind === 'ship' ? STATE.shipmentData[id] : STATE.cardData[id];
+      if (!d || !d.autoshipNextDate) return;
+      d.autoshipApproved = on ? d.autoshipNextDate : '';
+      any = true;
+    });
+    if (!any) return false;
     recalcAll();
     persist();
     return true;
   }
+  function setAutoshipApproved(kind, id, on) { return setAutoshipApprovedMany([{ kind, id }], on); }
 
   // Mirror each visible month's Planned total into the top bar. Reads the rendered
   // values rather than recomputing so the strip can never disagree with the board.
@@ -5845,7 +5875,7 @@
       }
       return;
     }
-    if (a === 'warn-approve') { setAutoshipApproved(act.dataset.wkind, act.dataset.wid, true); return; }
+    if (a === 'warn-approve') { setAutoshipApprovedMany(parseTargets(act.dataset.wtargets), true); return; }
     if (a === 'warn-ignore') { postWarningAction('dismiss', act.dataset.wkey); return; }
     if (a === 'warn-restore') {
       const suffix = '|' + act.dataset.ym;
@@ -5853,9 +5883,10 @@
       return;
     }
     if (a === 'warn-goto') {
-      const target = act.dataset.wkind === 'ship'
-        ? board.querySelector(`.shipment[data-id="${act.dataset.wid}"]`)
-        : board.querySelector(`.card[data-id="${act.dataset.wid}"]`);
+      const t0 = parseTargets(act.dataset.wtargets)[0] || {};
+      const target = t0.kind === 'ship'
+        ? board.querySelector(`.shipment[data-id="${t0.id}"]`)
+        : board.querySelector(`.card[data-id="${t0.id}"]`);
       if (!target) return;
       scrollElementIntoBoardView(target);
       target.classList.remove('warn-flash');

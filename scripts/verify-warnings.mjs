@@ -32,6 +32,7 @@ const D_LATER = iso(plusDays(3));                                   // card sits
 const D_SHIP = iso(plusDays(1));
 const D_APPROVED = iso(plusDays(2));
 const D_STALE = iso(plusDays(2));
+const D_DUP = iso(plusDays(1));
 const D_FAR = iso(new Date(M3.start.getFullYear(), M3.start.getMonth(), 20)); // well outside the current window
 const D_LOCKED = iso(plusDays(2));
 const D_OVERDUE = iso(plusDays(-3));                                // only meaningful in the current month's panel
@@ -47,6 +48,9 @@ const ORDERS_BODY = {
     { order_id: 'o_a', month: M0.month, year: M0.year, merchant: 'Alpha Shop', position: 1, status: 'Staged', notes: null },
     { order_id: 'o_ship', month: M0.month, year: M0.year, merchant: 'Ship-level Co', position: 2, status: 'Staged', notes: null, autoship_next_date: D_SHIP },
     { order_id: 'o_locked', month: M0.month, year: M0.year, merchant: 'Locked Co', position: 3, status: 'Ordered', notes: null },
+    // the same shipment-level autoship stored on later months' instances of one merchant
+    { order_id: 'o_dup1', month: M1.month, year: M1.year, merchant: 'Dup Co', position: 5, status: 'Staged', notes: null, autoship_next_date: D_DUP },
+    { order_id: 'o_dup2', month: M2.month, year: M2.year, merchant: 'Dup Co', position: 5, status: 'Staged', notes: null, autoship_next_date: D_DUP },
     { order_id: 'o_ghost', month: M0.month, year: M0.year, merchant: 'Ghost Shop', position: 4, status: 'Staged', notes: null },
   ],
   items: [
@@ -171,6 +175,15 @@ try {
   check('panel shows a count badge', (await panel(page).locator('.warn-count').textContent()).trim() === String(names.length), String(names.length));
   // past months get no panel; the panel lives outside .month-list
   check('panel is outside .month-list', (await page.locator('.month-list .month-warn').count()) === 0);
+
+  check('duplicate autoship across months collapses to one row', names.filter((n) => n === 'Dup Co').length === 1, String(names.filter((n) => n === 'Dup Co').length));
+  const dupDetail = await rowFor(page, 'Dup Co').locator('.warn-detail').textContent();
+  check('collapsed row names every month it sits in', dupDetail.includes(M1.month) && dupDetail.includes(M2.month), dupDetail);
+  await rowFor(page, 'Dup Co').locator('[data-act="warn-approve"]').click();
+  await page.waitForTimeout(700);
+  check('approving the collapsed row approves every copy', ['o_dup1', 'o_dup2'].every((id) => puts[puts.length - 1]?.orders.find((o) => o.order_id === id)?.autoship_approved === D_DUP), JSON.stringify(puts[puts.length - 1]?.orders.map((o) => [o.order_id, o.autoship_approved])));
+  check('…and none of them resurfaces', !(await rowNames(page)).includes('Dup Co'));
+  names.splice(names.indexOf('Dup Co'), 1);
 
   // ── dates: m/d like the board, clickable when there's a link ──
   const alphaRow = rowFor(page, 'Alpha');
