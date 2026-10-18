@@ -191,7 +191,7 @@ try {
   const boardTxt = (await page.locator('.card[data-id="oi_alpha"] .autoship-date, .card[data-id="oi_alpha"] .autoship-date-badge').locator('visible=true').first().textContent()).trim();
   check('panel date matches the board card date format', dateTxt === boardTxt && /^\d+\/\d+/.test(dateTxt), `${dateTxt} vs ${boardTxt}`);
   check('run-out date also uses m/d', /^\d+\/\d+/.test((await rowFor(page, 'Runner').locator('.warn-detail').textContent()).trim()));
-  check('date without a link is plain text', (await rowFor(page, 'Stale Approval').locator('.warn-date').count()) === 0);
+  check('date without a link is not a link', (await rowFor(page, 'Stale Approval').locator('.warn-date.has-link').count()) === 0 && (await rowFor(page, 'Stale Approval').locator('.warn-date').count()) === 1);
   await ctx.route('https://example.com/**', (r) => r.fulfill({ body: 'ok', contentType: 'text/html' }));
   const [popup] = await Promise.all([page.waitForEvent('popup', { timeout: 5000 }).catch(() => null), alphaRow.locator('.warn-date').click()]);
   check('clicking the date opens the Autoship link', popup && popup.url().startsWith('https://example.com/alpha'), popup ? popup.url() : 'no popup');
@@ -217,6 +217,25 @@ try {
   check('ignore survives a reload', !(await rowNames(page)).includes('Runner'));
   await panel(page).locator('[data-act="warn-restore"]').click(); // leave the mock clean
   await page.waitForTimeout(150);
+
+  // ── hover the panel's date: same calendar + approve as every other autoship date ──
+  await rowFor(page, 'Later Placement').locator('.warn-date').hover();
+  await page.waitForSelector('.autoship-cal .autoship-cal-approve-btn');
+  check('panel date hover opens the calendar, selected on its date', (await page.locator('.autoship-cal-day.is-selected').getAttribute('data-iso')) === D_LATER);
+  await page.locator('.autoship-cal-approve-btn').click();
+  await page.waitForTimeout(500);
+  check('approving from the panel date hover removes the row', !(await rowNames(page)).includes('Later Placement'));
+  check('…and persists the approval on the underlying card', puts[puts.length - 1]?.items.find((i) => i.order_item_id === 'oi_later')?.autoship_approved === D_LATER);
+  await page.mouse.move(5, 5); await page.waitForTimeout(400);
+  // picking a new date from the panel changes the record itself
+  await rowFor(page, 'Stale Approval').locator('.warn-date').hover();
+  await page.waitForSelector('.autoship-cal');
+  await page.locator('.autoship-cal-day[data-iso]:not(.is-selected)').first().click();
+  await page.waitForTimeout(500);
+  check('picking a date in the panel hover saves it', puts[puts.length - 1]?.items.find((i) => i.order_item_id === 'oi_stale')?.autoship_next_date !== D_STALE);
+  await page.mouse.move(5, 5); await page.waitForTimeout(400);
+  await page.evaluate(({ id, d }) => window.SupplementBoard.saveCardAutoship(id, '', d), { id: 'oi_stale', d: D_STALE }); // restore for later steps
+  await page.waitForTimeout(200);
 
   // ── Approve from the panel ──
   const before = (await rowNames(page)).length;

@@ -1073,7 +1073,7 @@
     #tab-board .warn-detail { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); min-width: 0; }
     #tab-board .warn-detail.is-overdue { color: var(--out); }
     /* Clickable ship date (opens the Autoship link, same as the date on the card) -- orange like the card's own pending date */
-    #tab-board .warn-date.has-link { color: var(--soon); font-weight: 700; cursor: pointer; }
+    #tab-board .warn-date { color: var(--soon); font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     #tab-board .warn-date.has-link:hover { text-decoration: underline; }
     #tab-board .warn-btn {
       flex: none; height: 22px; padding: 0 9px; border: 1px solid #c4cdd0; border-radius: 8px;
@@ -4052,7 +4052,7 @@
         <span class="warn-tag is-autoship">Autoship</span>
         <span class="warn-main">
           <span class="warn-name" data-act="warn-goto" data-wtargets="${escAttr(targetsAttr(r.targets))}" title="Jump to it">${esc(r.name)}</span>
-          <span class="warn-detail${overdue ? ' is-overdue' : ''}">${overdue ? 'Overdue · ' : ''}${r.link ? `<span class="warn-date has-link" data-act="open-autoship-link" data-link="${escAttr(r.link)}" title="Open Autoship link">${df(r.date)}</span>` : df(r.date)}${where ? ' · ' + esc(where) : ''}</span>
+          <span class="warn-detail${overdue ? ' is-overdue' : ''}">${overdue ? 'Overdue · ' : ''}<span class="warn-date${r.link ? ' has-link' : ''}" data-act="open-autoship-link" data-link="${escAttr(r.link)}" data-wtargets="${escAttr(targetsAttr(r.targets))}"${r.link ? ' title="Open Autoship link"' : ''}>${df(r.date)}</span>${where ? ' · ' + esc(where) : ''}</span>
         </span>
         <button type="button" class="warn-btn is-approve" data-act="warn-approve" data-wtargets="${escAttr(targetsAttr(r.targets))}" title="Mark this ship date as approved">Approve</button>
       </div>`);
@@ -5372,6 +5372,27 @@
     // ancestry regardless of which element was actually hovered/held,
     // silently reading/writing the CONTAINING SHIPMENT's Autoship fields
     // for a card's own date instead of the card's.
+    // A Needs-attention date stands for one or more stored records (see the
+    // dedupe in computeWarnings) -- edit/clear/approve all of them together so
+    // a twin can't be left behind on the old date.
+    if (dateEl.matches('.warn-date')) {
+      const ts = parseTargets(dateEl.dataset.wtargets);
+      const get = (t) => (t.kind === 'ship' ? STATE.shipmentData[t.id] : STATE.cardData[t.id]);
+      const save = (t, link, iso) => (t.kind === 'ship'
+        ? window.SupplementBoard.saveShipAutoship(t.id, link, iso)
+        : window.SupplementBoard.saveCardAutoship(t.id, link, iso));
+      const first = ts.length && get(ts[0]);
+      if (!first) return false;
+      const allApproved = () => ts.every((t) => isAutoshipApproved(get(t)));
+      window.openDatePicker({
+        anchorEl: dateEl,
+        value: first.autoshipNextDate || null,
+        onPick: (iso) => ts.forEach((t) => { const d = get(t); if (d) save(t, d.autoshipLink || '', iso); }),
+        onClear: () => ts.forEach((t) => save(t, '', '')),
+        approval: { approved: allApproved(), onToggle: () => setAutoshipApprovedMany(ts, !allApproved()) },
+      });
+      return true;
+    }
     const shipEl = dateEl.matches('.ship-autoship-date') ? dateEl.closest('.shipment[data-id]') : null;
     if (shipEl) {
       const sId = shipEl.dataset.id;
@@ -5408,13 +5429,13 @@
   }
   if (HOVER_CAPABLE) {
     board.addEventListener('mouseover', (e) => {
-      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge, .ship-autoship-date');
+      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge, .ship-autoship-date, .warn-date');
       if (!dateEl) return;
       cancelAutoshipCalClose();
       openAutoshipCalFor(dateEl);
     });
     board.addEventListener('mouseout', (e) => {
-      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge, .ship-autoship-date');
+      const dateEl = e.target.closest('.autoship-date, .autoship-date-badge, .ship-autoship-date, .warn-date');
       if (!dateEl || (e.relatedTarget && e.relatedTarget.closest('.autoship-cal'))) return;
       scheduleAutoshipCalClose();
     });
@@ -5457,7 +5478,7 @@
     let startX = 0, startY = 0, target = null, moved = false, fired = false, holdTimer = null;
     function cancelHold() { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } }
     board.addEventListener('touchstart', (e) => {
-      target = e.target.closest('.autoship-date, .autoship-date-badge, .ship-autoship-date') || null;
+      target = e.target.closest('.autoship-date, .autoship-date-badge, .ship-autoship-date, .warn-date') || null;
       moved = false; fired = false;
       cancelHold();
       if (!target) return;
