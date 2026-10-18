@@ -10,7 +10,8 @@
     "create-items-table": "node scripts/create-inventory-items-table.mjs",
     "import-items": "node scripts/import-items-from-json.mjs",
     "verify": "node scripts/verify-board.mjs",
-    "verify:orders": "node scripts/verify-orders-integration.mjs"
+    "verify:orders": "node scripts/verify-orders-integration.mjs",
+    "verify:warnings": "node scripts/verify-warnings.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0",

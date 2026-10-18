@@ -692,6 +692,14 @@
     .autoship-clear-btn:hover { background: rgba(214,80,74,0.08); }
     .autoship-clear-btn:disabled { opacity: 0.5; cursor: default; }
 
+    .autoship-approve-row {
+      grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--ink); cursor: pointer; user-select: none;
+    }
+    .autoship-approve-row input { width: 15px; height: 15px; margin: 0; accent-color: #3f8f87; cursor: pointer; }
+    .autoship-approve-row input:disabled { cursor: default; }
+    .autoship-approve-row.is-disabled { color: var(--ink-60); cursor: default; }
+
     /* Autoship date field -- a button styled like the modal's other text
        inputs (not a native <input type="date">, see .autoship-cal below)
        that opens the shared calendar popover on click. */
@@ -748,9 +756,22 @@
     .autoship-cal-day.is-today { font-weight: 700; }
     .autoship-cal-day.is-selected, .autoship-cal-day.is-selected:hover { background: var(--teal); color: #fff; }
     .autoship-cal-footer {
-      display: flex; justify-content: center; gap: 4px; padding-top: 6px; margin-top: 4px;
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding-top: 6px; margin-top: 4px;
       border-top: 1px solid var(--ink-12);
     }
+    /* Full-width first row of the footer: approve / un-approve this ship
+       date (only passed in for a board date that has one -- see
+       openAutoshipCalFor). Outlined teal while pending, filled once approved,
+       matching the teal the date itself turns on the board. */
+    .autoship-cal-approve-btn {
+      appearance: none; flex: 1 0 100%; cursor: pointer; font-family: inherit;
+      font-size: 12px; font-weight: 600; padding: 5px 8px; border-radius: 6px;
+      border: 1.5px solid #3f8f87; background: #fff; color: #3f8f87;
+      transition: background .12s, color .12s;
+    }
+    .autoship-cal-approve-btn:hover { background: rgba(121,189,177,0.14); }
+    .autoship-cal-approve-btn.is-approved { background: #3f8f87; color: #fff; }
+    .autoship-cal-approve-btn.is-approved:hover { background: #357a73; }
     .autoship-cal-today-btn, .autoship-cal-clear-btn {
       appearance: none; border: 0; background: transparent; cursor: pointer;
       font-family: inherit; font-size: 12px; padding: 4px 8px; border-radius: 6px;
@@ -1014,6 +1035,60 @@
     }
     #tab-board .month-list > * { flex: 0 0 auto; }
 
+    /* ── Needs-attention panel: sits between the month header and its order
+       list (a sibling of .month-list, never inside it -- the list's children
+       are assumed to be only cards/shipments all over this file). Same
+       orange/red vocabulary as the SOON/OUT badges. ── */
+    #tab-board .month-warn { padding: 4px 11px 0; }
+    #tab-board .month-warn[hidden] { display: none; }
+    #tab-board .warn-box {
+      border: 1px solid #f1d9b9; background: #fffaf2; border-radius: 10px; padding: 6px 9px 6px;
+    }
+    #tab-board .warn-head {
+      display: flex; align-items: center; gap: 6px; padding: 0 0 3px;
+      font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soon);
+    }
+    #tab-board .warn-head svg { width: 12px; height: 12px; flex: none; }
+    #tab-board .warn-count {
+      font-family: var(--font-num); font-size: 10px; letter-spacing: 0;
+      background: var(--soon); color: #fff; border-radius: 20px; padding: 1px 6px; line-height: 1.3;
+    }
+    #tab-board .warn-row {
+      display: flex; align-items: center; gap: 8px; min-width: 0;
+      padding: 4px 0; border-top: 1px solid #f3e4cd;
+    }
+    #tab-board .warn-tag {
+      flex: none; font-family: var(--font-num); font-size: 9.5px; font-weight: 600;
+      letter-spacing: .04em; text-transform: uppercase; padding: 3px 6px; border-radius: 20px; line-height: 1;
+    }
+    #tab-board .warn-tag.is-autoship { color: var(--soon); background: var(--soon-tint); border: 1px solid #f1d5b3; padding: 2px 5px; }
+    #tab-board .warn-tag.is-runout { color: var(--out); background: var(--out-tint); }
+    #tab-board .warn-main { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+    #tab-board .warn-name {
+      font-size: 12.5px; font-weight: 600; color: var(--b-ink); letter-spacing: -.01em;
+      min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #tab-board .warn-name[data-act] { cursor: pointer; }
+    #tab-board .warn-name[data-act]:hover { text-decoration: underline; }
+    #tab-board .warn-detail { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); min-width: 0; }
+    #tab-board .warn-detail.is-overdue { color: var(--out); }
+    #tab-board .warn-btn {
+      flex: none; height: 22px; padding: 0 9px; border: 1px solid #c4cdd0; border-radius: 8px;
+      background: #fff; font: 500 11.5px/1 var(--font-ui); color: var(--ink-2); cursor: pointer;
+    }
+    #tab-board .warn-btn:hover { border-color: var(--accent); color: var(--accent-deep); }
+    #tab-board .warn-btn.is-approve { border-color: var(--accent); background: var(--accent-tint); color: var(--accent-deep); }
+    #tab-board .warn-btn.is-approve:hover { background: var(--accent); color: #fff; }
+    #tab-board .warn-foot { padding-top: 3px; border-top: 1px solid #f3e4cd; }
+    #tab-board .warn-head + .warn-foot, #tab-board .warn-head.is-clear { border-top: 0; }
+    #tab-board .warn-restore {
+      appearance: none; border: 0; background: none; padding: 0; cursor: pointer;
+      font: 500 11px/1.3 var(--font-ui); color: var(--ink-3); text-decoration: underline;
+    }
+    #tab-board .warn-restore:hover { color: var(--accent-deep); }
+    @keyframes warn-flash { from { box-shadow: 0 0 0 3px rgba(112, 196, 187, .8); } to { box-shadow: 0 0 0 3px rgba(112, 196, 187, 0); } }
+    #tab-board .warn-flash { animation: warn-flash 1.4s ease-out; }
+
     /* add buttons that live inline in the month / shipment header rows */
     #tab-board .month-head .add-btn, #tab-board .ship-head .add-btn {
       flex: 0 0 auto; height: 22px; padding: 0 7px 1px; gap: 5px;
@@ -1188,6 +1263,12 @@
       -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     }
     #tab-board .proj .autoship-date.has-link:hover { text-decoration: underline; }
+    /* Approved ship date -- shifts from the pending orange to the same teal
+       the "+4m" duration note uses (--accent-deep). Higher specificity than
+       each base rule above/below so it wins regardless of source order. */
+    #tab-board .proj .autoship-date.is-approved,
+    #tab-board .card-top .autoship-date-badge.is-approved,
+    #tab-board .ship-autoship-date.is-approved { color: var(--accent-deep); }
     /* Same date, same styling, for a card with no run-out projection to
        embed it in (.proj is display:none there -- see .no-proj .proj
        below) -- e.g. an untracked/free-text item, which can still carry an
@@ -2715,6 +2796,7 @@
         }).join('')}
       </div>
       <div class="autoship-cal-footer">
+        ${state.approval ? `<button type="button" class="autoship-cal-approve-btn${state.approval.approved ? ' is-approved' : ''}">${state.approval.approved ? '✓ Approved — click to undo' : 'Approve this ship date'}</button>` : ''}
         <button type="button" class="autoship-cal-today-btn">Today</button>
         ${state.onClear ? '<button type="button" class="autoship-cal-clear-btn">Clear Autoship</button>' : ''}
       </div>
@@ -2734,6 +2816,13 @@
         state.onPick(btn.dataset.iso);
         closeDatePicker();
       });
+    });
+    // Toggles approval of the date this popover was opened on, then closes
+    // like every other action here (onToggle first -- closing nulls state).
+    popEl.querySelector('.autoship-cal-approve-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.approval.onToggle();
+      closeDatePicker();
     });
     popEl.querySelector('.autoship-cal-today-btn').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2760,13 +2849,15 @@
   // calls it instead of onPick -- for the board's own inline hover/hold
   // calendar, where clearing means wiping the whole saved link+date, not
   // just picking an empty date (see openAutoshipCalFor).
-  function openDatePicker({ anchorEl, value, onPick, onClear }) {
+  // approval (optional): { approved, onToggle } adds an "Approve this ship
+  // date" button -- the board passes it for a date that's actually set.
+  function openDatePicker({ anchorEl, value, onPick, onClear, approval }) {
     closeDatePicker();
     popEl = document.createElement('div');
     popEl.className = 'autoship-cal';
     document.body.appendChild(popEl);
     const d = value ? new Date(value + 'T00:00:00') : new Date();
-    state = { year: d.getFullYear(), month: d.getMonth(), selectedISO: value || null, onPick, onClear, anchorEl };
+    state = { year: d.getFullYear(), month: d.getMonth(), selectedISO: value || null, onPick, onClear, approval: approval || null, anchorEl };
     render();
     const r = anchorEl.getBoundingClientRect();
     popEl.style.left = r.left + 'px';
@@ -2849,6 +2940,9 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       pinnedMerchants = Array.isArray(data.pinnedMerchants) ? data.pinnedMerchants.filter((s) => typeof s === 'string') : [];
+      // Same endpoint also carries the Needs-attention panel's "ignored this
+      // month" keys (see renderWarnings).
+      dismissedWarnings = new Set(Array.isArray(data.dismissedWarnings) ? data.dismissedWarnings.filter((s) => typeof s === 'string') : []);
     } catch (e) {
       console.error('Board: /api/board-settings load failed —', e.message);
       pinnedMerchants = [];
@@ -2953,6 +3047,7 @@
         ghostOf: it.recur_source || null,
         autoshipLink: it.autoship_link || '',
         autoshipNextDate: it.autoship_next_date || '',
+        autoshipApproved: it.autoship_approved || '',
       };
     });
     orders.forEach((o) => {
@@ -2960,6 +3055,7 @@
       shipmentData[o.order_id] = {
         name: o.merchant || 'Order', notes: o.notes || '',
         autoshipLink: o.autoship_link || '', autoshipNextDate: o.autoship_next_date || '',
+        autoshipApproved: o.autoship_approved || '',
         ...(stage ? { stage } : {}),
       };
     });
@@ -3276,6 +3372,7 @@
       <div class="month-notes-row${m.notes && m.notes.trim() ? ' notes-open' : ''}">
         <span class="month-notes month-notes--mobile" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
       </div>
+      <div class="month-warn" hidden></div>
       <div class="month-list" data-list="month">${m.blocks.map(blockHTML).join('')}</div>
     </div>`;
   }
@@ -3345,6 +3442,14 @@
   }
   function toISODate(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  // An Autoship date is "approved" only while the approval on record is for
+  // THAT exact date: autoshipApproved stores the approved date itself, so
+  // when the series advances to its next date (promoteFirstGhost) or the
+  // date is edited, the stored value stops matching and it reads as
+  // unapproved again -- no separate reset step to remember or get out of sync.
+  function isAutoshipApproved(d) {
+    return !!d && !!d.autoshipNextDate && d.autoshipApproved === d.autoshipNextDate;
   }
 
   // ── per-card update ──
@@ -3559,6 +3664,12 @@
         }
       }
     }
+    // Teal once approved. Only a real root's own date can be approved -- a
+    // ghost (or a demoted, already-locked former root) displays a date
+    // projected from someone else's, which is never approved in advance.
+    const approved = !c.ghostOf && isAutoshipApproved(c);
+    autoshipDateEl?.classList.toggle('is-approved', approved);
+    autoshipBadgeEl?.classList.toggle('is-approved', approved);
     cardEl.querySelector('.ototal .amt').textContent = SB.fmtMoney(r.cost);
 
     return r.cost;
@@ -3639,14 +3750,23 @@
     // Following the DOM here let a staged card run before the locked one above it, so
     // it restarted from raw on-hand and then had its own total overwritten.
     const walk = [];
+    const monthStarts = []; // monthStarts[mi] = index in `walk` where month mi begins
     board.querySelectorAll('.month').forEach((monthEl) => {
+      monthStarts.push(walk.length);
       const inMonth = [...monthEl.querySelectorAll('.card[data-id]')];
       walk.push(
         ...inMonth.filter((el) => el.closest('.shipment.is-locked')),
         ...inMonth.filter((el) => !el.closest('.shipment.is-locked')),
       );
     });
-    walk.forEach((cardEl) => {
+    // seen as it stands right BEFORE each month's first order -- the Needs-
+    // attention panel's "runs out this month, nothing ordered for it" check
+    // (see computeWarnings) needs each item's run-out as of the start of
+    // that month, not the final post-everything one PROJ_MAP keeps.
+    const seenBefore = [];
+    let snapMi = 0;
+    walk.forEach((cardEl, i) => {
+      while (snapMi < monthStarts.length && monthStarts[snapMi] <= i) seenBefore[snapMi++] = new Map(seen);
       const c = STATE.cardData[cardEl.dataset.id];
       if (!c) return;
       const hasInv = !c.untracked && !!c.dose && !!c.loggedOn;
@@ -3692,6 +3812,8 @@
         }
       }
     });
+    while (snapMi < monthStarts.length) seenBefore[snapMi++] = new Map(seen);
+    SEEN_BEFORE_MONTH = seenBefore;
     // expose final projected state for the item picker
     PROJ_MAP = {};
     seen.forEach((proj, key) => { PROJ_MAP[key] = proj; });
@@ -3714,6 +3836,7 @@
       dateEl.style.display = '';
       dateEl.textContent = df(SB.parseDate(s.autoshipNextDate));
       dateEl.classList.toggle('has-link', !!s.autoshipLink);
+      dateEl.classList.toggle('is-approved', isAutoshipApproved(s));
       dateEl.title = s.autoshipLink ? 'Open Autoship link' : '';
       dateEl.dataset.link = s.autoshipLink || '';
     } else {
@@ -3787,8 +3910,189 @@
       monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
     });
+    renderWarnings();
     updateMonthVisibility();
     updateMonthStrip();
+  }
+
+  // ── Needs-attention panel ─────────────────────────────────────────────────
+  // Rendered at the top of each month (today's month onward), computed fresh
+  // on every recalcAll from what's already on the board -- the only stored
+  // state is the two "settled" signals:
+  //   • Autoship rows: a root card's / shipment's Autoship date inside the
+  //     month's window (that month + the first WARN_TAIL_DAYS of the next;
+  //     the current month also takes anything overdue) that hasn't been
+  //     approved. Wherever the item itself is placed -- a later month's card
+  //     can have an earlier date. Approval = Approve button here, or the
+  //     hover/popout Autoship panels; stored per date (see isAutoshipApproved)
+  //     so it lapses by itself once the series advances. Projected ghosts, the
+  //     shipments that only hold them, and anything already Ordered/Entered/
+  //     Received are skipped -- no approving in advance, nothing left to do.
+  //   • Runs-out rows: an Inventory item whose run-out (as of the start of
+  //     that month, i.e. after every earlier month's orders) lands in the same
+  //     window while no card with a quantity for it exists in the month. Ignore
+  //     stores "runout|<item>|YYYY-MM" in /api/board-settings -- settled for
+  //     that one month only, so it reappears on its own in a later one. Placing
+  //     an order for it simply makes the row vanish.
+  const WARN_TAIL_DAYS = 7;
+  let dismissedWarnings = new Set();
+  let SEEN_BEFORE_MONTH = [];
+
+  function warnMonthWindows(monthEls) {
+    const today = SB.today();
+    const curStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+    return monthEls.map((el) => {
+      const mIdx = MONTH_NAMES.indexOf(el.querySelector('.mname')?.textContent.trim());
+      const year = parseInt(el.querySelector('.msub')?.textContent.trim(), 10);
+      if (mIdx < 0 || !year) return null;
+      const start = new Date(year, mIdx, 1);
+      if (start.getTime() < curStart) return null; // past months are history, not a to-do list
+      return {
+        start,
+        end: new Date(year, mIdx + 1, WARN_TAIL_DAYS + 1), // exclusive: day 8 of next month
+        isCurrent: start.getTime() === curStart,
+        ym: year + '-' + String(mIdx + 1).padStart(2, '0'),
+        name: MONTH_NAMES[mIdx],
+      };
+    });
+  }
+
+  function computeWarnings(monthEls, wins) {
+    const per = wins.map((w) => (w ? { autoship: [], runout: [], ignored: 0 } : null));
+    const inWindow = (d, w) => d < w.end && (w.isCurrent || d >= w.start);
+    const addAutoship = (row) => wins.forEach((w, mi) => { if (w && inWindow(row.date, w)) per[mi].autoship.push(row); });
+
+    monthEls.forEach((monthEl, homeMi) => {
+      monthEl.querySelectorAll('.card[data-id]').forEach((cardEl) => {
+        const c = STATE.cardData[cardEl.dataset.id];
+        if (!c || c.name === '__divider__' || c.ghostOf || !c.autoshipNextDate) return;
+        if (!(Number(c.qty) > 0) || isAutoshipApproved(c)) return;
+        if (cardEl.closest('.shipment.is-locked')) return;
+        const shipEl = cardEl.closest('.shipment');
+        addAutoship({
+          kind: 'card', id: cardEl.dataset.id, name: c.name, date: SB.parseDate(c.autoshipNextDate),
+          where: shipEl ? (STATE.shipmentData[shipEl.dataset.id]?.name || '') : '', homeMi,
+        });
+      });
+      monthEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
+        const sd = STATE.shipmentData[shipEl.dataset.id];
+        if (!sd || !sd.autoshipNextDate || sd.stage || isAutoshipApproved(sd)) return;
+        const cards = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
+          .map((el) => STATE.cardData[el.dataset.id]).filter((c) => c && c.name !== '__divider__');
+        if (cards.length && cards.every((c) => c.ghostOf)) return; // only holds projections
+        addAutoship({ kind: 'ship', id: shipEl.dataset.id, name: sd.name || 'Order', date: SB.parseDate(sd.autoshipNextDate), where: '', homeMi });
+      });
+    });
+
+    const invs = Object.values(INV_MAP).filter((inv) => inv && inv.name && Number(inv.dose) > 0 && inv.loggedOn);
+    if (invs.length) {
+      wins.forEach((w, mi) => {
+        if (!w) return;
+        const ordered = new Set();
+        monthEls[mi].querySelectorAll('.card[data-id]').forEach((cardEl) => {
+          const c = STATE.cardData[cardEl.dataset.id];
+          if (c && c.name !== '__divider__' && Number(c.qty) > 0) ordered.add(String(c.name).trim().toLowerCase());
+        });
+        const before = SEEN_BEFORE_MONTH[mi];
+        invs.forEach((inv) => {
+          const key = inv.name.trim().toLowerCase();
+          if (ordered.has(key)) return;
+          const prior = before && before.get(key);
+          const runOut = prior ? prior.runOut : SB.calc(inv).curRunOut;
+          if (!(runOut instanceof Date) || isNaN(runOut) || !inWindow(runOut, w)) return;
+          const wkey = 'runout|' + key + '|' + w.ym;
+          if (dismissedWarnings.has(wkey)) { per[mi].ignored++; return; }
+          per[mi].runout.push({ key: wkey, name: inv.name, date: runOut });
+        });
+      });
+    }
+    return per;
+  }
+
+  const escAttr = (v) => esc(v).replace(/"/g, '&quot;');
+  const WARN_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 14.2 13H1.8L8 2.2Z"/><path d="M8 6.6v3.2M8 11.6v.2"/></svg>';
+
+  function warnPanelHTML(w, p, mi, monthNames) {
+    const today = SB.today();
+    const df = SB.fmtDate;
+    const pending = p.autoship.length + p.runout.length;
+    const rows = [];
+    p.autoship.sort((a, b) => a.date - b.date).forEach((r) => {
+      const overdue = r.date < today;
+      const where = [r.where, r.homeMi !== mi ? monthNames[r.homeMi] : ''].filter(Boolean).join(' · ');
+      rows.push(`<div class="warn-row">
+        <span class="warn-tag is-autoship">Autoship</span>
+        <span class="warn-main">
+          <span class="warn-name" data-act="warn-goto" data-wkind="${r.kind}" data-wid="${escAttr(r.id)}" title="Jump to it">${esc(r.name)}</span>
+          <span class="warn-detail${overdue ? ' is-overdue' : ''}">${overdue ? 'Overdue · ' : ''}${df(r.date)}${where ? ' · ' + esc(where) : ''}</span>
+        </span>
+        <button type="button" class="warn-btn is-approve" data-act="warn-approve" data-wkind="${r.kind}" data-wid="${escAttr(r.id)}" title="Mark this ship date as approved">Approve</button>
+      </div>`);
+    });
+    p.runout.sort((a, b) => a.date - b.date).forEach((r) => {
+      const days = Math.ceil((r.date - today) / SB.DAY);
+      const when = r.date < today ? 'Ran out ' + df(r.date) : df(r.date) + ' · ' + days + 'd';
+      rows.push(`<div class="warn-row">
+        <span class="warn-tag is-runout">Runs out</span>
+        <span class="warn-main">
+          <span class="warn-name">${esc(r.name)}</span>
+          <span class="warn-detail">${when} · no ${w.name} order</span>
+        </span>
+        <button type="button" class="warn-btn" data-act="warn-ignore" data-wkey="${escAttr(r.key)}" title="Ignore for ${w.name} (comes back in a later month)">Ignore</button>
+      </div>`);
+    });
+    return `<div class="warn-box">
+      <div class="warn-head${pending ? '' : ' is-clear'}">${WARN_ICON}${pending ? `Needs attention <span class="warn-count">${pending}</span>` : 'Nothing needs attention'}</div>
+      ${rows.join('')}
+      ${p.ignored ? `<div class="warn-foot"><button type="button" class="warn-restore" data-act="warn-restore" data-ym="${w.ym}">${p.ignored} ignored · restore</button></div>` : ''}
+    </div>`;
+  }
+
+  function renderWarnings() {
+    const monthEls = [...board.querySelectorAll('.month')];
+    const wins = warnMonthWindows(monthEls);
+    const per = computeWarnings(monthEls, wins);
+    const monthNames = monthEls.map((el) => el.querySelector('.mname')?.textContent.trim() || '');
+    monthEls.forEach((monthEl, mi) => {
+      const box = monthEl.querySelector(':scope > .month-warn');
+      if (!box) return;
+      const p = per[mi];
+      const html = p && (p.autoship.length || p.runout.length || p.ignored) ? warnPanelHTML(wins[mi], p, mi, monthNames) : '';
+      // recalcAll runs on every keystroke -- only touch the DOM when the
+      // panel's content actually changed, so a button isn't replaced out from
+      // under a click that's mid-flight.
+      if (box._html === html) return;
+      box._html = html;
+      box.innerHTML = html;
+      box.hidden = !html;
+    });
+  }
+
+  async function postWarningAction(action, key) {
+    const undo = () => { if (action === 'dismiss') dismissedWarnings.delete(key); else dismissedWarnings.add(key); };
+    if (action === 'dismiss') dismissedWarnings.add(key); else dismissedWarnings.delete(key);
+    renderWarnings();
+    try {
+      const res = await fetch('/api/board-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, key }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (e) {
+      console.error(`Board: /api/board-settings ${action} failed —`, e.message);
+      undo();
+      renderWarnings();
+    }
+  }
+
+  function setAutoshipApproved(kind, id, on) {
+    const d = kind === 'ship' ? STATE.shipmentData[id] : STATE.cardData[id];
+    if (!d || !d.autoshipNextDate) return false;
+    d.autoshipApproved = on ? d.autoshipNextDate : '';
+    recalcAll();
+    persist();
+    return true;
   }
 
   // Mirror each visible month's Planned total into the top bar. Reads the rendered
@@ -4071,6 +4375,7 @@
       const sd = STATE.shipmentData[memberShipEl.dataset.id] || (STATE.shipmentData[memberShipEl.dataset.id] = {});
       sd.autoshipLink = link;
       sd.autoshipNextDate = projectedDate;
+      sd.autoshipApproved = ''; // a projected future date never inherits an approval
       memberShipEl.dataset.autoshipLink = link || '';
       memberShipEl.dataset.autoshipNext = projectedDate || '';
       updateShipAutoship(memberShipEl);
@@ -4598,6 +4903,7 @@
       recur_source: domGhostOf !== null ? domGhostOf : (c.ghostOf || null),
       autoship_link: domAutoshipLink !== null ? (domAutoshipLink || null) : (c.autoshipLink || null),
       autoship_next_date: domAutoshipNext !== null ? (domAutoshipNext || null) : (c.autoshipNextDate || null),
+      autoship_approved: c.autoshipApproved || null,
     });
   }
   function toApi() {
@@ -4629,6 +4935,7 @@
             order_id: oid, month, year, merchant: s.name || '', position: blockPos, status: stageStatus, notes: s.notes || '',
             autoship_link: domAutoshipLink !== null ? (domAutoshipLink || null) : (s.autoshipLink || null),
             autoship_next_date: domAutoshipNext !== null ? (domAutoshipNext || null) : (s.autoshipNextDate || null),
+            autoship_approved: s.autoshipApproved || null,
           });
           [...n.querySelectorAll(':scope .ship-body > .card')].forEach((cardEl, ci) => {
             pushItem(items, cardEl.dataset.id, oid, month, year, blockPos, ci + 1);
@@ -5041,6 +5348,10 @@
         value: sData.autoshipNextDate || null,
         onPick: (iso) => window.SupplementBoard.saveShipAutoship(sId, sData.autoshipLink || '', iso),
         onClear: () => window.SupplementBoard.saveShipAutoship(sId, '', ''),
+        approval: sData.autoshipNextDate ? {
+          approved: isAutoshipApproved(sData),
+          onToggle: () => setAutoshipApproved('ship', sId, !isAutoshipApproved(STATE.shipmentData[sId])),
+        } : null,
       });
       return true;
     }
@@ -5054,6 +5365,10 @@
       value: cData.autoshipNextDate || null,
       onPick: (iso) => window.SupplementBoard.saveCardAutoship(cId, cData.autoshipLink || '', iso),
       onClear: () => window.SupplementBoard.saveCardAutoship(cId, '', ''),
+      approval: cData.autoshipNextDate ? {
+        approved: isAutoshipApproved(cData),
+        onToggle: () => setAutoshipApproved('card', cId, !isAutoshipApproved(STATE.cardData[cId])),
+      } : null,
     });
     return true;
   }
@@ -5524,6 +5839,25 @@
         scope.classList.add('notes-open');
         requestAnimationFrame(() => notesEl.focus());
       }
+      return;
+    }
+    if (a === 'warn-approve') { setAutoshipApproved(act.dataset.wkind, act.dataset.wid, true); return; }
+    if (a === 'warn-ignore') { postWarningAction('dismiss', act.dataset.wkey); return; }
+    if (a === 'warn-restore') {
+      const suffix = '|' + act.dataset.ym;
+      [...dismissedWarnings].filter((k) => k.endsWith(suffix)).forEach((k) => postWarningAction('undismiss', k));
+      return;
+    }
+    if (a === 'warn-goto') {
+      const target = act.dataset.wkind === 'ship'
+        ? board.querySelector(`.shipment[data-id="${act.dataset.wid}"]`)
+        : board.querySelector(`.card[data-id="${act.dataset.wid}"]`);
+      if (!target) return;
+      scrollElementIntoBoardView(target);
+      target.classList.remove('warn-flash');
+      void target.offsetWidth; // restart the animation if it's mid-flight
+      target.classList.add('warn-flash');
+      setTimeout(() => target.classList.remove('warn-flash'), 1500);
       return;
     }
     if (a === 'jump-spent' || a === 'jump-planned') {
@@ -6753,6 +7087,7 @@
             name: cData.name,
             link: cData.autoshipLink || '',
             nextDate: cData.autoshipNextDate || '',
+            approved: isAutoshipApproved(cData),
           })
         ));
         menu.appendChild(ctxDivider());
@@ -6856,6 +7191,7 @@
           name: sData.name,
           link: sData.autoshipLink || '',
           nextDate: sData.autoshipNextDate || '',
+          approved: isAutoshipApproved(sData),
           kind: 'ship',
         })
       ));
@@ -7076,11 +7412,15 @@
     // card id it was opened with -- STATE/persist live here). Returns
     // false if the card no longer exists (e.g. deleted while the modal was
     // open) so the caller can surface that instead of silently no-op'ing.
-    saveCardAutoship(id, link, nextDate) {
+    saveCardAutoship(id, link, nextDate, approved) {
       const c = STATE.cardData[id];
       if (!c) return false;
       c.autoshipLink = link;
       c.autoshipNextDate = nextDate;
+      // `approved` omitted = leave the approval alone (it lapses on its own
+      // if the date changed -- see isAutoshipApproved); explicit true/false is
+      // the Autoship modal's checkbox.
+      if (approved !== undefined || !nextDate) c.autoshipApproved = approved && nextDate ? nextDate : '';
       // Keep the DOM stamp in lockstep -- see pushItem's dom-first read.
       const cardEl = board.querySelector(`.card[data-id="${id}"]`);
       if (cardEl) { cardEl.dataset.autoshipLink = link || ''; cardEl.dataset.autoshipNext = nextDate || ''; }
@@ -7088,6 +7428,10 @@
       persist();
       return true;
     },
+    // Approve / un-approve a card's or shipment's CURRENT ship date (kind
+    // 'card' | 'ship'); used by the Needs-attention panel and the Autoship
+    // hover/popout panels. False if there's nothing to approve.
+    setAutoshipApproved(kind, id, on) { return setAutoshipApproved(kind, id, on); },
     // Same as saveCardAutoship, for a shipment's own Autoship link/date
     // instead of a card's. Unlike a card, a shipment has no persistent
     // ghost/root link back to its other-month instances (only matched by
@@ -7095,11 +7439,12 @@
     // ghost card does, this pushes the (monthly-projected) date out to
     // every later instance of the same recurring series right now -- see
     // propagateShipmentAutoship.
-    saveShipAutoship(id, link, nextDate) {
+    saveShipAutoship(id, link, nextDate, approved) {
       const s = STATE.shipmentData[id];
       if (!s) return false;
       s.autoshipLink = link;
       s.autoshipNextDate = nextDate;
+      if (approved !== undefined || !nextDate) s.autoshipApproved = approved && nextDate ? nextDate : '';
       const shipEl = board.querySelector(`.shipment[data-id="${id}"]`);
       if (shipEl) {
         shipEl.dataset.autoshipLink = link || '';
@@ -7825,6 +8170,10 @@
             <svg class="autoship-date-cal-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5 1.5v2.5M11 1.5v2.5"/></svg>
           </button>
         </div>
+        <label class="autoship-approve-row" id="autoship-approve-row">
+          <input type="checkbox" id="autoship-approved">
+          <span>Approved for this ship date</span>
+        </label>
       </div>
       <div class="scan-status-msg" id="autoship-status-msg"></div>
       <div class="snm-footer">
@@ -7846,6 +8195,17 @@
   // { id, name, link, nextDate, kind } it was opened with.
   let _autoshipCardId = null;
   let _autoshipKind = 'card';
+  const approvedEl = document.getElementById('autoship-approved');
+  const approveRowEl = document.getElementById('autoship-approve-row');
+  // An approval belongs to one specific date, so it only makes sense with a
+  // date set, and picking a different one un-ticks it (re-tick to approve the
+  // new date) rather than silently carrying the sign-off over.
+  function syncApproveRow() {
+    const hasDate = !!dateTriggerEl.dataset.value;
+    approvedEl.disabled = !hasDate;
+    approveRowEl.classList.toggle('is-disabled', !hasDate);
+    if (!hasDate) approvedEl.checked = false;
+  }
   const dateTriggerEl = document.getElementById('autoship-date-trigger');
   const dateDisplayEl = document.getElementById('autoship-date-display');
   function setDateTrigger(iso) {
@@ -7862,16 +8222,22 @@
     window.openDatePicker({
       anchorEl: dateTriggerEl,
       value: dateTriggerEl.dataset.value || null,
-      onPick: (iso) => setDateTrigger(iso),
+      onPick: (iso) => {
+        if (iso !== dateTriggerEl.dataset.value) approvedEl.checked = false;
+        setDateTrigger(iso);
+        syncApproveRow();
+      },
     });
   });
-  function openAutoshipModal({ id, name, link, nextDate, kind } = {}) {
+  function openAutoshipModal({ id, name, link, nextDate, kind, approved } = {}) {
     if (!id) return;
     _autoshipCardId = id;
     _autoshipKind = kind === 'ship' ? 'ship' : 'card';
     document.getElementById('autoship-item-name').textContent = name || '';
     document.getElementById('autoship-link').value = link || '';
     setDateTrigger(nextDate || '');
+    approvedEl.checked = !!approved && !!nextDate;
+    syncApproveRow();
     document.getElementById('autoship-clear-btn').style.display = link ? '' : 'none';
     document.getElementById('autoship-status-msg').textContent = '';
     autoshipOv.style.display = 'flex';
@@ -7897,17 +8263,17 @@
     e.preventDefault();
     document.getElementById('autoship-save-btn').click();
   });
-  function saveAutoship(id, link, nextDate) {
+  function saveAutoship(id, link, nextDate, approved) {
     return _autoshipKind === 'ship'
-      ? window.SupplementBoard?.saveShipAutoship(id, link, nextDate)
-      : window.SupplementBoard?.saveCardAutoship(id, link, nextDate);
+      ? window.SupplementBoard?.saveShipAutoship(id, link, nextDate, approved)
+      : window.SupplementBoard?.saveCardAutoship(id, link, nextDate, approved);
   }
   document.getElementById('autoship-save-btn').addEventListener('click', () => {
     if (!_autoshipCardId) return;
     const statusEl = document.getElementById('autoship-status-msg');
     const link = document.getElementById('autoship-link').value.trim();
     const nextDate = dateTriggerEl.dataset.value || '';
-    const ok = saveAutoship(_autoshipCardId, link, nextDate);
+    const ok = saveAutoship(_autoshipCardId, link, nextDate, approvedEl.checked);
     if (ok === false) { statusEl.textContent = `Save failed — ${_autoshipKind === 'ship' ? 'shipment' : 'card'} not found, try refreshing.`; return; }
     closeAutoshipModal();
   });

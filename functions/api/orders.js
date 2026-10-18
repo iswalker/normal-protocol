@@ -74,6 +74,14 @@ async function ensureSchema(env) {
     // time the board is edited (every save rewrites the whole board).
     "ALTER TABLE orders ADD COLUMN year INTEGER",
     "ALTER TABLE order_items ADD COLUMN year INTEGER",
+    // The Autoship date the user has signed off on ("approved") -- stored as
+    // the DATE itself rather than a boolean, so the approval is only ever
+    // valid for that one scheduled date: once the autoship advances to its
+    // next date (or the date is edited) the stored value no longer matches
+    // autoship_next_date and it simply reads as unapproved again, with no
+    // reset logic to keep in sync anywhere.
+    "ALTER TABLE orders ADD COLUMN autoship_approved TEXT",
+    "ALTER TABLE order_items ADD COLUMN autoship_approved TEXT",
   ]) {
     try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
   }
@@ -85,11 +93,11 @@ export async function onRequestGet({ env }) {
     await ensureSchema(env);
     const results = await pipeline(env, [
       exec("SELECT month, year, position, notes FROM order_months ORDER BY position"),
-      exec("SELECT order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date FROM orders ORDER BY position"),
+      exec("SELECT order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved FROM orders ORDER BY position"),
       exec(
         `SELECT order_item_id, order_id, month, year, block_position, item_position, supplement,
                 price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
-                recur, recur_source, autoship_link, autoship_next_date
+                recur, recur_source, autoship_link, autoship_next_date, autoship_approved
          FROM order_items ORDER BY block_position, item_position`
       ),
     ]);
@@ -101,6 +109,7 @@ export async function onRequestGet({ env }) {
       position: num(o.position), status: o.status, notes: o.notes,
       autoship_link: o.autoship_link || null,
       autoship_next_date: o.autoship_next_date || null,
+      autoship_approved: o.autoship_approved || null,
     }));
     const items = rowsFrom(results[2]).map((it) => ({
       order_item_id: it.order_item_id, order_id: it.order_id, month: it.month, year: num(it.year),
@@ -116,6 +125,7 @@ export async function onRequestGet({ env }) {
       recur_source: it.recur_source || null,
       autoship_link: it.autoship_link || null,
       autoship_next_date: it.autoship_next_date || null,
+      autoship_approved: it.autoship_approved || null,
     }));
     return Response.json({ months, orders, items }, {
       headers: { "Access-Control-Allow-Origin": "*" },
@@ -148,8 +158,8 @@ export async function onRequestPut({ request, env }) {
   }
   for (const o of orders) {
     reqs.push(exec(
-      "INSERT INTO orders (order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [T(o.order_id), T(o.month), I(o.year), T(o.merchant), I(o.position), T(o.status), T(o.notes), T(o.autoship_link), T(o.autoship_next_date)]
+      "INSERT INTO orders (order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [T(o.order_id), T(o.month), I(o.year), T(o.merchant), I(o.position), T(o.status), T(o.notes), T(o.autoship_link), T(o.autoship_next_date), T(o.autoship_approved)]
     ));
   }
   for (const it of items) {
@@ -157,13 +167,13 @@ export async function onRequestPut({ request, env }) {
       `INSERT INTO order_items
          (order_item_id, order_id, month, year, block_position, item_position, supplement,
           price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
-          recur, recur_source, autoship_link, autoship_next_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          recur, recur_source, autoship_link, autoship_next_date, autoship_approved)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [T(it.order_item_id), T(it.order_id), T(it.month), I(it.year), I(it.block_position), I(it.item_position),
        T(it.supplement), F(it.price_per_bottle), F(it.order_qty_bottles), I(it.include_in_total ? 1 : 0),
        T(it.notes), I(it.untracked ? 1 : 0),
        it.recur ? I(it.recur) : { type: "null" }, it.recur_source ? T(it.recur_source) : { type: "null" },
-       T(it.autoship_link), T(it.autoship_next_date)]
+       T(it.autoship_link), T(it.autoship_next_date), T(it.autoship_approved)]
     ));
   }
   reqs.push(exec("COMMIT"));

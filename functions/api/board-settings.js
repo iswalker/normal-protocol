@@ -14,6 +14,13 @@
            overwrite and not immune to a concurrent write landing in that
            gap. Reordering losing a race is cheap to redo; losing track of
            WHICH merchants are pinned at all is not.
+   Also holds the Needs-attention panel's "ignored for this month" list (see
+   index.html's renderWarnings): GET -> { pinnedMerchants, dismissedWarnings }
+   where dismissedWarnings is a flat string[] of keys like
+   "runout|<item>|2026-10" -- one entry = "this warning is settled for this
+   month", so the same item reappears on its own the next month it is seen.
+   Mutated only via POST { action: 'dismiss'|'undismiss', key } below.
+
    POST -> body { action: 'pin'|'unpin', name }; the actual "which merchants
            are pinned" mutation, done as a single atomic SQL UPDATE (SQLite's
            JSON1 functions add/remove the name against whatever the row's
@@ -56,19 +63,38 @@ const CREATE = exec(
   "CREATE TABLE IF NOT EXISTS board_settings (id INTEGER PRIMARY KEY CHECK (id = 1), pinned_merchants TEXT)"
 );
 
+// dismissed_warnings was added after the table already existed in production,
+// so it needs an ALTER -- which errors once the column is there, hence its own
+// swallowed-failure call instead of riding along in the CREATE pipeline (one
+// failed statement fails the whole pipeline). Cached per isolate like
+// orders.js's ensureSchema so a warm isolate skips the round-trip.
+let schemaEnsured = false;
+async function ensureSchema(env) {
+  if (schemaEnsured) return;
+  await pipeline(env, [CREATE]);
+  try { await pipeline(env, [exec("ALTER TABLE board_settings ADD COLUMN dismissed_warnings TEXT")]); } catch { /* already exists */ }
+  schemaEnsured = true;
+}
+
+function parseList(cell) {
+  const raw = cell && cell.type !== "null" ? cell.value : null;
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    if (Array.isArray(v)) return v.filter((s) => typeof s === "string");
+  } catch { /* corrupt row -- fall back to empty rather than fail the load */ }
+  return [];
+}
+
 export async function onRequestGet({ env }) {
   try {
-    const results = await pipeline(env, [CREATE, exec("SELECT pinned_merchants FROM board_settings WHERE id = 1")]);
-    const cell = results[1].response.result.rows[0]?.[0];
-    const raw = cell && cell.type !== "null" ? cell.value : null;
-    let pinnedMerchants = [];
-    if (raw) {
-      try {
-        const v = JSON.parse(raw);
-        if (Array.isArray(v)) pinnedMerchants = v.filter((s) => typeof s === "string");
-      } catch { /* corrupt row -- fall back to empty rather than fail the load */ }
-    }
-    return Response.json({ pinnedMerchants }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    await ensureSchema(env);
+    const results = await pipeline(env, [exec("SELECT pinned_merchants, dismissed_warnings FROM board_settings WHERE id = 1")]);
+    const row = results[0].response.result.rows[0] || [];
+    return Response.json(
+      { pinnedMerchants: parseList(row[0]), dismissedWarnings: parseList(row[1]) },
+      { headers: { "Access-Control-Allow-Origin": "*" } },
+    );
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
   }
@@ -81,8 +107,8 @@ export async function onRequestPut({ request, env }) {
     ? body.pinnedMerchants.filter((s) => typeof s === "string")
     : [];
   try {
+    await ensureSchema(env);
     await pipeline(env, [
-      CREATE,
       exec(
         "INSERT INTO board_settings (id, pinned_merchants) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET pinned_merchants = excluded.pinned_merchants",
         [T(JSON.stringify(pinnedMerchants))]
@@ -104,8 +130,9 @@ export async function onRequestPost({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
   const action = body.action;
+  if (action === "dismiss" || action === "undismiss") return mutateDismissed(env, action, String(body.key || "").trim());
   const name = String(body.name || "").trim();
-  if (action !== "pin" && action !== "unpin") return Response.json({ error: "action must be 'pin' or 'unpin'" }, { status: 400 });
+  if (action !== "pin" && action !== "unpin") return Response.json({ error: "action must be 'pin', 'unpin', 'dismiss' or 'undismiss'" }, { status: 400 });
   if (!name) return Response.json({ error: "Missing name" }, { status: 400 });
 
   // Single UPDATE statement per action, computed entirely by SQLite's JSON1
@@ -132,13 +159,13 @@ export async function onRequestPost({ request, env }) {
       );
 
   try {
+    await ensureSchema(env);
     const results = await pipeline(env, [
-      CREATE,
       SEED,
       mutate,
       exec("SELECT pinned_merchants FROM board_settings WHERE id = 1"),
     ]);
-    const cell = results[3].response.result.rows[0]?.[0];
+    const cell = results[2].response.result.rows[0]?.[0];
     const raw = cell && cell.type !== "null" ? cell.value : "[]";
     let pinnedMerchants = [];
     try {
@@ -147,6 +174,38 @@ export async function onRequestPost({ request, env }) {
     } catch { /* shouldn't happen -- the column only ever holds what these statements wrote */ }
     const updated_at = await touchSyncMeta(env);
     return Response.json({ ok: true, pinnedMerchants, updated_at }, { headers: { "Access-Control-Allow-Origin": "*" } });
+  } catch (e) {
+    return Response.json({ error: String(e && e.message || e) }, { status: 502 });
+  }
+}
+
+// Same single-statement, JSON1-computed-at-execution-time shape as pin/unpin
+// above (and for the same reason: no read-into-JS-then-write-back window for
+// two devices to clobber each other in). COALESCE because the row is seeded
+// with only pinned_merchants -- dismissed_warnings starts out NULL.
+async function mutateDismissed(env, action, key) {
+  if (!key) return Response.json({ error: "Missing key" }, { status: 400 });
+  const mutate = action === "dismiss"
+    ? exec(
+        `UPDATE board_settings SET dismissed_warnings = CASE
+           WHEN EXISTS (SELECT 1 FROM json_each(COALESCE(dismissed_warnings, '[]')) WHERE value = ?)
+           THEN COALESCE(dismissed_warnings, '[]')
+           ELSE json_insert(COALESCE(dismissed_warnings, '[]'), '$[#]', ?)
+         END WHERE id = 1`,
+        [T(key), T(key)]
+      )
+    : exec(
+        `UPDATE board_settings SET dismissed_warnings = (
+           SELECT COALESCE(json_group_array(value), '[]') FROM json_each(COALESCE(dismissed_warnings, '[]')) WHERE value != ?
+         ) WHERE id = 1`,
+        [T(key)]
+      );
+  try {
+    await ensureSchema(env);
+    const results = await pipeline(env, [SEED, mutate, exec("SELECT dismissed_warnings FROM board_settings WHERE id = 1")]);
+    const dismissedWarnings = parseList(results[2].response.result.rows[0]?.[0]);
+    const updated_at = await touchSyncMeta(env);
+    return Response.json({ ok: true, dismissedWarnings, updated_at }, { headers: { "Access-Control-Allow-Origin": "*" } });
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
   }
