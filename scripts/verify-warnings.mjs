@@ -214,7 +214,7 @@ try {
   // ── hover panel: approve / undo ──
   await pendingDate.hover();
   await page.waitForSelector('.autoship-cal .autoship-cal-approve-btn');
-  check('hover panel offers "Approve this ship date"', /Approve this ship date/.test(await page.locator('.autoship-cal-approve-btn').textContent()));
+  check('hover panel offers "Approve"', (await page.locator('.autoship-cal-approve-btn').textContent()).trim() === 'Approve');
   await page.locator('.autoship-cal-approve-btn').click();
   await page.waitForTimeout(200);
   check('hover-panel approve removes the panel row', !(await rowNames(page)).includes('Stale Approval'));
@@ -222,7 +222,7 @@ try {
   await page.waitForTimeout(400);
   await alphaDate.hover();
   await page.waitForSelector('.autoship-cal .autoship-cal-approve-btn.is-approved');
-  check('hover panel shows approved state', /Approved/.test(await page.locator('.autoship-cal-approve-btn').textContent()));
+  check('hover panel shows "Approved"', (await page.locator('.autoship-cal-approve-btn').textContent()).trim() === 'Approved');
   await page.locator('.autoship-cal-approve-btn').click();
   await page.waitForTimeout(200);
   check('hover-panel undo brings the row back', (await rowNames(page)).includes('Alpha'));

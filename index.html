@@ -2796,7 +2796,7 @@
         }).join('')}
       </div>
       <div class="autoship-cal-footer">
-        ${state.approval ? `<button type="button" class="autoship-cal-approve-btn${state.approval.approved ? ' is-approved' : ''}">${state.approval.approved ? '✓ Approved — click to undo' : 'Approve this ship date'}</button>` : ''}
+        ${state.approval ? `<button type="button" class="autoship-cal-approve-btn${state.approval.approved ? ' is-approved' : ''}">${state.approval.approved ? 'Approved' : 'Approve'}</button>` : ''}
         <button type="button" class="autoship-cal-today-btn">Today</button>
         ${state.onClear ? '<button type="button" class="autoship-cal-clear-btn">Clear Autoship</button>' : ''}
       </div>
