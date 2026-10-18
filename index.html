@@ -1072,6 +1072,9 @@
     #tab-board .warn-name[data-act]:hover { text-decoration: underline; }
     #tab-board .warn-detail { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); min-width: 0; }
     #tab-board .warn-detail.is-overdue { color: var(--out); }
+    /* Clickable ship date (opens the Autoship link, same as the date on the card) -- orange like the card's own pending date */
+    #tab-board .warn-date.has-link { color: var(--soon); font-weight: 700; cursor: pointer; }
+    #tab-board .warn-date.has-link:hover { text-decoration: underline; }
     #tab-board .warn-btn {
       flex: none; height: 22px; padding: 0 9px; border: 1px solid #c4cdd0; border-radius: 8px;
       background: #fff; font: 500 11.5px/1 var(--font-ui); color: var(--ink-2); cursor: pointer;
@@ -3971,7 +3974,7 @@
         const shipEl = cardEl.closest('.shipment');
         addAutoship({
           kind: 'card', id: cardEl.dataset.id, name: c.name, date: SB.parseDate(c.autoshipNextDate),
-          where: shipEl ? (STATE.shipmentData[shipEl.dataset.id]?.name || '') : '', homeMi,
+          where: shipEl ? (STATE.shipmentData[shipEl.dataset.id]?.name || '') : '', homeMi, link: c.autoshipLink || '',
         });
       });
       monthEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
@@ -3980,7 +3983,7 @@
         const cards = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
           .map((el) => STATE.cardData[el.dataset.id]).filter((c) => c && c.name !== '__divider__');
         if (cards.length && cards.every((c) => c.ghostOf)) return; // only holds projections
-        addAutoship({ kind: 'ship', id: shipEl.dataset.id, name: sd.name || 'Order', date: SB.parseDate(sd.autoshipNextDate), where: '', homeMi });
+        addAutoship({ kind: 'ship', id: shipEl.dataset.id, name: sd.name || 'Order', date: SB.parseDate(sd.autoshipNextDate), where: '', homeMi, link: sd.autoshipLink || '' });
       });
     });
 
@@ -4014,7 +4017,8 @@
 
   function warnPanelHTML(w, p, mi, monthNames) {
     const today = SB.today();
-    const df = SB.fmtDate;
+    // Same m/d vs "Mmm d" choice the board's own dates make (see updateCard)
+    const df = board.classList.contains('layout-compact') ? SB.fmtDateShort : SB.fmtDate;
     const pending = p.autoship.length + p.runout.length;
     const rows = [];
     p.autoship.sort((a, b) => a.date - b.date).forEach((r) => {
@@ -4024,7 +4028,7 @@
         <span class="warn-tag is-autoship">Autoship</span>
         <span class="warn-main">
           <span class="warn-name" data-act="warn-goto" data-wkind="${r.kind}" data-wid="${escAttr(r.id)}" title="Jump to it">${esc(r.name)}</span>
-          <span class="warn-detail${overdue ? ' is-overdue' : ''}">${overdue ? 'Overdue · ' : ''}${df(r.date)}${where ? ' · ' + esc(where) : ''}</span>
+          <span class="warn-detail${overdue ? ' is-overdue' : ''}">${overdue ? 'Overdue · ' : ''}${r.link ? `<span class="warn-date has-link" data-act="open-autoship-link" data-link="${escAttr(r.link)}" title="Open Autoship link">${df(r.date)}</span>` : df(r.date)}${where ? ' · ' + esc(where) : ''}</span>
         </span>
         <button type="button" class="warn-btn is-approve" data-act="warn-approve" data-wkind="${r.kind}" data-wid="${escAttr(r.id)}" title="Mark this ship date as approved">Approve</button>
       </div>`);

@@ -50,7 +50,7 @@ const ORDERS_BODY = {
     { order_id: 'o_ghost', month: M0.month, year: M0.year, merchant: 'Ghost Shop', position: 4, status: 'Staged', notes: null },
   ],
   items: [
-    card('oi_alpha', 'o_a', M0, 1, 1, 'Alpha', { autoship_next_date: D_ALPHA }),
+    card('oi_alpha', 'o_a', M0, 1, 1, 'Alpha', { autoship_next_date: D_ALPHA, autoship_link: 'https://example.com/alpha' }),
     card('oi_approved', 'o_a', M0, 1, 2, 'Approved One', { autoship_next_date: D_APPROVED, autoship_approved: D_APPROVED }),
     card('oi_stale', 'o_a', M0, 1, 3, 'Stale Approval', { autoship_next_date: D_STALE, autoship_approved: iso(plusDays(-40)) }),
     card('oi_overdue', 'o_a', M0, 1, 4, 'Overdue One', { autoship_next_date: D_OVERDUE }),
@@ -171,6 +171,18 @@ try {
   check('panel shows a count badge', (await panel(page).locator('.warn-count').textContent()).trim() === String(names.length), String(names.length));
   // past months get no panel; the panel lives outside .month-list
   check('panel is outside .month-list', (await page.locator('.month-list .month-warn').count()) === 0);
+
+  // ── dates: m/d like the board, clickable when there's a link ──
+  const alphaRow = rowFor(page, 'Alpha');
+  const dateTxt = (await alphaRow.locator('.warn-date').textContent()).trim();
+  const boardTxt = (await page.locator('.card[data-id="oi_alpha"] .autoship-date, .card[data-id="oi_alpha"] .autoship-date-badge').locator('visible=true').first().textContent()).trim();
+  check('panel date matches the board card date format', dateTxt === boardTxt && /^\d+\/\d+/.test(dateTxt), `${dateTxt} vs ${boardTxt}`);
+  check('run-out date also uses m/d', /^\d+\/\d+/.test((await rowFor(page, 'Runner').locator('.warn-detail').textContent()).trim()));
+  check('date without a link is plain text', (await rowFor(page, 'Stale Approval').locator('.warn-date').count()) === 0);
+  await ctx.route('https://example.com/**', (r) => r.fulfill({ body: 'ok', contentType: 'text/html' }));
+  const [popup] = await Promise.all([page.waitForEvent('popup', { timeout: 5000 }).catch(() => null), alphaRow.locator('.warn-date').click()]);
+  check('clicking the date opens the Autoship link', popup && popup.url().startsWith('https://example.com/alpha'), popup ? popup.url() : 'no popup');
+  await popup?.close();
 
   // ── run-out Ignore / restore ──
   await rowFor(page, 'Runner').locator('[data-act="warn-ignore"]').click();
