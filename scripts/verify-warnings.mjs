@@ -51,6 +51,9 @@ const ORDERS_BODY = {
     // the same shipment-level autoship stored on later months' instances of one merchant
     { order_id: 'o_dup1', month: M1.month, year: M1.year, merchant: 'Dup Co', position: 5, status: 'Staged', notes: null, autoship_next_date: D_DUP },
     { order_id: 'o_dup2', month: M2.month, year: M2.year, merchant: 'Dup Co', position: 5, status: 'Staged', notes: null, autoship_next_date: D_DUP },
+    // Launch Preemptively: next-month orders. o_pre's autoship date is BEFORE its month (auto-on); o_norm has none
+    { order_id: 'o_pre', month: M1.month, year: M1.year, merchant: 'Pre Auto Co', position: 6, status: 'Staged', notes: null, autoship_next_date: iso(now) },
+    { order_id: 'o_norm', month: M1.month, year: M1.year, merchant: 'Normal Co', position: 7, status: 'Staged', notes: null },
     { order_id: 'o_ghost', month: M0.month, year: M0.year, merchant: 'Ghost Shop', position: 4, status: 'Staged', notes: null },
   ],
   items: [
@@ -67,6 +70,8 @@ const ORDERS_BODY = {
     // recurring root: its projected ghosts must never produce rows of their own
     card('oi_ghosty', 'o_ghost', M0, 4, 1, 'Ghosty', { autoship_next_date: D_ALPHA, recur: 1 }),
     // has an order this month -> not a run-out warning even though it runs out soon
+    card('oi_early', 'o_pre', M1, 6, 1, 'Early'),
+    card('oi_late', 'o_norm', M1, 7, 1, 'Late'),
     card('oi_covered', null, M0, 5, 1, 'Covered', {}),
   ],
 };
@@ -75,12 +80,16 @@ const INV_ITEMS = [
   { id: 2, name: 'Covered', bottle_size: 60, daily_dose: 1 },
   { id: 3, name: 'Plenty', bottle_size: 60, daily_dose: 1 },
   { id: 4, name: 'Alpha', bottle_size: 60, daily_dose: 1 },
+  { id: 5, name: 'Early', bottle_size: 60, daily_dose: 1 },
+  { id: 6, name: 'Late', bottle_size: 60, daily_dose: 1 },
 ];
 const INV_LOG = [
   { id: 1, item: 'Runner', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
   { id: 2, item: 'Covered', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
   { id: 3, item: 'Plenty', type: 'Reset', amount: 400, logged_on: iso(now), order_id: null },
   { id: 4, item: 'Alpha', type: 'Reset', amount: 400, logged_on: iso(now), order_id: null },
+  { id: 5, item: 'Early', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
+  { id: 6, item: 'Late', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
 ];
 
 const dismissed = new Set();
@@ -154,6 +163,10 @@ try {
   const names = await rowNames(page);
   // SHOT_DIR=<dir> saves screenshots of the panel for eyeballing
   if (process.env.SHOT_DIR) await page.locator(`.month[data-id="${M0.month}_${M0.year}"]`).screenshot({ path: join(process.env.SHOT_DIR, 'warn-desktop.png') });
+  if (process.env.SHOT_DIR) {
+    await page.locator(`.month[data-id="${M1.month}_${M1.year}"]`).screenshot({ path: join(process.env.SHOT_DIR, 'preempt-next-month.png') });
+    await page.locator('header').screenshot({ path: join(process.env.SHOT_DIR, 'header-desktop.png') });
+  }
 
   // ── which rows exist ──
   check('listed: unapproved autoship in the current month', names.includes('Alpha'), names.join(', '));
@@ -175,6 +188,33 @@ try {
   check('panel shows a count badge', (await panel(page).locator('.warn-count').textContent()).trim() === String(names.length), String(names.length));
   // past months get no panel; the panel lives outside .month-list
   check('panel is outside .month-list', (await page.locator('.month-list .month-warn').count()) === 0);
+
+  // ── Launch Preemptively ──
+  const pbtn = (id) => page.locator(`.shipment[data-id="${id}"] > .ship-head > .ship-preempt`);
+  const lastOrder = (id) => puts[puts.length - 1]?.orders.find((o) => o.order_id === id);
+  check('preemptive: an order whose autoship date is before its month is ON automatically', (await pbtn('o_pre').getAttribute('class')).includes('is-on'));
+  check('preemptive: an ordinary order is off', !(await pbtn('o_norm').getAttribute('class')).includes('is-on'));
+  check('needs-attention: item in a preemptive next-month order counts as ordered now', !names.includes('Early'));
+  check('needs-attention: item in an ordinary next-month order still warns', names.includes('Late'));
+  await pbtn('o_norm').click(); await page.waitForTimeout(700);
+  check('preemptive: manually turning one on suppresses its item warning', !(await rowNames(page)).includes('Late'));
+  check('preemptive: a manual ON is stored as 1', lastOrder('o_norm')?.preemptive === 1, JSON.stringify(lastOrder('o_norm')));
+  check('preemptive: the automatic one is stored as automatic (null)', lastOrder('o_pre')?.preemptive == null, JSON.stringify(lastOrder('o_pre')?.preemptive));
+  await pbtn('o_pre').click(); await page.waitForTimeout(700);
+  check('preemptive: manually turning an automatic one OFF is stored as 0 and the warning returns', lastOrder('o_pre')?.preemptive === 0 && (await rowNames(page)).includes('Early'), JSON.stringify(lastOrder('o_pre')?.preemptive));
+  await pbtn('o_pre').click(); await page.waitForTimeout(700);
+  check('preemptive: turning it back on returns to automatic (null)', lastOrder('o_pre')?.preemptive == null && !(await rowNames(page)).includes('Early'));
+  // header filter
+  const visibleShips = () => page.evaluate((m) => [...document.querySelectorAll(`.month[data-id="${m}"] .month-list > .shipment:not(.search-hide) .ship-name`)].map((e) => e.textContent), `${M1.month}_${M1.year}`);
+  await page.locator('#inv-preempt-btn').click();
+  const filtered = await visibleShips();
+  check('filter: Preemptive button is active and shows only preemptive orders', (await page.locator('#inv-preempt-btn').getAttribute('class')).includes('active') && ['Pre Auto Co', 'Normal Co', 'Dup Co'].every((n) => filtered.includes(n)), filtered.join(', '));
+  await pbtn('o_norm').click(); await page.waitForTimeout(500); // back to automatic/off
+  check('filter: un-flagged order drops out of the filtered view', !(await visibleShips()).includes('Normal Co'));
+  await page.locator('#inv-autoship-btn').click();
+  check('filter: Autoship and Preemptive are mutually exclusive', !(await page.locator('#inv-preempt-btn').getAttribute('class')).includes('active'));
+  await page.locator('#inv-autoship-btn').click();
+  check('filter: turning filters off restores the board', (await visibleShips()).includes('Normal Co'));
 
   check('duplicate autoship across months collapses to one row', names.filter((n) => n === 'Dup Co').length === 1, String(names.filter((n) => n === 'Dup Co').length));
   const dupDetail = await rowFor(page, 'Dup Co').locator('.warn-detail').textContent();
@@ -323,6 +363,14 @@ try {
   // ── mobile: panel renders and Approve is tappable ──
   const m = await openBoard({ width: 390, height: 800 });
   if (process.env.SHOT_DIR) await m.page.screenshot({ path: join(process.env.SHOT_DIR, 'warn-mobile.png') });
+  if (process.env.SHOT_DIR) await m.page.locator('header').screenshot({ path: join(process.env.SHOT_DIR, 'header-mobile.png') });
+  const boxW = () => m.page.locator('.global-search-box').evaluate((e) => e.getBoundingClientRect().width);
+  const restW = await boxW();
+  await m.page.locator('#global-search-input').focus();
+  await m.page.waitForTimeout(200);
+  check('mobile: focusing search gives it the room (header buttons step aside)', (await boxW()) > Math.max(restW + 100, 180), `${restW} -> ${await boxW()}`);
+  await m.page.locator('#global-search-input').blur();
+  if (process.env.SHOT_DIR) await m.page.locator(`.month[data-id="${M1.month}_${M1.year}"]`).screenshot({ path: join(process.env.SHOT_DIR, 'preempt-mobile.png') });
   check('mobile: panel renders', (await m.page.locator('.month-warn:not([hidden]) .warn-row').count()) > 0);
   const mBtn = m.page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-warn [data-act="warn-approve"]`).first();
   const mBox = await mBtn.boundingBox();

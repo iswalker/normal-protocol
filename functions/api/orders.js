@@ -82,6 +82,12 @@ async function ensureSchema(env) {
     // reset logic to keep in sync anywhere.
     "ALTER TABLE orders ADD COLUMN autoship_approved TEXT",
     "ALTER TABLE order_items ADD COLUMN autoship_approved TEXT",
+    // "Launch Preemptively": this shipment is really placed in the PREVIOUS
+    // month though it's tracked in this one. Tri-state: NULL = automatic (on
+    // exactly when the shipment's own autoship date falls before its month --
+    // derived on the client, so it follows the date), 1 / 0 = the user forced
+    // it on / off.
+    "ALTER TABLE orders ADD COLUMN preemptive INTEGER",
   ]) {
     try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
   }
@@ -93,7 +99,7 @@ export async function onRequestGet({ env }) {
     await ensureSchema(env);
     const results = await pipeline(env, [
       exec("SELECT month, year, position, notes FROM order_months ORDER BY position"),
-      exec("SELECT order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved FROM orders ORDER BY position"),
+      exec("SELECT order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved, preemptive FROM orders ORDER BY position"),
       exec(
         `SELECT order_item_id, order_id, month, year, block_position, item_position, supplement,
                 price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
@@ -110,6 +116,7 @@ export async function onRequestGet({ env }) {
       autoship_link: o.autoship_link || null,
       autoship_next_date: o.autoship_next_date || null,
       autoship_approved: o.autoship_approved || null,
+      preemptive: o.preemptive == null ? null : num(o.preemptive),
     }));
     const items = rowsFrom(results[2]).map((it) => ({
       order_item_id: it.order_item_id, order_id: it.order_id, month: it.month, year: num(it.year),
@@ -158,8 +165,8 @@ export async function onRequestPut({ request, env }) {
   }
   for (const o of orders) {
     reqs.push(exec(
-      "INSERT INTO orders (order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [T(o.order_id), T(o.month), I(o.year), T(o.merchant), I(o.position), T(o.status), T(o.notes), T(o.autoship_link), T(o.autoship_next_date), T(o.autoship_approved)]
+      "INSERT INTO orders (order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved, preemptive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [T(o.order_id), T(o.month), I(o.year), T(o.merchant), I(o.position), T(o.status), T(o.notes), T(o.autoship_link), T(o.autoship_next_date), T(o.autoship_approved), I(o.preemptive)]
     ));
   }
   for (const it of items) {
