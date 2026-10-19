@@ -1052,21 +1052,23 @@
        orange/red vocabulary as the SOON/OUT badges. ── */
     #tab-board .month-warn { padding: 4px 11px 0; }
     #tab-board .month-warn[hidden] { display: none; }
+    /* Same chrome as a shipment block (teal tint, border, radius, shadow),
+       with the header/count dressed like .ship-name/.scount. */
     #tab-board .warn-box {
-      border: 1px solid #f1d9b9; background: #fffaf2; border-radius: 10px; padding: 6px 9px 6px;
+      background: var(--accent-tint); border: 1px solid #cfe6e2; border-radius: 11px;
+      box-shadow: var(--shadow-card); padding: 5px 9px 6px 12px;
     }
     #tab-board .warn-head {
-      display: flex; align-items: center; gap: 6px; padding: 0 0 3px;
-      font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soon);
+      display: flex; align-items: baseline; gap: 7px; padding: 2px 0 4px;
+      font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--b-ink);
     }
-    #tab-board .warn-head svg { width: 12px; height: 12px; flex: none; }
     #tab-board .warn-count {
-      font-family: var(--font-num); font-size: 10px; letter-spacing: 0;
-      background: var(--soon); color: #fff; border-radius: 20px; padding: 1px 6px; line-height: 1.3;
+      flex: none; font-family: var(--font-num); font-size: 10px; font-weight: 400; letter-spacing: 0;
+      color: var(--ink-2); background: #d6e6e2; padding: 1px 7px; border-radius: 20px;
     }
     #tab-board .warn-row {
       display: flex; align-items: center; gap: 8px; min-width: 0;
-      padding: 4px 0; border-top: 1px solid #f3e4cd;
+      padding: 4px 0; border-top: 1px solid #d6e6e2;
     }
     #tab-board .warn-tag {
       flex: none; font-family: var(--font-num); font-size: 9.5px; font-weight: 600;
@@ -1091,9 +1093,9 @@
       background: #fff; font: 500 11.5px/1 var(--font-ui); color: var(--ink-2); cursor: pointer;
     }
     #tab-board .warn-btn:hover { border-color: var(--accent); color: var(--accent-deep); }
-    #tab-board .warn-btn.is-approve { border-color: var(--accent); background: var(--accent-tint); color: var(--accent-deep); }
+    #tab-board .warn-btn.is-approve { border-color: var(--accent); background: #fff; color: var(--accent-deep); }
     #tab-board .warn-btn.is-approve:hover { background: var(--accent); color: #fff; }
-    #tab-board .warn-foot { padding-top: 3px; border-top: 1px solid #f3e4cd; }
+    #tab-board .warn-foot { padding-top: 3px; border-top: 1px solid #d6e6e2; }
     #tab-board .warn-head + .warn-foot, #tab-board .warn-head.is-clear { border-top: 0; }
     #tab-board .warn-restore {
       appearance: none; border: 0; background: none; padding: 0; cursor: pointer;
@@ -4143,7 +4145,6 @@
   }
 
   const escAttr = (v) => esc(v).replace(/"/g, '&quot;');
-  const WARN_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 14.2 13H1.8L8 2.2Z"/><path d="M8 6.6v3.2M8 11.6v.2"/></svg>';
 
   // "kind:id,kind:id" -- a row can stand for several stored records
   const targetsAttr = (ts) => ts.map((t) => t.kind + ':' + t.id).join(',');
@@ -4159,30 +4160,30 @@
       const overdue = r.date < today;
       const otherMonths = [...new Set(r.homeMis)].filter((m) => m !== mi).map((m) => monthNames[m]).join(', ');
       const where = [r.where, otherMonths].filter(Boolean).join(' · ');
-      rows.push(`<div class="warn-row">
+      rows.push({ date: r.date, html: `<div class="warn-row" data-wdate="${toISODate(r.date)}">
         <span class="warn-tag is-autoship">Autoship</span>
         <span class="warn-main">
           <span class="warn-name" data-act="warn-goto" data-wtargets="${escAttr(targetsAttr(r.targets))}" title="Jump to it">${esc(r.name)}</span>
           <span class="warn-detail${overdue ? ' is-overdue' : ''}">${overdue ? 'Overdue · ' : ''}<span class="warn-date${r.link ? ' has-link' : ''}" data-act="open-autoship-link" data-link="${escAttr(r.link)}" data-wtargets="${escAttr(targetsAttr(r.targets))}"${r.link ? ' title="Open Autoship link"' : ''}>${df(r.date)}</span>${where ? ' · ' + esc(where) : ''}</span>
         </span>
         <button type="button" class="warn-btn is-approve" data-act="warn-approve" data-wtargets="${escAttr(targetsAttr(r.targets))}" title="Mark this ship date as approved">Approve</button>
-      </div>`);
+      </div>` });
     });
     p.runout.sort((a, b) => a.date - b.date).forEach((r) => {
       const days = Math.ceil((r.date - today) / SB.DAY);
       const when = r.date < today ? 'Ran out ' + df(r.date) : df(r.date) + ' · ' + days + 'd';
-      rows.push(`<div class="warn-row">
+      rows.push({ date: r.date, html: `<div class="warn-row" data-wdate="${toISODate(r.date)}">
         <span class="warn-tag is-runout">Runs out</span>
         <span class="warn-main">
           <span class="warn-name">${esc(r.name)}</span>
           <span class="warn-detail">${when} · no ${w.name} order</span>
         </span>
         <button type="button" class="warn-btn" data-act="warn-ignore" data-wkey="${escAttr(r.key)}" title="Ignore for ${w.name} (comes back in a later month)">Ignore</button>
-      </div>`);
+      </div>` });
     });
     return `<div class="warn-box">
-      <div class="warn-head${pending ? '' : ' is-clear'}">${WARN_ICON}${pending ? `Needs attention <span class="warn-count">${pending}</span>` : 'Nothing needs attention'}</div>
-      ${rows.join('')}
+      <div class="warn-head${pending ? '' : ' is-clear'}">${pending ? `Needs attention <span class="warn-count">${pending}</span>` : 'Nothing needs attention'}</div>
+      ${rows.sort((a, b) => a.date - b.date).map((r) => r.html).join('')}
       ${p.ignored ? `<div class="warn-foot"><button type="button" class="warn-restore" data-act="warn-restore" data-ym="${w.ym}">${p.ignored} ignored · restore</button></div>` : ''}
     </div>`;
   }
