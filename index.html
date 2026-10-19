@@ -759,12 +759,14 @@
       display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding-top: 6px; margin-top: 4px;
       border-top: 1px solid var(--ink-12);
     }
-    /* Full-width first row of the footer: approve / un-approve this ship
-       date (only passed in for a board date that has one -- see
-       openAutoshipCalFor). Outlined teal while pending, filled once approved,
-       matching the teal the date itself turns on the board. */
+    /* With an Approve button present (board dates only -- see
+       openAutoshipCalFor), Today takes the full-width top row and Approve
+       shares the row below with Clear Autoship. Approve is outlined teal
+       while pending, filled once approved, matching the teal the date itself
+       turns on the board. */
+    .autoship-cal-footer.has-approval .autoship-cal-today-btn { flex: 1 0 100%; }
     .autoship-cal-approve-btn {
-      appearance: none; flex: 1 0 100%; cursor: pointer; font-family: inherit;
+      appearance: none; flex: 1 1 0; cursor: pointer; font-family: inherit;
       font-size: 12px; font-weight: 600; padding: 5px 8px; border-radius: 6px;
       border: 1.5px solid #3f8f87; background: #fff; color: #3f8f87;
       transition: background .12s, color .12s;
@@ -2823,9 +2825,9 @@
           return `<button type="button" class="${cls.join(' ')}"${c.iso ? ` data-iso="${c.iso}"` : ' disabled'}>${c.day}</button>`;
         }).join('')}
       </div>
-      <div class="autoship-cal-footer">
-        ${state.approval ? `<button type="button" class="autoship-cal-approve-btn${state.approval.approved ? ' is-approved' : ''}">${state.approval.approved ? 'Approved' : 'Approve'}</button>` : ''}
+      <div class="autoship-cal-footer${state.approval ? ' has-approval' : ''}">
         <button type="button" class="autoship-cal-today-btn">Today</button>
+        ${state.approval ? `<button type="button" class="autoship-cal-approve-btn${state.approval.approved ? ' is-approved' : ''}">${state.approval.approved ? 'Approved' : 'Approve'}</button>` : ''}
         ${state.onClear ? '<button type="button" class="autoship-cal-clear-btn">Clear Autoship</button>' : ''}
       </div>
     `;
@@ -4018,7 +4020,7 @@
   //   • Autoship rows: a root card's / shipment's Autoship date inside the
   //     month's window (that month + the first WARN_TAIL_DAYS of the next;
   //     the current month also takes anything overdue) that hasn't been
-  //     approved. Wherever the item itself is placed -- a later month's card
+  //     approved -- listed in the soonest such month only, never twice. Wherever the item itself is placed -- a later month's card
   //     can have an earlier date. Approval = Approve button here, or the
   //     hover/popout Autoship panels; stored per date (see isAutoshipApproved)
   //     so it lapses by itself once the series advances. Projected ghosts, the
@@ -4056,7 +4058,14 @@
   function computeWarnings(monthEls, wins) {
     const per = wins.map((w) => (w ? { autoship: [], runout: [], ignored: 0 } : null));
     const inWindow = (d, w) => d < w.end && (w.isCurrent || d >= w.start);
-    const addAutoship = (row) => wins.forEach((w, mi) => { if (w && inWindow(row.date, w)) per[mi].autoship.push({ ...row, targets: [{ kind: row.kind, id: row.id }], homeMis: [row.homeMi] }); });
+    // Only the SOONEST month whose window covers the date lists it: 11/3 shows
+    // in October (its window runs into November's first week) and not again in
+    // November -- November only picks it up once October is no longer on the
+    // board (i.e. we're now in November and it's the first window left).
+    const addAutoship = (row) => {
+      const mi = wins.findIndex((w) => w && inWindow(row.date, w));
+      if (mi >= 0) per[mi].autoship.push({ ...row, targets: [{ kind: row.kind, id: row.id }], homeMis: [row.homeMi] });
+    };
 
     monthEls.forEach((monthEl, homeMi) => {
       monthEl.querySelectorAll('.card[data-id]').forEach((cardEl) => {

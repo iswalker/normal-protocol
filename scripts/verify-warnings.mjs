@@ -33,6 +33,8 @@ const D_SHIP = iso(plusDays(1));
 const D_APPROVED = iso(plusDays(2));
 const D_STALE = iso(plusDays(2));
 const D_DUP = iso(plusDays(1));
+const D_NEXT_EARLY = iso(new Date(M1.start.getFullYear(), M1.start.getMonth(), 3));   // inside the current window's tail (first week of next month)
+const D_NEXT_MID = iso(new Date(M1.start.getFullYear(), M1.start.getMonth(), 20));   // next month proper
 const D_FAR = iso(new Date(M3.start.getFullYear(), M3.start.getMonth(), 20)); // well outside the current window
 const D_LOCKED = iso(plusDays(2));
 const D_OVERDUE = iso(plusDays(-3));                                // only meaningful in the current month's panel
@@ -75,6 +77,8 @@ const ORDERS_BODY = {
     card('oi_early', 'o_pre', M1, 6, 1, 'Early'),
     card('oi_late', 'o_norm', M1, 7, 1, 'Late'),
     card('oi_cardpre', 'o_cardpre', M1, 8, 1, 'Card Pre', { autoship_next_date: iso(now) }),
+    card('oi_nextearly', 'o_a', M0, 1, 6, 'Next Early', { autoship_next_date: D_NEXT_EARLY }),
+    card('oi_nextmid', 'o_a', M0, 1, 7, 'Next Mid', { autoship_next_date: D_NEXT_MID }),
     card('oi_covered', null, M0, 5, 1, 'Covered', {}),
   ],
 };
@@ -220,6 +224,10 @@ try {
   await page.locator('#inv-autoship-btn').click();
   check('filter: turning filters off restores the board', (await visibleShips()).includes('Normal Co'));
 
+  const m1Panel = await page.locator(`.month[data-id="${M1.month}_${M1.year}"] .month-warn .warn-name`).allTextContents();
+  check('one-month rule: a 3rd-of-next-month autoship shows in the CURRENT month', names.includes('Next Early'));
+  check('one-month rule: …and NOT again in the next month', !m1Panel.includes('Next Early'), m1Panel.join(', '));
+  check('one-month rule: a mid-next-month autoship is only in the next month', !names.includes('Next Mid') && m1Panel.includes('Next Mid'), m1Panel.join(', '));
   check('duplicate autoship across months collapses to one row', names.filter((n) => n === 'Dup Co').length === 1, String(names.filter((n) => n === 'Dup Co').length));
   const dupDetail = await rowFor(page, 'Dup Co').locator('.warn-detail').textContent();
   check('collapsed row names every month it sits in', dupDetail.includes(M1.month) && dupDetail.includes(M2.month), dupDetail);
@@ -302,6 +310,8 @@ try {
   // ── hover panel: approve / undo ──
   await pendingDate.hover();
   await page.waitForSelector('.autoship-cal .autoship-cal-approve-btn');
+  if (process.env.SHOT_DIR) await page.locator('.autoship-cal').screenshot({ path: join(process.env.SHOT_DIR, 'popout.png') });
+  check('popout footer: Today is above Approve', await page.evaluate(() => { const t = document.querySelector('.autoship-cal-today-btn').getBoundingClientRect(), a = document.querySelector('.autoship-cal-approve-btn').getBoundingClientRect(); return t.bottom <= a.top + 1; }));
   check('hover panel offers "Approve"', (await page.locator('.autoship-cal-approve-btn').textContent()).trim() === 'Approve');
   await page.locator('.autoship-cal-approve-btn').click();
   await page.waitForTimeout(200);
@@ -355,9 +365,9 @@ try {
   const nextD = new Date(now); nextD.setDate(nextD.getDate() + 2); nextD.setMonth(nextD.getMonth() + 1);
   check('lifecycle: next occurrence promoted to root with the advanced date', newRoot && newRoot.autoship_next_date === iso(nextD), JSON.stringify(newRoot));
   check('lifecycle: the advanced date is NOT pre-approved', newRoot && newRoot.autoship_approved == null, JSON.stringify(newRoot?.autoship_approved));
-  check('lifecycle: completed occurrence no longer warns', !(await rowNames(page)).includes('Ghosty'));
   const m1Names = await page.locator(`.month[data-id="${M1.month}_${M1.year}"] .month-warn .warn-name`).allTextContents();
-  check('lifecycle: next month now asks for the fresh approval', m1Names.includes('Ghosty'), m1Names.join(', '));
+  const m0Again = await rowNames(page);
+  check('lifecycle: the fresh approval is asked for in exactly one month', m0Again.filter((n) => n === 'Ghosty').length + m1Names.filter((n) => n === 'Ghosty').length === 1, `${m0Again.join(',')} | ${m1Names.join(',')}`);
   check('lifecycle: pre-advance projected ghosts never produced rows before', oldRoot && oldRoot.autoship_approved === iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2)));
 
   // ── nothing leaks into past/other structure ──
