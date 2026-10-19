@@ -54,6 +54,8 @@ const ORDERS_BODY = {
     // Launch Preemptively: next-month orders. o_pre's autoship date is BEFORE its month (auto-on); o_norm has none
     { order_id: 'o_pre', month: M1.month, year: M1.year, merchant: 'Pre Auto Co', position: 6, status: 'Staged', notes: null, autoship_next_date: iso(now) },
     { order_id: 'o_norm', month: M1.month, year: M1.year, merchant: 'Normal Co', position: 7, status: 'Staged', notes: null },
+    // no autoship date of its own, but an ITEM in it carries one from before its month -> auto-on
+    { order_id: 'o_cardpre', month: M1.month, year: M1.year, merchant: 'Item Date Co', position: 8, status: 'Staged', notes: null },
     { order_id: 'o_ghost', month: M0.month, year: M0.year, merchant: 'Ghost Shop', position: 4, status: 'Staged', notes: null },
   ],
   items: [
@@ -72,6 +74,7 @@ const ORDERS_BODY = {
     // has an order this month -> not a run-out warning even though it runs out soon
     card('oi_early', 'o_pre', M1, 6, 1, 'Early'),
     card('oi_late', 'o_norm', M1, 7, 1, 'Late'),
+    card('oi_cardpre', 'o_cardpre', M1, 8, 1, 'Card Pre', { autoship_next_date: iso(now) }),
     card('oi_covered', null, M0, 5, 1, 'Covered', {}),
   ],
 };
@@ -193,6 +196,7 @@ try {
   const pbtn = (id) => page.locator(`.shipment[data-id="${id}"] > .ship-head > .ship-preempt`);
   const lastOrder = (id) => puts[puts.length - 1]?.orders.find((o) => o.order_id === id);
   check('preemptive: an order whose autoship date is before its month is ON automatically', (await pbtn('o_pre').getAttribute('class')).includes('is-on'));
+  check('preemptive: ON automatically when an ITEM in it has an autoship date from before its month', (await pbtn('o_cardpre').getAttribute('class')).includes('is-on'));
   check('preemptive: an ordinary order is off', !(await pbtn('o_norm').getAttribute('class')).includes('is-on'));
   check('needs-attention: item in a preemptive next-month order counts as ordered now', !names.includes('Early'));
   check('needs-attention: item in an ordinary next-month order still warns', names.includes('Late'));
@@ -334,7 +338,7 @@ try {
     JSON.stringify(puts[puts.length - 1]?.items.find((i) => i.order_item_id === 'oi_overdue')));
 
   // ── editing the date alone drops the approval ──
-  await page.evaluate(() => window.SupplementBoard.saveCardAutoship('oi_approved', '', new Date(Date.now() + 86400000).toISOString().slice(0, 10)));
+  await page.evaluate((d) => window.SupplementBoard.saveCardAutoship('oi_approved', '', d), iso(plusDays(3)));
   await page.waitForTimeout(200);
   check('editing an approved date lapses its approval', (await rowNames(page)).includes('Approved One'));
 

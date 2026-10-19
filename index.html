@@ -1123,10 +1123,12 @@
     /* "Launch Preemptively" toggle -- outlined while off, teal once on (the
        same on-state the header filter buttons use). */
     #tab-board .ship-preempt {
-      flex: 0 0 auto; height: 20px; padding: 0 7px; border: 1px solid #c4cdd0; border-radius: 8px;
+      display: inline-flex; align-items: center; gap: 3px;
+      flex: 0 0 auto; height: 20px; padding: 0 8px 0 5px; border: 1px solid #c4cdd0; border-radius: 8px;
       background: rgba(255, 255, 255, .7); font: 500 10px/1 var(--font-ui); color: var(--ink-3);
       cursor: pointer; white-space: nowrap;
     }
+    #tab-board .ship-preempt svg { width: 11px; height: 11px; flex: none; }
     #tab-board .ship-preempt:hover { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
     #tab-board .ship-preempt.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
     #tab-board .ship-preempt.is-on:hover { background: var(--accent-deep); border-color: var(--accent-deep); color: #fff; }
@@ -3359,7 +3361,7 @@
         <span class="ship-autoship-date" data-act="open-autoship-link" style="display:none"></span>
         <button class="notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         <span class="ship-min-date"></span>
-        <button type="button" class="ship-preempt" data-act="toggle-preempt" aria-pressed="false">Launch Preemptively</button>
+        <button type="button" class="ship-preempt" data-act="toggle-preempt" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 3.5 4 8l4.5 4.5M13 3.5 8.5 8l4.5 4.5"/></svg>Preemptive</button>
         <span class="ship-row-break" aria-hidden="true"></span>
         <div class="ship-total"><span class="amt">$0.00</span><span class="ship-max"> / $0.00</span></div>
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
@@ -3888,10 +3890,27 @@
     const year = parseInt(monthEl.querySelector('.msub')?.textContent.trim(), 10);
     return mIdx < 0 || !year ? null : new Date(year, mIdx, 1);
   }
+  // Automatic when the shipment's own autoship date, OR the date shown on any
+  // item inside it (what updateCard displays: a ghost's is its root's projected
+  // forward by the months between them), falls before the shipment's month.
   function shipAutoPreemptive(shipEl) {
     const s = STATE.shipmentData[shipEl.dataset.id];
-    const start = s && s.autoshipNextDate ? monthStartOf(shipEl.closest('.month')) : null;
-    return !!start && SB.parseDate(s.autoshipNextDate) < start;
+    if (!s) return false;
+    const start = monthStartOf(shipEl.closest('.month'));
+    if (!start) return false;
+    if (s.autoshipNextDate && SB.parseDate(s.autoshipNextDate) < start) return true;
+    return [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')].some((cardEl) => {
+      const c = STATE.cardData[cardEl.dataset.id];
+      if (!c || c.name === '__divider__' || !(Number(c.qty) > 0)) return false;
+      const root = c.ghostOf ? (STATE.cardData[c.ghostOf] || c) : c;
+      if (!root.autoshipNextDate) return false;
+      const base = SB.parseDate(root.autoshipNextDate);
+      if (base >= start) return false; // projecting forward only moves it later
+      if (!c.ghostOf) return true;
+      const { monthIdx: gMi } = findCardLocation(cardEl.dataset.id);
+      const { monthIdx: rMi } = findCardLocation(c.ghostOf);
+      return (gMi >= 0 && rMi >= 0 && gMi > rMi ? addMonthsToDate(base, gMi - rMi) : base) < start;
+    });
   }
   function isShipPreemptive(shipEl) {
     const s = STATE.shipmentData[shipEl.dataset.id];
@@ -3905,7 +3924,7 @@
     btn.classList.toggle('is-on', on);
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     btn.title = on
-      ? `Placed in the previous month${forced ? '' : ' (automatic: its autoship date is before this month)'} — click to turn off`
+      ? `Placed in the previous month${forced ? '' : ' (automatic: an autoship date in it is before this month)'} — click to turn off`
       : 'Click if this order will actually be placed in the previous month';
   }
   function toggleShipPreempt(shipEl) {
