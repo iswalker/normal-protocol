@@ -156,7 +156,7 @@ async function openBoard(viewport) {
   await page.goto(base, { waitUntil: 'load' });
   await page.waitForSelector('#tab-board #board .month');
   // inventory loads after boardReady -- wait for the run-out row it produces
-  await page.waitForSelector('.month-warn .warn-tag.is-runout', { timeout: 10000 });
+  await page.waitForSelector('.month-warn .warn-row', { timeout: 10000 });
   return { ctx, page };
 }
 
@@ -189,9 +189,15 @@ try {
   check('run-out: item running out with no order this month', names.includes('Runner'));
   check('run-out: not listed when an order exists this month', !names.includes('Covered'));
   check('run-out: not listed when plenty on hand', !names.includes('Plenty'));
+  check('heading reads "Needs Attention"', (await panel(page).locator('.warn-head').textContent()).trim().startsWith('Needs Attention'));
+  const detailOf = async (n) => (await rowFor(page, n).locator('.warn-detail').textContent()).replace(/\s+/g, ' ').trim();
+  check('autoship row text: "<item> autoships <date> ..."', /^autoships \d+\/\d+/.test(await detailOf('Alpha')), await detailOf('Alpha'));
+  check('run-out row text: "<item> runs out <date> ..."', /^runs out \d+\/\d+/.test(await detailOf('Runner')), await detailOf('Runner'));
+  check('no label pills left', (await panel(page).locator('.warn-tag').count()) === 0);
+  check('item name comes first in the row', await rowFor(page, 'Runner').locator('.warn-main').evaluate((e) => e.firstElementChild.classList.contains('warn-name')));
   const later = await rowFor(page, 'Later Placement').locator('.warn-detail').textContent();
   check('later-placed row says which month it sits in', later.includes(M2.month), later);
-  check('overdue row is flagged', (await rowFor(page, 'Overdue One').locator('.warn-detail').textContent()).startsWith('Overdue'));
+  check('overdue row is flagged', /overdue/.test(await rowFor(page, 'Overdue One').locator('.warn-detail').textContent()));
   check('panel shows a count badge', (await panel(page).locator('.warn-count').textContent()).trim() === String(names.length), String(names.length));
   // past months get no panel; the panel lives outside .month-list
   check('panel is outside .month-list', (await page.locator('.month-list .month-warn').count()) === 0);
@@ -224,7 +230,48 @@ try {
   await page.locator('#inv-autoship-btn').click();
   check('filter: turning filters off restores the board', (await visibleShips()).includes('Normal Co'));
 
+  // ── preemptive mirrors in the PREVIOUS month ──
+  const m0list = page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-list`);
+  const mirrorNames = () => m0list.locator('.month-preempt .pre-name').allTextContents();
+  const mnames = await mirrorNames();
+  check('mirror: a preemptive next-month order appears in this month', mnames.includes('Pre Auto Co') && mnames.includes('Dup Co') && mnames.includes('Item Date Co'), mnames.join(', '));
+  check('mirror: an ordinary next-month order does not', !mnames.includes('Normal Co'));
+  check('mirror: sits at the bottom of the open orders (just above the completed ones)', await m0list.evaluate((l) => { const w = l.querySelector(':scope > .month-preempt'); return !!w && w.nextElementSibling && w.nextElementSibling.classList.contains('is-locked') && !w.previousElementSibling.classList.contains('is-locked'); }));
+  check('mirror: greyed read-only block, not a shipment/card', await m0list.evaluate((l) => { const m = l.querySelector('.pre-ship'); return !m.classList.contains('shipment') && !m.querySelector('.card, [data-id], input, [contenteditable]'); }));
+  const plannedBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent();
+  const countBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .mcount`).textContent();
+  await pbtn('o_norm').click(); await page.waitForTimeout(700); // flag one more order -> one more mirror
+  check('mirror: flagging another order adds its mirror', (await mirrorNames()).includes('Normal Co'));
+  check('mirror: does not change the month metrics or count', (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent()) === plannedBefore && (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .mcount`).textContent()) === countBefore);
+  const savedOrders = puts[puts.length - 1].orders.map((o) => o.order_id);
+  check('mirror: never saved (no duplicate or extra orders)', new Set(savedOrders).size === savedOrders.length && savedOrders.length === (await page.locator('.shipment').count()), `${savedOrders.length} vs ${await page.locator('.shipment').count()}`);
+  await page.locator('.pre-ship', { hasText: 'Normal Co' }).click();
+  await page.waitForTimeout(250);
+  check('mirror: clicking it jumps to the real order', await page.locator('.shipment[data-id="o_norm"]').evaluate((e) => e.classList.contains('warn-flash')));
+  await pbtn('o_norm').click(); await page.waitForTimeout(700); // back to off
+  check('mirror: turning the flag off removes it', !(await mirrorNames()).includes('Normal Co'));
+  await page.locator('#inv-preempt-btn').click();
+  check('mirror: hidden while a filter is active', (await m0list.locator('.month-preempt').count()) === 0);
+  await page.locator('#inv-preempt-btn').click();
+
   const m1Panel = await page.locator(`.month[data-id="${M1.month}_${M1.year}"] .month-warn .warn-name`).allTextContents();
+  // ── links: name -> Inventory, order month -> the order ──
+  await rowFor(page, 'Runner').locator('.warn-name').click();
+  await page.waitForTimeout(300);
+  check('item name opens Inventory filtered to that item', (await page.locator('#inv-filter-item').inputValue()) === 'Runner' && await page.locator('#tab-inventory').isVisible());
+  await page.locator('#inv-modal-close').click();
+  await page.waitForTimeout(200);
+  await rowFor(page, 'Later Placement').locator('.warn-month').first().click();
+  await page.waitForTimeout(250);
+  check('order month jumps to (and highlights) that order', await page.locator('.card[data-id="oi_later"]').evaluate((e) => e.classList.contains('warn-flash')));
+  const lateNext = rowFor(page, 'Late').locator('.warn-month');
+  check('run-out row offers its next order month', (await lateNext.count()) === 1 && (await lateNext.textContent()).trim() === M1.month);
+  await lateNext.click();
+  await page.waitForTimeout(250);
+  check('next-order month jumps to that card', await page.locator('.card[data-id="oi_late"]').evaluate((e) => e.classList.contains('warn-flash')));
+  check('item with no later card has no next-order link', (await rowFor(page, 'Runner').locator('.warn-month').count()) === 0);
+  check('shipment-level row name is plain text (no Inventory link)', (await rowFor(page, 'Ship-level Co').locator('.warn-name[data-act]').count()) === 0);
+
   const dates = await panel(page).locator('.warn-row').evaluateAll((els) => els.map((e) => e.dataset.wdate));
   check('rows are ordered by date, soonest first', dates.length > 3 && dates.every((d, i) => i === 0 || dates[i - 1] <= d), dates.join(' '));
   check('Autoship and Runs-out rows are interlaced, not grouped', names.indexOf('Runner') < names.indexOf('Later Placement') && names.indexOf('Runner') > names.indexOf('Overdue One'), names.join(', '));
@@ -249,7 +296,7 @@ try {
   const dateTxt = (await alphaRow.locator('.warn-date').textContent()).trim();
   const boardTxt = (await page.locator('.card[data-id="oi_alpha"] .autoship-date, .card[data-id="oi_alpha"] .autoship-date-badge').locator('visible=true').first().textContent()).trim();
   check('panel date matches the board card date format', dateTxt === boardTxt && /^\d+\/\d+/.test(dateTxt), `${dateTxt} vs ${boardTxt}`);
-  check('run-out date also uses m/d', /^\d+\/\d+/.test((await rowFor(page, 'Runner').locator('.warn-detail').textContent()).trim()));
+  check('run-out date also uses m/d', /runs out \d+\/\d+/.test(await rowFor(page, 'Runner').locator('.warn-detail').textContent()));
   check('date without a link is not a link', (await rowFor(page, 'Stale Approval').locator('.warn-date.has-link').count()) === 0 && (await rowFor(page, 'Stale Approval').locator('.warn-date').count()) === 1);
   await ctx.route('https://example.com/**', (r) => r.fulfill({ body: 'ok', contentType: 'text/html' }));
   const [popup] = await Promise.all([page.waitForEvent('popup', { timeout: 5000 }).catch(() => null), alphaRow.locator('.warn-date').click()]);
@@ -271,7 +318,7 @@ try {
   await page.waitForTimeout(150);
   await page.reload();
   await page.waitForSelector('#tab-board #board .month');
-  await page.waitForFunction(() => window._INV_ITEM_MAP && document.querySelector('.month-warn .warn-tag.is-autoship'), null, { timeout: 10000 });
+  await page.waitForFunction(() => window._INV_ITEM_MAP && document.querySelector('.month-warn .warn-row'), null, { timeout: 10000 });
   await page.waitForTimeout(500);
   check('ignore survives a reload', !(await rowNames(page)).includes('Runner'));
   await panel(page).locator('[data-act="warn-restore"]').click(); // leave the mock clean

@@ -1070,12 +1070,6 @@
       display: flex; align-items: center; gap: 8px; min-width: 0;
       padding: 4px 0; border-top: 1px solid #d6e6e2;
     }
-    #tab-board .warn-tag {
-      flex: none; font-family: var(--font-num); font-size: 9.5px; font-weight: 600;
-      letter-spacing: .04em; text-transform: uppercase; padding: 3px 6px; border-radius: 20px; line-height: 1;
-    }
-    #tab-board .warn-tag.is-autoship { color: var(--soon); background: var(--soon-tint); border: 1px solid #f1d5b3; padding: 2px 5px; }
-    #tab-board .warn-tag.is-runout { color: var(--out); background: var(--out-tint); }
     #tab-board .warn-main { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
     #tab-board .warn-name {
       font-size: 12.5px; font-weight: 600; color: var(--b-ink); letter-spacing: -.01em;
@@ -1083,8 +1077,12 @@
     }
     #tab-board .warn-name[data-act] { cursor: pointer; }
     #tab-board .warn-name[data-act]:hover { text-decoration: underline; }
-    #tab-board .warn-detail { font-family: var(--font-num); font-size: 11px; color: var(--ink-3); min-width: 0; }
-    #tab-board .warn-detail.is-overdue { color: var(--out); }
+    /* "<item> autoships <date> · …" -- plain prefix text, no label chrome */
+    #tab-board .warn-detail { font-size: 12px; color: var(--ink-3); min-width: 0; }
+    #tab-board .warn-overdue { color: var(--out); }
+    /* order month -> jumps to that order; the item name above opens Inventory */
+    #tab-board .warn-month { color: var(--accent-deep); font-weight: 500; cursor: pointer; }
+    #tab-board .warn-month:hover { text-decoration: underline; }
     /* Clickable ship date (opens the Autoship link, same as the date on the card) -- orange like the card's own pending date */
     #tab-board .warn-date { color: var(--soon); font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     #tab-board .warn-date.has-link:hover { text-decoration: underline; }
@@ -1102,6 +1100,22 @@
       font: 500 11px/1.3 var(--font-ui); color: var(--ink-3); text-decoration: underline;
     }
     #tab-board .warn-restore:hover { color: var(--accent-deep); }
+    /* ── Preemptive mirrors: a next-month order flagged Launch Preemptively,
+       echoed greyed-out at the bottom of THIS month's open orders. Visibility
+       only -- a sibling block inside .month-list that is neither .shipment nor
+       .card, so every total/save/sort that walks the list skips it. ── */
+    #tab-board .month-preempt { display: flex; flex-direction: column; gap: 6px; }
+    #tab-board .pre-ship {
+      background: #f3f5f5; border: 1px dashed #cdd6d8; border-radius: 11px;
+      padding: 5px 10px 6px 12px; color: var(--ink-3); cursor: pointer; opacity: .9;
+    }
+    #tab-board .pre-ship:hover { border-style: solid; }
+    #tab-board .pre-head { display: flex; align-items: baseline; gap: 7px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; padding: 1px 0 3px; }
+    #tab-board .pre-count { flex: none; font-family: var(--font-num); font-size: 10px; font-weight: 400; background: #e3e8e9; padding: 1px 7px; border-radius: 20px; }
+    #tab-board .pre-tag { font-size: 10.5px; font-weight: 500; letter-spacing: 0; }
+    #tab-board .pre-total { margin-left: auto; font-family: var(--font-num); font-size: 13px; font-weight: 600; }
+    #tab-board .pre-item { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 1px 2px; }
+    #tab-board .pre-qty { font-family: var(--font-num); font-size: 11px; flex: none; }
     @keyframes warn-flash { from { box-shadow: 0 0 0 3px rgba(112, 196, 187, .8); } to { box-shadow: 0 0 0 3px rgba(112, 196, 187, 0); } }
     #tab-board .warn-flash { animation: warn-flash 1.4s ease-out; }
 
@@ -4011,6 +4025,7 @@
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
     });
     renderWarnings();
+    renderPreemptMirrors();
     updateMonthVisibility();
     updateMonthStrip();
   }
@@ -4110,6 +4125,20 @@
       p.autoship = [...byKey.values()];
     });
 
+    // First current-or-later month holding a card for each item -- the "next
+    // order" a run-out row can jump to (same idea as the Inventory tab's Next
+    // Order column).
+    const firstCardByKey = new Map();
+    monthEls.forEach((monthEl, mi) => {
+      if (!wins[mi]) return;
+      monthEl.querySelectorAll('.card[data-id]').forEach((cardEl) => {
+        const c = STATE.cardData[cardEl.dataset.id];
+        if (!c || c.name === '__divider__') return;
+        const k = String(c.name).trim().toLowerCase();
+        if (!firstCardByKey.has(k)) firstCardByKey.set(k, { mi, id: cardEl.dataset.id });
+      });
+    });
+
     const invs = Object.values(INV_MAP).filter((inv) => inv && inv.name && Number(inv.dose) > 0 && inv.loggedOn);
     if (invs.length) {
       wins.forEach((w, mi) => {
@@ -4137,7 +4166,7 @@
           if (!(runOut instanceof Date) || isNaN(runOut) || !inWindow(runOut, w)) return;
           const wkey = 'runout|' + key + '|' + w.ym;
           if (dismissedWarnings.has(wkey)) { per[mi].ignored++; return; }
-          per[mi].runout.push({ key: wkey, name: inv.name, date: runOut });
+          per[mi].runout.push({ key: wkey, name: inv.name, date: runOut, next: firstCardByKey.get(key) || null });
         });
       });
     }
@@ -4156,33 +4185,44 @@
     const df = board.classList.contains('layout-compact') ? SB.fmtDateShort : SB.fmtDate;
     const pending = p.autoship.length + p.runout.length;
     const rows = [];
-    p.autoship.sort((a, b) => a.date - b.date).forEach((r) => {
+    const monthLink = (label, target) => `<span class="warn-month" data-act="warn-goto" data-wtargets="${escAttr(targetsAttr([target]))}" title="Jump to the order">${esc(label)}</span>`;
+    // An item linked to Inventory always opens Inventory; anything else is plain text
+    const nameHTML = (name, isItem) => (isItem && INV_MAP[name.trim().toLowerCase()]
+      ? `<span class="warn-name" data-act="warn-inv" data-wname="${escAttr(name)}" title="Open in Inventory">${esc(name)}</span>`
+      : `<span class="warn-name">${esc(name)}</span>`);
+    p.autoship.forEach((r) => {
       const overdue = r.date < today;
-      const otherMonths = [...new Set(r.homeMis)].filter((m) => m !== mi).map((m) => monthNames[m]).join(', ');
-      const where = [r.where, otherMonths].filter(Boolean).join(' · ');
+      const seen = new Set();
+      const links = [];
+      r.homeMis.forEach((hm, i) => { if (seen.has(hm)) return; seen.add(hm); links.push(monthLink(monthNames[hm], r.targets[i])); });
+      const dateHTML = `<span class="warn-date${r.link ? ' has-link' : ''}" data-act="open-autoship-link" data-link="${escAttr(r.link)}" data-wtargets="${escAttr(targetsAttr(r.targets))}"${r.link ? ' title="Open Autoship link"' : ''}>${df(r.date)}</span>`;
+      const extra = [overdue ? '<span class="warn-overdue">overdue</span>' : '', r.where ? esc(r.where) : '', links.join(', ')].filter(Boolean).join(' · ');
       rows.push({ date: r.date, html: `<div class="warn-row" data-wdate="${toISODate(r.date)}">
-        <span class="warn-tag is-autoship">Autoship</span>
         <span class="warn-main">
-          <span class="warn-name" data-act="warn-goto" data-wtargets="${escAttr(targetsAttr(r.targets))}" title="Jump to it">${esc(r.name)}</span>
-          <span class="warn-detail${overdue ? ' is-overdue' : ''}">${overdue ? 'Overdue · ' : ''}<span class="warn-date${r.link ? ' has-link' : ''}" data-act="open-autoship-link" data-link="${escAttr(r.link)}" data-wtargets="${escAttr(targetsAttr(r.targets))}"${r.link ? ' title="Open Autoship link"' : ''}>${df(r.date)}</span>${where ? ' · ' + esc(where) : ''}</span>
+          ${nameHTML(r.name, r.kind === 'card')}
+          <span class="warn-detail">autoships ${dateHTML}${extra ? ' · ' + extra : ''}</span>
         </span>
         <button type="button" class="warn-btn is-approve" data-act="warn-approve" data-wtargets="${escAttr(targetsAttr(r.targets))}" title="Mark this ship date as approved">Approve</button>
       </div>` });
     });
-    p.runout.sort((a, b) => a.date - b.date).forEach((r) => {
+    p.runout.forEach((r) => {
       const days = Math.ceil((r.date - today) / SB.DAY);
-      const when = r.date < today ? 'Ran out ' + df(r.date) : df(r.date) + ' · ' + days + 'd';
+      const past = r.date < today;
+      const extra = [
+        past ? '' : days + 'd',
+        'no ' + w.name + ' order',
+        r.next ? 'next order ' + monthLink(monthNames[r.next.mi], { kind: 'card', id: r.next.id }) : '',
+      ].filter(Boolean).join(' · ');
       rows.push({ date: r.date, html: `<div class="warn-row" data-wdate="${toISODate(r.date)}">
-        <span class="warn-tag is-runout">Runs out</span>
         <span class="warn-main">
-          <span class="warn-name">${esc(r.name)}</span>
-          <span class="warn-detail">${when} · no ${w.name} order</span>
+          ${nameHTML(r.name, true)}
+          <span class="warn-detail">${past ? 'ran out' : 'runs out'} ${df(r.date)} · ${extra}</span>
         </span>
         <button type="button" class="warn-btn" data-act="warn-ignore" data-wkey="${escAttr(r.key)}" title="Ignore for ${w.name} (comes back in a later month)">Ignore</button>
       </div>` });
     });
     return `<div class="warn-box">
-      <div class="warn-head${pending ? '' : ' is-clear'}">${pending ? `Needs attention <span class="warn-count">${pending}</span>` : 'Nothing needs attention'}</div>
+      <div class="warn-head${pending ? '' : ' is-clear'}">${pending ? `Needs Attention <span class="warn-count">${pending}</span>` : 'Nothing needs attention'}</div>
       ${rows.sort((a, b) => a.date - b.date).map((r) => r.html).join('')}
       ${p.ignored ? `<div class="warn-foot"><button type="button" class="warn-restore" data-act="warn-restore" data-ym="${w.ym}">${p.ignored} ignored · restore</button></div>` : ''}
     </div>`;
@@ -4205,6 +4245,50 @@
       box._html = html;
       box.innerHTML = html;
       box.hidden = !html;
+    });
+  }
+
+  // A shipment flagged Launch Preemptively is tracked in month N but placed in
+  // N-1, so N-1 shows a greyed, read-only echo of it at the bottom of its open
+  // orders (just above the completed ones). Rendered into a .month-preempt
+  // block that is neither .shipment nor .card and carries no data-id, so
+  // totals, saves, drag-and-drop and every card/shipment query walk right past
+  // it -- it contributes nothing. Hidden while any filter is active, and only
+  // for still-staged orders in months that haven't passed.
+  function renderPreemptMirrors() {
+    const monthEls = [...board.querySelectorAll('.month')];
+    const today = SB.today();
+    const curStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const filterActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalPreemptiveOnly || !!globalPinnedMerchant;
+    monthEls.forEach((monthEl, mi) => {
+      const list = monthEl.querySelector(':scope > .month-list');
+      if (!list) return;
+      const start = monthStartOf(monthEl);
+      const nextEl = monthEls[mi + 1];
+      let html = '';
+      if (nextEl && start && start >= curStart && !filterActive) {
+        const nextName = nextEl.querySelector('.mname')?.textContent.trim() || '';
+        nextEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
+          const sd = STATE.shipmentData[shipEl.dataset.id];
+          if (!sd || sd.stage || !isShipPreemptive(shipEl)) return;
+          const cards = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
+            .map((el) => STATE.cardData[el.dataset.id]).filter((c) => c && c.name !== '__divider__');
+          let total = 0;
+          cards.forEach((c) => { if (c.includeInMonthTotal) total += (Number(c.price) || 0) * (Number(c.qty) || 0); });
+          html += `<div class="pre-ship" data-act="preempt-goto" data-pre-sid="${escAttr(shipEl.dataset.id)}" title="Tracked in ${esc(nextName)} but placed early -- click to jump to it">
+            <div class="pre-head"><span class="pre-name">${esc(sd.name || 'Order')}</span><span class="pre-count">${cards.length}</span><span class="pre-tag">« ${esc(nextName)} order</span><span class="pre-total">${SB.fmtMoney(total)}</span></div>
+            ${cards.map((c) => `<div class="pre-item"><span class="pre-iname">${esc(c.name)}</span><span class="pre-qty">× ${Number(c.qty) || 0}</span></div>`).join('')}
+          </div>`;
+        });
+      }
+      let wrap = list.querySelector(':scope > .month-preempt');
+      if (!html) { wrap?.remove(); return; }
+      if (!wrap) { wrap = document.createElement('div'); wrap.className = 'month-preempt'; }
+      // bottom of the open section: right before the first completed shipment, else the end
+      const firstLocked = list.querySelector(':scope > .shipment.is-locked');
+      if (firstLocked) { if (wrap.nextElementSibling !== firstLocked || wrap.parentNode !== list) list.insertBefore(wrap, firstLocked); }
+      else if (list.lastElementChild !== wrap) list.appendChild(wrap);
+      if (wrap._html !== html) { wrap._html = html; wrap.innerHTML = html; }
     });
   }
 
@@ -5767,6 +5851,19 @@
     updateMonthStrip();
   }
 
+  // Opens the Inventory tab filtered to one item -- what clicking a linked
+  // card's name does, shared with the Needs Attention rows.
+  function openInventoryFor(name) {
+    if (!name) return;
+    document.getElementById('inv-search-link')?.click();
+    requestAnimationFrame(() => {
+      const input = document.getElementById('inv-filter-item');
+      if (!input) return;
+      input.value = name;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
   // ── actions (add / delete / toggle) ──
   board.addEventListener('click', (e) => {
     const act = e.target.closest('[data-act]');
@@ -5888,15 +5985,7 @@
       // than open the modal to a search with nothing to show.
       const cardEl = act.closest('.card');
       if (!cardEl || cardEl.classList.contains('no-proj')) return;
-      const name = STATE.cardData[cardEl.dataset.id]?.name || '';
-      if (!name) return;
-      document.getElementById('inv-search-link')?.click();
-      requestAnimationFrame(() => {
-        const input = document.getElementById('inv-filter-item');
-        if (!input) return;
-        input.value = name;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      });
+      openInventoryFor(STATE.cardData[cardEl.dataset.id]?.name || '');
       return;
     }
     if (a === 'toggle-include') {
@@ -6010,6 +6099,17 @@
       return;
     }
     if (a === 'toggle-preempt') { toggleShipPreempt(act.closest('.shipment')); return; }
+    if (a === 'warn-inv') { openInventoryFor(act.dataset.wname); return; }
+    if (a === 'preempt-goto') {
+      const target = board.querySelector(`.shipment[data-id="${act.dataset.preSid}"]`);
+      if (!target) return;
+      scrollElementIntoBoardView(target);
+      target.classList.remove('warn-flash');
+      void target.offsetWidth;
+      target.classList.add('warn-flash');
+      setTimeout(() => target.classList.remove('warn-flash'), 1500);
+      return;
+    }
     if (a === 'warn-approve') { setAutoshipApprovedMany(parseTargets(act.dataset.wtargets), true); return; }
     if (a === 'warn-ignore') { postWarningAction('dismiss', act.dataset.wkey); return; }
     if (a === 'warn-restore') {
@@ -6126,6 +6226,7 @@
     // was just looking at.
     const anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
     board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
+    renderPreemptMirrors();
     // A pinned merchant alone no longer shows the × -- tapping the active
     // chip again already clears it, so a second affordance for the exact
     // same action was redundant. The × still shows for text/Autoship,
@@ -6327,7 +6428,7 @@
     // see shipMatches above) still counts as "has content" here, same as it
     // does everywhere else. Dividers are never real content.
     const anyVisible = [...list.children].some((node) =>
-      !node.classList.contains('card--divider') && !node.classList.contains('search-hide'));
+      !node.classList.contains('card--divider') && !node.classList.contains('search-hide') && !node.classList.contains('month-preempt'));
     monthEl.classList.toggle('search-hide', filterActive && !anyVisible);
     recalcTotalsFor(monthEl);
   }
@@ -7141,7 +7242,7 @@
       const monthEl = cardEl.closest('.month');
       const allMonths = [...board.querySelectorAll('.month')];
       const monthIdx = allMonths.indexOf(monthEl);
-      const siblings = [...container.children];
+      const siblings = [...container.children].filter((n) => !n.classList.contains('month-preempt'));
       const myIdx = siblings.indexOf(cardEl);
       const isFirst = myIdx === 0;
       const isLast = myIdx === siblings.length - 1;
@@ -7325,7 +7426,7 @@
     const list = monthEl.querySelector('.month-list');
     const allMonths = [...board.querySelectorAll('.month')];
     const monthIdx = allMonths.indexOf(monthEl);
-    const listChildren = [...list.children];
+    const listChildren = [...list.children].filter((n) => !n.classList.contains('month-preempt'));
     const myIdx = listChildren.indexOf(shipEl);
     const isFirst = myIdx === 0;
     const firstLocked = listChildren.find((n) => n.classList.contains('shipment') && (STATE.shipmentData[n.dataset.id] || {}).stage);
