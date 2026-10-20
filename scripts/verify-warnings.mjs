@@ -424,6 +424,33 @@ try {
   check('lifecycle: the fresh approval is asked for in exactly one month', m0Again.filter((n) => n === 'Ghosty').length + m1Names.filter((n) => n === 'Ghosty').length === 1, `${m0Again.join(',')} | ${m1Names.join(',')}`);
   check('lifecycle: pre-advance projected ghosts never produced rows before', oldRoot && oldRoot.autoship_approved === iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2)));
 
+  // ── grip menus open BESIDE the grip, never over it (it's the drag handle too) ──
+  const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  async function menuVsGrip(gripSel, how, anchorBottom) {
+    const grip = page.locator(gripSel).first();
+    await grip.evaluate((g, bottom) => g.scrollIntoView({ block: bottom ? 'end' : 'center', inline: 'center' }), anchorBottom);
+    await page.mouse.move(5, 5); await page.waitForTimeout(300);
+    if (how === 'hover') { await grip.hover(); await page.waitForSelector('.ship-ctx-menu', { timeout: 3000 }); await page.waitForTimeout(150); }
+    else { await grip.click(); await page.waitForSelector('.ship-ctx-menu'); await page.waitForTimeout(150); }
+    const res = await page.evaluate((sel) => {
+      const g = document.querySelector(sel).getBoundingClientRect(), m = document.querySelector('.ship-ctx-menu').getBoundingClientRect();
+      const cx = g.left + g.width / 2, cy = g.top + g.height / 2;
+      const hit = document.elementFromPoint(cx, cy);
+      return { g: { left: g.left, right: g.right, top: g.top, bottom: g.bottom }, m: { left: m.left, right: m.right, top: m.top, bottom: m.bottom }, gripOnTop: !!hit && !!hit.closest('.card-grip, .ship-grip'), inView: m.top >= 0 && m.bottom <= innerHeight && m.left >= 0 && m.right <= innerWidth };
+    }, gripSel);
+    await page.mouse.move(5, 5); await page.waitForTimeout(500);
+    await page.keyboard.press('Escape');
+    return res;
+  }
+  for (const [label, sel] of [['card grip', '.card[data-id="oi_alpha"] .card-grip'], ['shipment grip', '.shipment[data-id="o_a"] .ship-grip']]) {
+    for (const how of ['hover', 'click']) {
+      for (const bottom of [false, true]) {
+        const r = await menuVsGrip(sel, how, bottom);
+        check(`menu ${how}-opened from a ${label}${bottom ? ' near the bottom of the screen' : ''} does not cover the grip`, !overlaps(r.m, r.g) && r.gripOnTop && r.inView, JSON.stringify(r));
+      }
+    }
+  }
+
   // ── nothing leaks into past/other structure ──
   check('no JS errors', errors.length === 0, errors.join(' | '));
   await ctx.close();

@@ -5515,7 +5515,7 @@
         if (document.body.classList.contains('sb-dragging')) return;
         const r = grip.getBoundingClientRect();
         const openFn = isShip ? openShipCtxMenu : openCardCtxMenu;
-        openFn(ownerEl, { clientX: r.left, clientY: r.bottom + 4 });
+        openFn(ownerEl, { clientX: r.left, clientY: r.bottom + 4, avoidRect: r });
       }, 350);
     });
     board.addEventListener('mouseout', (e) => {
@@ -7111,12 +7111,37 @@
     // once you're already looking at a popover menu.
     menu.appendChild(ctxDivider());
     menu.appendChild(ctxItem('Close Menu', false, () => {}));
+    // A menu opened from a card/shipment grip must never sit ON the grip: the
+    // grip is also the drag handle, and a menu parked over it (the viewport
+    // clamp below used to flip a tall one upward until it covered the grip)
+    // takes the drag away from someone who simply waited a moment. `avoid` is
+    // the grip's rect -- passed by the hover-open, or read off a real click's
+    // target -- and the menu is placed beside it instead.
+    const avoid = e.avoidRect || e.target?.closest?.('.card-grip, .ship-grip')?.getBoundingClientRect() || null;
     menu.style.left = e.clientX + 'px';
     menu.style.top = e.clientY + 'px';
+    if (avoid) menu.style.visibility = 'hidden'; // no flash at the provisional spot
     document.body.appendChild(menu);
     activeCtxMenu = menu;
     requestAnimationFrame(() => {
       const r = menu.getBoundingClientRect();
+      if (avoid) {
+        const GAP = 6, M = 8, vw = window.innerWidth, vh = window.innerHeight;
+        // Beside the grip: to its right if that fits, else its left, top-aligned
+        // with it and clamped into the viewport vertically.
+        let left = avoid.right + GAP;
+        if (left + r.width > vw - M) left = avoid.left - GAP - r.width;
+        let top = Math.max(M, Math.min(avoid.top, vh - r.height - M));
+        // A viewport too narrow for either side: stack under (or over) the grip instead.
+        if (left < M) {
+          left = Math.max(M, Math.min(avoid.left, vw - r.width - M));
+          top = avoid.bottom + GAP + r.height <= vh - M ? avoid.bottom + GAP : Math.max(M, avoid.top - GAP - r.height);
+        }
+        menu.style.left = left + 'px';
+        menu.style.top = top + 'px';
+        menu.style.visibility = '';
+        return;
+      }
       if (r.right > window.innerWidth - 8) menu.style.left = (e.clientX - r.width) + 'px';
       // Vertical: shift up if it would run past the bottom, same as before,
       // but also clamp the result so a menu taller than the viewport (or
