@@ -319,9 +319,15 @@ try {
   await page.waitForTimeout(150);
   check('Ignore removes the run-out row', !(await rowNames(page)).includes('Runner'));
   check('Ignore posts a dismiss with a month-scoped key', posts.some((b) => b.action === 'dismiss' && b.key === `runout|runner|${ym0}`), JSON.stringify(posts));
-  check('ignored count + restore link shown', /1 ignored/.test(await panel(page).locator('.warn-restore').textContent()));
-  await panel(page).locator('[data-act="warn-restore"]').click();
-  await page.waitForTimeout(150);
+  const chip = panel(page).locator('.warn-head .warn-ign');
+  check('"n ignored" chip sits in the panel header (top right), not at the bottom', /1 ignored/.test(await chip.textContent()) && await chip.evaluate((c) => { const h = c.closest('.warn-head').getBoundingClientRect(), r = c.getBoundingClientRect(); return r.right > h.right - 40 && r.top < h.top + 30; }));
+  check('no restore link at the bottom of the list any more', (await panel(page).locator('.warn-foot, .warn-restore').count()) === 0);
+  await chip.hover();
+  await page.waitForSelector('.warn-ign-pop .wip-row', { state: 'visible' });
+  check('hovering the chip previews the ignored item (name + run-out date)', /Runner/.test(await page.locator('.warn-ign-pop').textContent()) && /runs out \d+\/\d+/.test(await page.locator('.warn-ign-pop .wip-detail').first().textContent()));
+  await page.locator('.warn-ign-pop .wip-btn[data-wip="one"]').first().click();
+  await page.waitForTimeout(250);
+  check('the popover closes itself once nothing is left ignored', !(await page.locator('.warn-ign-pop').isVisible()));
   check('Restore brings the row back', (await rowNames(page)).includes('Runner'));
   check('Restore posts an undismiss', posts.some((b) => b.action === 'undismiss' && b.key === `runout|runner|${ym0}`));
   // …and a reload keeps an ignore (server-side state), but only for THIS month's key
@@ -332,8 +338,28 @@ try {
   await page.waitForFunction(() => window._INV_ITEM_MAP && document.querySelector('.month-warn .warn-row'), null, { timeout: 10000 });
   await page.waitForTimeout(500);
   check('ignore survives a reload', !(await rowNames(page)).includes('Runner'));
-  await panel(page).locator('[data-act="warn-restore"]').click(); // leave the mock clean
-  await page.waitForTimeout(150);
+  await panel(page).locator('.warn-ign').hover(); // leave the mock clean
+  await page.locator('.warn-ign-pop .wip-btn[data-wip="one"]').first().click();
+  await page.waitForTimeout(250);
+  await page.mouse.move(5, 5); await page.waitForTimeout(400);
+
+  // ── several ignored: per-item restore and Restore all ──
+  for (const n of ['Runner', 'Late']) { await rowFor(page, n).locator('[data-act="warn-ignore"]').click(); await page.waitForTimeout(120); }
+  await panel(page).locator('.warn-ign').hover();
+  await page.waitForSelector('.warn-ign-pop .wip-row', { state: 'visible' });
+  const popNames = await page.locator('.warn-ign-pop .wip-name').allTextContents();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: join(process.env.SHOT_DIR, 'ign-pop.png'), clip: { x: 0, y: 0, width: 900, height: 560 } });
+  check('popover lists every ignored item', popNames.includes('Runner') && popNames.includes('Late'), popNames.join(', '));
+  await page.locator('.warn-ign-pop .wip-row', { hasText: 'Late' }).locator('.wip-btn').click();
+  await page.waitForTimeout(250);
+  check('restoring one leaves the others ignored (popover stays open for them)', (await rowNames(page)).includes('Late') && !(await rowNames(page)).includes('Runner') && await page.locator('.warn-ign-pop').isVisible());
+  await rowFor(page, 'Late').locator('[data-act="warn-ignore"]').click(); await page.waitForTimeout(150);
+  await panel(page).locator('.warn-ign').hover();
+  await page.waitForSelector('.warn-ign-pop [data-wip="all"]');
+  await page.locator('.warn-ign-pop [data-wip="all"]').click();
+  await page.waitForTimeout(300);
+  check('Restore all brings every ignored item back', (await rowNames(page)).includes('Runner') && (await rowNames(page)).includes('Late') && (await panel(page).locator('.warn-ign').count()) === 0);
+  await page.mouse.move(5, 5); await page.waitForTimeout(400);
 
   // ── hover the panel's date: same calendar + approve as every other autoship date ──
   await rowFor(page, 'Later Placement').locator('.warn-date').hover();
@@ -462,6 +488,15 @@ try {
     }
   }
 
+  // ── at 0 left to act on, the whole panel goes away ──
+  for (let i = 0; i < 40; i++) {
+    const b = panel(page).locator('[data-act="warn-approve"], [data-act="warn-ignore"]').first();
+    if (!(await b.count())) break;
+    await b.click(); await page.waitForTimeout(80);
+  }
+  check('with 0 items left the entire panel is hidden', await panel(page).evaluate((e) => e.hidden && e.innerHTML.trim() === ''));
+  dismissed.clear(); // the mock server's ignore list, so the mobile pass below starts clean
+
   // ── nothing leaks into past/other structure ──
   check('no JS errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
@@ -477,6 +512,18 @@ try {
   check('mobile: focusing search gives it the room (header buttons step aside)', (await boxW()) > Math.max(restW + 100, 180), `${restW} -> ${await boxW()}`);
   await m.page.locator('#global-search-input').blur();
   if (process.env.SHOT_DIR) await m.page.locator(`.month[data-id="${M1.month}_${M1.year}"]`).screenshot({ path: join(process.env.SHOT_DIR, 'preempt-mobile.png') });
+  // mobile: ignore one, tap the chip -> the popover fits the screen and Restore works
+  await m.page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-warn [data-act="warn-ignore"]`).first().click();
+  await m.page.waitForTimeout(200);
+  const mChip = m.page.locator(`.month[data-id="${M0.month}_${M0.year}"] .warn-ign`);
+  await mChip.click();
+  await m.page.waitForSelector('.warn-ign-pop .wip-row', { state: 'visible' });
+  const popBox = await m.page.locator('.warn-ign-pop').boundingBox();
+  check('mobile: tapping the chip opens the ignored list, within the screen', popBox && popBox.x >= 0 && popBox.x + popBox.width <= 390 && popBox.y >= 0, JSON.stringify(popBox));
+  if (process.env.SHOT_DIR) await m.page.screenshot({ path: join(process.env.SHOT_DIR, 'ign-pop-mobile.png') });
+  await m.page.locator('.warn-ign-pop .wip-btn').first().click();
+  await m.page.waitForTimeout(250);
+  check('mobile: Restore works and the chip goes away', (await mChip.count()) === 0 && !(await m.page.locator('.warn-ign-pop').isVisible()));
   check('mobile: panel renders', (await m.page.locator('.month-warn:not([hidden]) .warn-row').count()) > 0);
   const mBtn = m.page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-warn [data-act="warn-approve"]`).first();
   const mBox = await mBtn.boundingBox();

@@ -1093,13 +1093,32 @@
     #tab-board .warn-btn:hover { border-color: var(--accent); color: var(--accent-deep); }
     #tab-board .warn-btn.is-approve { border-color: var(--accent); background: #fff; color: var(--accent-deep); }
     #tab-board .warn-btn.is-approve:hover { background: var(--accent); color: #fff; }
-    #tab-board .warn-foot { padding-top: 3px; border-top: 1px solid #d6e6e2; }
-    #tab-board .warn-head + .warn-foot, #tab-board .warn-head.is-clear { border-top: 0; }
-    #tab-board .warn-restore {
-      appearance: none; border: 0; background: none; padding: 0; cursor: pointer;
-      font: 500 11px/1.3 var(--font-ui); color: var(--ink-3); text-decoration: underline;
+    /* "n ignored" chip, top-right of the panel: hover (or tap) lists them with restore buttons */
+    #tab-board .warn-ign {
+      margin-left: auto; flex: none; border: 1px solid #c4cdd0; border-radius: 20px;
+      background: rgba(255, 255, 255, .7); padding: 1px 9px; font: 500 11px/1.5 var(--font-ui);
+      color: var(--ink-3); cursor: pointer;
     }
-    #tab-board .warn-restore:hover { color: var(--accent-deep); }
+    #tab-board .warn-ign:hover, #tab-board .warn-ign.is-open { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
+    /* Ignored-items popover (lives on <body>, so no #tab-board variables here) */
+    .warn-ign-pop {
+      position: fixed; z-index: 9000; display: none; box-sizing: border-box;
+      width: min(340px, calc(100vw - 16px)); max-height: 60vh; overflow-y: auto;
+      background: #fff; border: 1.5px solid var(--ink-12); border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(23,26,28,0.14); padding: 6px 10px 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--ink);
+    }
+    .wip-title { padding: 4px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-60); }
+    .wip-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #eef0ef; }
+    .wip-main { flex: 1 1 auto; min-width: 0; }
+    .wip-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wip-detail { font-size: 11.5px; color: var(--ink-60); }
+    .wip-btn {
+      flex: none; height: 24px; padding: 0 11px; border: 1px solid #3f8f87; border-radius: 8px;
+      background: #fff; color: #3f8f87; font: 500 12px/1 inherit; font-family: inherit; cursor: pointer;
+    }
+    .wip-btn:hover { background: #3f8f87; color: #fff; }
+    .wip-all { width: 100%; margin-top: 6px; height: 28px; }
     /* ── Preemptive mirrors: a next-month order flagged Launch Preemptively,
        echoed greyed-out at the bottom of THIS month's open orders. Visibility
        only -- a sibling block inside .month-list that is neither .shipment nor
@@ -4074,7 +4093,7 @@
   }
 
   function computeWarnings(monthEls, wins) {
-    const per = wins.map((w) => (w ? { autoship: [], runout: [], ignored: 0 } : null));
+    const per = wins.map((w) => (w ? { autoship: [], runout: [], ignored: [] } : null));
     const inWindow = (d, w) => d < w.end && (w.isCurrent || d >= w.start);
     // Only the SOONEST month whose window covers the date lists it: 11/3 shows
     // in October (its window runs into November's first week) and not again in
@@ -4175,7 +4194,7 @@
           if (claimedRunOuts.has(claim)) return;
           claimedRunOuts.add(claim);
           const wkey = 'runout|' + key + '|' + w.ym;
-          if (dismissedWarnings.has(wkey)) { per[mi].ignored++; return; }
+          if (dismissedWarnings.has(wkey)) { per[mi].ignored.push({ key: wkey, name: inv.name, date: runOut }); return; }
           per[mi].runout.push({ key: wkey, name: inv.name, date: runOut, next: firstCardByKey.get(key) || null });
         });
       });
@@ -4232,9 +4251,8 @@
       </div>` });
     });
     return `<div class="warn-box">
-      <div class="warn-head${pending ? '' : ' is-clear'}">${pending ? `Needs Attention <span class="warn-count">${pending}</span>` : 'Nothing needs attention'}</div>
+      <div class="warn-head">Needs Attention <span class="warn-count">${pending}</span>${p.ignored.length ? `<button type="button" class="warn-ign" data-act="warn-ign" data-ym="${w.ym}" aria-haspopup="true">${p.ignored.length} ignored</button>` : ''}</div>
       ${rows.sort((a, b) => a.date - b.date).map((r) => r.html).join('')}
-      ${p.ignored ? `<div class="warn-foot"><button type="button" class="warn-restore" data-act="warn-restore" data-ym="${w.ym}">${p.ignored} ignored · restore</button></div>` : ''}
     </div>`;
   }
 
@@ -4243,11 +4261,14 @@
     const wins = warnMonthWindows(monthEls);
     const per = computeWarnings(monthEls, wins);
     const monthNames = monthEls.map((el) => el.querySelector('.mname')?.textContent.trim() || '');
+    warnIgnoredByYm = {};
+    wins.forEach((w, mi) => { if (w && per[mi]) warnIgnoredByYm[w.ym] = { month: w.name, items: per[mi].ignored }; });
     monthEls.forEach((monthEl, mi) => {
       const box = monthEl.querySelector(':scope > .month-warn');
       if (!box) return;
       const p = per[mi];
-      const html = p && (p.autoship.length || p.runout.length || p.ignored) ? warnPanelHTML(wins[mi], p, mi, monthNames) : '';
+      // Nothing left to act on -> the whole panel goes away (ignored items live in its chip)
+      const html = p && (p.autoship.length || p.runout.length) ? warnPanelHTML(wins[mi], p, mi, monthNames) : '';
       // recalcAll runs on every keystroke -- only touch the DOM when the
       // panel's content actually changed, so a button isn't replaced out from
       // under a click that's mid-flight.
@@ -4255,6 +4276,95 @@
       box._html = html;
       box.innerHTML = html;
       box.hidden = !html;
+    });
+    refreshIgnPop();
+  }
+
+  // ── Ignored run-outs popover ──────────────────────────────────────────────
+  // Hover (mouse) or tap the panel's "n ignored" chip to see WHICH items are
+  // ignored for that month, with a Restore button each and Restore all.
+  let warnIgnoredByYm = {};
+  let ignPop = null, ignPopYm = '', ignCloseTimer = null;
+  const WIP_HOVER = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  function cancelIgnClose() { if (ignCloseTimer) { clearTimeout(ignCloseTimer); ignCloseTimer = null; } }
+  function scheduleIgnClose() { cancelIgnClose(); ignCloseTimer = setTimeout(closeIgnPop, 250); }
+  function closeIgnPop() {
+    cancelIgnClose();
+    if (ignPop) ignPop.style.display = 'none';
+    ignPopYm = '';
+    board.querySelectorAll('.warn-ign.is-open').forEach((b) => b.classList.remove('is-open'));
+  }
+  function ensureIgnPop() {
+    if (ignPop) return ignPop;
+    ignPop = document.createElement('div');
+    ignPop.className = 'warn-ign-pop';
+    ignPop.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-wip]');
+      if (!t) return;
+      if (t.dataset.wip === 'one') postWarningAction('undismiss', t.dataset.key);
+      else if (t.dataset.wip === 'all') (warnIgnoredByYm[ignPopYm]?.items || []).map((i) => i.key).forEach((k) => postWarningAction('undismiss', k));
+    });
+    if (WIP_HOVER) {
+      ignPop.addEventListener('mouseenter', cancelIgnClose);
+      ignPop.addEventListener('mouseleave', scheduleIgnClose);
+    }
+    document.body.appendChild(ignPop);
+    // outside click / Escape closes it (a click on the chip itself toggles, see 'warn-ign')
+    // composedPath, not e.target.closest: a Restore click re-renders the popover
+    // synchronously, so by the time this runs the clicked button is detached
+    document.addEventListener('click', (e) => {
+      if (!ignPopYm) return;
+      if (e.composedPath().some((n) => n === ignPop || (n.classList && n.classList.contains('warn-ign')))) return;
+      closeIgnPop();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeIgnPop(); });
+    return ignPop;
+  }
+  function fillIgnPop() {
+    const data = warnIgnoredByYm[ignPopYm];
+    const df = board.classList.contains('layout-compact') ? SB.fmtDateShort : SB.fmtDate;
+    const today = SB.today();
+    const items = (data?.items || []).slice().sort((a, b) => a.date - b.date);
+    ignPop.innerHTML = `<div class="wip-title">Ignored for ${esc(data?.month || '')}</div>`
+      + items.map((i) => `<div class="wip-row"><div class="wip-main"><div class="wip-name" title="${escAttr(i.name)}">${esc(i.name)}</div><div class="wip-detail">${i.date < today ? 'ran out' : 'runs out'} ${df(i.date)}</div></div><button type="button" class="wip-btn" data-wip="one" data-key="${escAttr(i.key)}">Restore</button></div>`).join('')
+      + (items.length > 1 ? '<button type="button" class="wip-btn wip-all" data-wip="all">Restore all</button>' : '');
+  }
+  function placeIgnPop(anchor) {
+    const r = anchor.getBoundingClientRect();
+    ignPop.style.visibility = 'hidden';
+    ignPop.style.display = 'block';
+    const pr = ignPop.getBoundingClientRect();
+    const left = Math.min(Math.max(8, r.right - pr.width), window.innerWidth - pr.width - 8);
+    let top = r.bottom + 4;
+    if (top + pr.height > window.innerHeight - 8) top = Math.max(8, r.top - 4 - pr.height);
+    ignPop.style.left = left + 'px';
+    ignPop.style.top = top + 'px';
+    ignPop.style.visibility = '';
+  }
+  function openIgnPop(chip) {
+    ensureIgnPop();
+    cancelIgnClose();
+    board.querySelectorAll('.warn-ign.is-open').forEach((b) => b.classList.remove('is-open'));
+    ignPopYm = chip.dataset.ym;
+    chip.classList.add('is-open');
+    fillIgnPop();
+    placeIgnPop(chip);
+  }
+  // after any re-render: refresh the open popover in place, or close it if its chip/items are gone
+  function refreshIgnPop() {
+    if (!ignPop || !ignPopYm) return;
+    const chip = board.querySelector(`.warn-ign[data-ym="${ignPopYm}"]`);
+    if (!chip || !(warnIgnoredByYm[ignPopYm]?.items.length)) { closeIgnPop(); return; }
+    chip.classList.add('is-open');
+    fillIgnPop();
+    placeIgnPop(chip);
+  }
+  if (WIP_HOVER) {
+    board.addEventListener('mouseover', (e) => { const chip = e.target.closest('.warn-ign'); if (chip) openIgnPop(chip); });
+    board.addEventListener('mouseout', (e) => {
+      const chip = e.target.closest('.warn-ign');
+      if (!chip || (e.relatedTarget && e.relatedTarget.closest('.warn-ign-pop'))) return;
+      scheduleIgnClose();
     });
   }
 
@@ -6122,9 +6232,10 @@
     }
     if (a === 'warn-approve') { setAutoshipApprovedMany(parseTargets(act.dataset.wtargets), true); return; }
     if (a === 'warn-ignore') { postWarningAction('dismiss', act.dataset.wkey); return; }
-    if (a === 'warn-restore') {
-      const suffix = '|' + act.dataset.ym;
-      [...dismissedWarnings].filter((k) => k.endsWith(suffix)).forEach((k) => postWarningAction('undismiss', k));
+    if (a === 'warn-ign') {
+      // Touch has no hover, so a tap toggles; with a mouse the hover already opened it
+      // (a click must not slam it shut again), so a click just keeps it open.
+      if (!WIP_HOVER && ignPopYm === act.dataset.ym && ignPop && ignPop.style.display === 'block') closeIgnPop(); else openIgnPop(act);
       return;
     }
     if (a === 'warn-goto') {
