@@ -4048,7 +4048,8 @@
   //     window while no card with a quantity for it exists in the month. Ignore
   //     stores "runout|<item>|YYYY-MM" in /api/board-settings -- settled for
   //     that one month only, so it reappears on its own in a later one. Placing
-  //     an order for it simply makes the row vanish.
+  //     an order for it simply makes the row vanish. Like autoships, a run-out
+  //     date is listed once, in the soonest month that covers it.
   const WARN_TAIL_DAYS = 7;
   let dismissedWarnings = new Set();
   let SEEN_BEFORE_MONTH = [];
@@ -4140,6 +4141,12 @@
     });
 
     const invs = Object.values(INV_MAP).filter((inv) => inv && inv.name && Number(inv.dose) > 0 && inv.loggedOn);
+    // Same one-month rule as the autoship rows: an item running out on a given
+    // date is raised in the SOONEST month whose window covers it (a 11/3
+    // run-out is October's, not November's too). Months are walked soonest
+    // first and the first to qualify owns that item + date -- even if it was
+    // ignored there, since that's still "settled" for this run-out.
+    const claimedRunOuts = new Set();
     if (invs.length) {
       wins.forEach((w, mi) => {
         if (!w) return;
@@ -4164,6 +4171,9 @@
           const prior = before && before.get(key);
           const runOut = prior ? prior.runOut : SB.calc(inv).curRunOut;
           if (!(runOut instanceof Date) || isNaN(runOut) || !inWindow(runOut, w)) return;
+          const claim = key + '|' + toISODate(runOut);
+          if (claimedRunOuts.has(claim)) return;
+          claimedRunOuts.add(claim);
           const wkey = 'runout|' + key + '|' + w.ym;
           if (dismissedWarnings.has(wkey)) { per[mi].ignored++; return; }
           per[mi].runout.push({ key: wkey, name: inv.name, date: runOut, next: firstCardByKey.get(key) || null });

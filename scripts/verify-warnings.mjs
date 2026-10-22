@@ -82,7 +82,13 @@ const ORDERS_BODY = {
     card('oi_covered', null, M0, 5, 1, 'Covered', {}),
   ],
 };
+// run-outs landing in the first week of next month / mid next month (whole days from today, dose 1/day)
+const daysTo = (d) => Math.round((d - now) / 86400000);
+const NEXT_RUNNER_DAYS = daysTo(new Date(M1.start.getFullYear(), M1.start.getMonth(), 3));
+const MID_RUNNER_DAYS = daysTo(new Date(M1.start.getFullYear(), M1.start.getMonth(), 20));
 const INV_ITEMS = [
+  { id: 7, name: 'Next Runner', bottle_size: 60, daily_dose: 1 },
+  { id: 8, name: 'Mid Runner', bottle_size: 60, daily_dose: 1 },
   { id: 1, name: 'Runner', bottle_size: 60, daily_dose: 1 },
   { id: 2, name: 'Covered', bottle_size: 60, daily_dose: 1 },
   { id: 3, name: 'Plenty', bottle_size: 60, daily_dose: 1 },
@@ -91,6 +97,8 @@ const INV_ITEMS = [
   { id: 6, name: 'Late', bottle_size: 60, daily_dose: 1 },
 ];
 const INV_LOG = [
+  { id: 7, item: 'Next Runner', type: 'Reset', amount: NEXT_RUNNER_DAYS, logged_on: iso(now), order_id: null },
+  { id: 8, item: 'Mid Runner', type: 'Reset', amount: MID_RUNNER_DAYS, logged_on: iso(now), order_id: null },
   { id: 1, item: 'Runner', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
   { id: 2, item: 'Covered', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
   { id: 3, item: 'Plenty', type: 'Reset', amount: 400, logged_on: iso(now), order_id: null },
@@ -281,6 +289,9 @@ try {
   check('panel background matches a shipment', boxBg === shipBg, `${boxBg} vs ${shipBg}`);
   check('one-month rule: a 3rd-of-next-month autoship shows in the CURRENT month', names.includes('Next Early'));
   check('one-month rule: …and NOT again in the next month', !m1Panel.includes('Next Early'), m1Panel.join(', '));
+  check('one-month rule (run-outs): an item running out the 3rd of next month shows in the CURRENT month', names.includes('Next Runner'), names.join(', '));
+  check('one-month rule (run-outs): …and NOT again in the next month', !m1Panel.includes('Next Runner'), m1Panel.join(', '));
+  check('one-month rule (run-outs): a mid-next-month run-out is only in the next month', !names.includes('Mid Runner') && m1Panel.includes('Mid Runner'), m1Panel.join(', '));
   check('one-month rule: a mid-next-month autoship is only in the next month', !names.includes('Next Mid') && m1Panel.includes('Next Mid'), m1Panel.join(', '));
   check('duplicate autoship across months collapses to one row', names.filter((n) => n === 'Dup Co').length === 1, String(names.filter((n) => n === 'Dup Co').length));
   const dupDetail = await rowFor(page, 'Dup Co').locator('.warn-detail').textContent();
