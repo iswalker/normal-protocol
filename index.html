@@ -4977,6 +4977,107 @@
       requestAnimationFrame(() => { updateCurrentMonthFromScroll(); scrollSpyTicking = false; });
     }, { passive: true, capture: true });
   }
+  // Mobile month-swipe release. Dragging between months is the browser's own
+  // horizontal scroll, but letting it glide into the snap point on its own
+  // leaves #tab-board "in motion" for a while after the finger lifts -- and
+  // on iOS a touch that lands on a still-gliding scroller is captured by it,
+  // so a vertical drag started mid-glide went nowhere until it settled.
+  // Instead, on release the board jumps straight to the month it was headed
+  // for (same pick native snapping makes: a flick carries on to the next
+  // month its way, a slow release settles on the nearest) and a short transform
+  // slide covers the jump visually. Nothing is scrolling underneath, so the
+  // very next touch goes straight to that month's own vertical scroll, even
+  // while the slide is still finishing.
+  {
+    const tb = document.getElementById('tab-board');
+    const mobile = window.matchMedia('(max-width: 680px)');
+    const FLING_PX_MS = 0.3, VEL_WINDOW_MS = 100;
+    let touching = false, startLeft = 0, samples = [], settleLeft = 0, settleUntil = 0, slideTimer = 0, unlockTimer = 0;
+    // Snap positions from layout offsets, which ignore the slide's transform
+    // -- so a swipe that starts mid-slide still measures correctly. Month i
+    // sits at the same 12px margin month 0 does at scrollLeft 0.
+    const monthStops = () => {
+      const months = [...board.querySelectorAll('.month')].filter((m) => m.style.display !== 'none');
+      const max = tb.scrollWidth - tb.clientWidth;
+      return months.map((m) => Math.min(max, Math.max(0, m.offsetLeft - months[0].offsetLeft)));
+    };
+    const nearest = (stops, left) => stops.reduce((bi, st, i) => (Math.abs(st - left) < Math.abs(stops[bi] - left) ? i : bi), 0);
+    let touchX = 0, touchY = 0;
+    tb?.addEventListener('touchstart', (e) => {
+      if (!mobile.matches) return;
+      if (!touching) { startLeft = tb.scrollLeft; samples = [[e.timeStamp, startLeft]]; }
+      touching = true;
+      touchX = e.touches[0].clientX; touchY = e.touches[0].clientY;
+    }, { passive: true });
+    // A new touch during the settle keeps the board pinned (a vertical drag
+    // mustn't let leftover momentum drift it sideways) -- unless that touch
+    // itself heads sideways, i.e. a quick second month swipe.
+    tb?.addEventListener('touchmove', (e) => {
+      if (!settleUntil || e.touches.length !== 1) return;
+      const dx = Math.abs(e.touches[0].clientX - touchX), dy = Math.abs(e.touches[0].clientY - touchY);
+      if (dx > 6 && dx > dy) settleUntil = 0;
+    }, { passive: true });
+    tb?.addEventListener('scroll', (e) => {
+      if (e.target !== tb) return;
+      if (performance.now() < settleUntil) {
+        // Swallow any native momentum that outlived the jump below, and keep
+        // doing so until the board has been still for a moment.
+        if (tb.scrollLeft !== settleLeft) {
+          tb.scrollLeft = settleLeft;
+          settleUntil = Math.max(settleUntil, performance.now() + 100);
+        }
+        return;
+      }
+      settleUntil = 0;
+      if (touching) {
+        samples.push([e.timeStamp, tb.scrollLeft]);
+        if (samples.length > 8) samples.shift();
+      }
+    }, { passive: true });
+    const release = (e) => {
+      if (!touching || e.touches.length) return;
+      touching = false;
+      const s0 = tb.scrollLeft;
+      if (Math.abs(s0 - startLeft) < 2) return; // not a sideways swipe
+      const stops = monthStops();
+      if (!stops.length) return;
+      const recent = samples.filter(([t]) => e.timeStamp - t <= VEL_WINDOW_MS);
+      const [t1, l1] = recent[0] || samples[0], [t2, l2] = samples[samples.length - 1];
+      const vel = t2 > t1 ? (l2 - l1) / (t2 - t1) : 0;
+      // A flick settles on the next month past where the finger let go, in
+      // the flick's direction; a slower release on whichever is nearest.
+      let to = nearest(stops, s0);
+      if (vel > FLING_PX_MS) to = Math.max(to, stops.findIndex((st) => st > s0 + 1));
+      else if (vel < -FLING_PX_MS) to = Math.min(to, stops.findLastIndex((st) => st < s0 - 1));
+      if (to < 0) to = nearest(stops, s0);
+      const target = stops[to];
+      const dur = Math.round(Math.min(300, Math.max(160, 120 + Math.abs(target - s0) * 0.4)));
+      settleLeft = target; settleUntil = performance.now() + dur + 100;
+      // overflow-x:hidden for a moment is what actually kills the native
+      // momentum (on iOS especially -- a plain scrollLeft write doesn't stop
+      // it, and it then fights the jump). Restored a couple of frames later
+      // so a quick second sideways swipe still works mid-slide. Snapping is
+      // off while the transform is in play, so it can't re-snap against the
+      // slid-over positions; back on once settled (target is itself a snap
+      // point, so restoring it moves nothing).
+      tb.style.overflowX = 'hidden';
+      tb.style.scrollSnapType = 'none';
+      board.style.transition = 'none';
+      board.style.transform = `translateX(${target - s0}px)`;
+      tb.scrollLeft = target;
+      void board.offsetWidth;
+      board.style.transition = `transform ${dur}ms cubic-bezier(.2, .8, .2, 1)`;
+      board.style.transform = '';
+      clearTimeout(slideTimer); clearTimeout(unlockTimer);
+      unlockTimer = setTimeout(() => { tb.style.overflowX = ''; }, 60);
+      slideTimer = setTimeout(() => {
+        board.style.transition = ''; tb.style.scrollSnapType = '';
+        updateCurrentMonthFromScroll(); // the slide moved months without a scroll event
+      }, dur + 50);
+    };
+    tb?.addEventListener('touchend', release, { passive: true });
+    tb?.addEventListener('touchcancel', release, { passive: true });
+  }
   // Clicking a month-strip cell scrolls the board horizontally to that month,
   // instead of requiring a manual scroll left/right to find it.
   document.getElementById('month-strip')?.addEventListener('click', (e) => {
