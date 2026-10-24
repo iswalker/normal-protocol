@@ -3968,8 +3968,8 @@
   }
   // ── "Approved" status ──────────────────────────────────────────────────────
   // Sits before Ordered: an order whose every item (the ones actually being
-  // ordered, qty > 0) is an approved autoship -- and whose own shipment-level
-  // autoship date, if it has one, is approved too -- reads "Approved" and is
+  // ordered, qty > 0) is an approved autoship -- an item's own, or the order's
+  // own autoship date for an item that has none -- reads "Approved" and is
   // tucked away like a completed order. It is DERIVED from the approvals, never
   // stored (the order stays "Staged" in Turso), so revoking any approval puts
   // it straight back to blank. Display only: unlike Ordered it does NOT lock
@@ -3985,17 +3985,23 @@
     if (s.stage) return false;
     const live = shipLiveCards(shipEl);
     if (!live.length) return false;
-    if (s.autoshipNextDate && !isAutoshipApproved(s)) return false;
-    return live.every(({ c }) => !c.ghostOf && isAutoshipApproved(c));
+    // An item with its own autoship date needs its own approval; one without
+    // is covered by the order's own (shipment-level) autoship date being
+    // approved. A still-pending order-level date doesn't hold back an order
+    // whose items are all approved -- it keeps its own row in Needs Attention.
+    const orderOk = isAutoshipApproved(s);
+    return live.every(({ c }) => !c.ghostOf && (c.autoshipNextDate ? isAutoshipApproved(c) : orderOk));
   }
-  // Could it be approved wholesale? Every item needs an autoship date to approve.
+  // Could it be approved wholesale? Each item needs an autoship date -- its own
+  // or the order's -- to approve.
   function shipCanApprove(shipEl) {
+    const s = STATE.shipmentData[shipEl.dataset.id] || {};
     const live = shipLiveCards(shipEl);
-    return live.length > 0 && live.every(({ c }) => !c.ghostOf && !!c.autoshipNextDate);
+    return live.length > 0 && live.every(({ c }) => !c.ghostOf && !!(c.autoshipNextDate || s.autoshipNextDate));
   }
   function shipApprovalTargets(shipEl) {
     const s = STATE.shipmentData[shipEl.dataset.id] || {};
-    const targets = shipLiveCards(shipEl).map(({ id }) => ({ kind: 'card', id }));
+    const targets = shipLiveCards(shipEl).filter(({ c }) => c.autoshipNextDate).map(({ id }) => ({ kind: 'card', id }));
     if (s.autoshipNextDate) targets.push({ kind: 'ship', id: shipEl.dataset.id });
     return targets;
   }
@@ -6522,11 +6528,17 @@
         ? board.querySelector(`.shipment[data-id="${t0.id}"]`)
         : board.querySelector(`.card[data-id="${t0.id}"]`);
       if (!target) return;
-      scrollElementIntoBoardView(target);
-      target.classList.remove('warn-flash');
-      void target.offsetWidth; // restart the animation if it's mid-flight
-      target.classList.add('warn-flash');
-      setTimeout(() => target.classList.remove('warn-flash'), 1500);
+      // Scroll to the ORDER holding the item (the item itself if it's loose) --
+      // the same target the Preemptive preview's jump uses -- so the order's own
+      // top-left lands in place instead of an item deep inside it. The pulse goes
+      // on the item, unless its order is collapsed (then on the order).
+      const order = target.closest('.shipment') || target;
+      scrollElementIntoBoardView(order);
+      const pulse = order.classList.contains('is-collapsed') ? order : target;
+      pulse.classList.remove('warn-flash');
+      void pulse.offsetWidth; // restart the animation if it's mid-flight
+      pulse.classList.add('warn-flash');
+      setTimeout(() => pulse.classList.remove('warn-flash'), 1500);
       return;
     }
     if (a === 'jump-spent' || a === 'jump-planned') {

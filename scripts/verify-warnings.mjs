@@ -64,6 +64,10 @@ const ORDERS_BODY = {
     { order_id: 'o_lock1', month: M1.month, year: M1.year, merchant: 'Locked Nov', position: 9, status: 'Ordered', notes: null },
     // every item an approved autoship -> shows the "Approved" status (its date is mid-M1, so it isn't preemptive)
     { order_id: 'o_appr', month: M1.month, year: M1.year, merchant: 'Approved Co', position: 10, status: 'Staged', notes: null },
+    // a 1-item order whose item has NO autoship date of its own, but the ORDER's autoship date is approved
+    { order_id: 'o_appr2', month: M1.month, year: M1.year, merchant: 'Order-Level Approved Co', position: 11, status: 'Staged', notes: null, autoship_next_date: D_NEXT_MID, autoship_approved: D_NEXT_MID },
+    // a 1-item order whose item is an approved autoship but whose ORDER-level date is still pending
+    { order_id: 'o_appr3', month: M1.month, year: M1.year, merchant: 'Pending Order Date Co', position: 12, status: 'Staged', notes: null, autoship_next_date: D_NEXT_MID },
     { order_id: 'o_ghost', month: M0.month, year: M0.year, merchant: 'Ghost Shop', position: 4, status: 'Staged', notes: null },
   ],
   items: [
@@ -89,6 +93,8 @@ const ORDERS_BODY = {
     card('oi_lock1', 'o_lock1', M1, 9, 1, 'Locked Nov Item'),
     card('oi_appr', 'o_appr', M1, 10, 1, 'Appr Item', { autoship_next_date: D_NEXT_MID, autoship_approved: D_NEXT_MID }),
     card('oi_gap', 'o_a', M0, 1, 8, 'Gap Item', { autoship_next_date: iso(plusDays(5)) }),
+    card('oi_plain2', 'o_appr2', M1, 11, 1, 'Plain Item Two'),
+    card('oi_appr3', 'o_appr3', M1, 12, 1, 'Appr Item Three', { autoship_next_date: D_NEXT_MID, autoship_approved: D_NEXT_MID }),
     card('oi_covered', null, M0, 5, 1, 'Covered', {}),
   ],
 };
@@ -341,6 +347,10 @@ try {
   const m1Planned = () => page.locator('.month[data-id="' + m1id + '"] .plannedv').textContent();
   const a0 = await apprInfo();
   check('Approved: an order whose items are all approved autoships reads "Approved", collapsed -- and is NOT locked', a0.approved && !a0.locked && a0.label === 'Approved' && a0.bodyHidden, JSON.stringify(a0));
+  const isAppr = (id) => page.evaluate((i) => document.querySelector('.shipment[data-id="' + i + '"]').classList.contains('is-approved'), id);
+  check('Approved: a 1-item order whose own (order-level) autoship date is approved becomes Approved', await isAppr('o_appr2'));
+  check('Approved: a 1-item order whose item is an approved autoship becomes Approved even with its order-level date still pending', await isAppr('o_appr3'));
+  check('Approved: …and that pending order-level date still has its own row in Needs Attention', (await page.locator('.month[data-id="' + m1id + '"] .month-warn .warn-name', { hasText: 'Pending Order Date Co' }).count()) === 1);
   check('Approved: it has its own "Approved Orders" header above Completed', (await page.locator('.month[data-id="' + m1id + '"] > .month-list > .month-appr-head').textContent()) === 'Approved Orders');
   check('Approved: an order with items that are NOT all approved autoships is not Approved', !(await page.evaluate(() => document.querySelector('.shipment[data-id="o_a"]').classList.contains('is-approved'))) && !(await page.evaluate(() => document.querySelector('.shipment[data-id="o_norm"]').classList.contains('is-approved'))));
   const planned0 = await m1Planned();
@@ -454,6 +464,11 @@ try {
   const cJump = await clearOfHead(page, '.card[data-id="oi_later"]');
   check('jumping to an item lands just BELOW the sticky month header (not under it)', cJump.ok, JSON.stringify(cJump));
   check('order month jumps to (and highlights) that order', await page.locator('.card[data-id="oi_later"]').evaluate((e) => e.classList.contains('warn-flash')));
+  // a month link for an item that sits INSIDE an order scrolls to the ORDER (same as the Preemptive preview jump)
+  await rowFor(page, 'Alpha').locator('.warn-month').first().click();
+  await page.waitForTimeout(1000);
+  const oJump = await clearOfHead(page, '.shipment[data-id="o_a"]');
+  check('jumping from Needs Attention to an item in an order lands the ORDER just below the sticky header', oJump.ok, JSON.stringify(oJump));
   const lateNext = rowFor(page, 'Late').locator('.warn-month');
   check('run-out row offers its next order month', (await lateNext.count()) === 1 && (await lateNext.textContent()).trim() === M1.month);
   await lateNext.click();
