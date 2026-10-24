@@ -1121,14 +1121,13 @@
     }
     .wip-btn:hover { background: #3f8f87; color: #fff; }
     /* ── Preemptive mirrors: a next-month order flagged Launch Preemptively,
-       shown (greyed, read-only, fully expanded) at the bottom of THIS month's
+       shown (read-only, fully expanded, standard colours) at the bottom of THIS month's
        open orders. Visibility only -- a block inside .month-list that is
        neither .shipment nor .card, whose contents live in shadow DOM, so every
        total/save/sort/query that walks the board skips it. ── */
     #tab-board .month-preempt { display: flex; flex-direction: column; gap: 6px; }
     /* each mirror is a shadow-DOM host -- see renderPreemptMirrors */
-    #tab-board .pre-host { display: block; cursor: pointer; opacity: .8; transition: opacity .12s; }
-    #tab-board .pre-host:hover { opacity: .95; }
+    #tab-board .pre-host { display: block; cursor: pointer; }
     @keyframes warn-flash { from { box-shadow: 0 0 0 3px rgba(112, 196, 187, .8); } to { box-shadow: 0 0 0 3px rgba(112, 196, 187, 0); } }
     #tab-board .warn-flash { animation: warn-flash 1.4s ease-out; }
 
@@ -1863,6 +1862,10 @@
     #tab-board .shipment.is-locked > .ship-head {
       background: transparent;
     }
+    /* An order that contains an Autoship item reads grey (same neutral as a
+       completed order); everything else stays the standard teal. See
+       shipHasAutoship. Applies to preemptive previews too -- they're copies. */
+    #tab-board .shipment.is-autoship { background: #f3f4f4; border-color: #d4d8d8; }
     /* Dimmed (can't drag once locked -- see makeMonthSortable's filter
        function and makeShipSortable's Sortable .option('disabled') toggle
        in applyShipmentStage) but NOT pointer-events:none: the same button
@@ -1884,8 +1887,16 @@
     #tab-board .shipment.is-locked .ship-id .scount { cursor: pointer; }
     #tab-board .shipment.is-locked.is-collapsed > .ship-body { display: none; }
 
+    /* "Completed Orders" label above the first completed order of a month, so
+       it's clear why they cluster at the bottom (see renderCompletedHeaders) */
+    #tab-board .month-done-head {
+      display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 0 4px;
+      font: 600 10.5px/1 var(--font-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3);
+    }
+    #tab-board .month-done-head::after { content: ''; flex: 1 1 auto; height: 1px; background: #dde3e4; }
+
     /* Divider above the first locked shipment */
-    #tab-board .month-list > *:not(.shipment.is-locked) + .shipment.is-locked {
+    #tab-board .month-list > *:not(.shipment.is-locked):not(.month-done-head) + .shipment.is-locked {
       margin-top: 14px;
       border-top-width: 2px;
       border-top-color: #b8bfbf;
@@ -3947,6 +3958,19 @@
     const s = STATE.shipmentData[shipEl.dataset.id];
     return s && typeof s.preemptive === 'boolean' ? s.preemptive : shipAutoPreemptive(shipEl);
   }
+  // Does this order contain an Autoship item? Its own autoship date/link counts,
+  // and so does any item in it (a recurring copy reads its root's, like the
+  // date shown on the card does).
+  function shipHasAutoship(shipEl) {
+    const s = STATE.shipmentData[shipEl.dataset.id] || {};
+    if (s.autoshipLink || s.autoshipNextDate) return true;
+    return [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')].some((cardEl) => {
+      const c = STATE.cardData[cardEl.dataset.id];
+      if (!c || c.name === '__divider__') return false;
+      const root = c.ghostOf ? (STATE.cardData[c.ghostOf] || c) : c;
+      return !!(root.autoshipLink || root.autoshipNextDate);
+    });
+  }
   function updateShipPreempt(shipEl) {
     const btn = shipEl.querySelector(':scope > .ship-head > .ship-preempt');
     if (!btn) return;
@@ -4016,6 +4040,7 @@
           if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
           updateShipAutoship(node);
           updateShipPreempt(node);
+          node.classList.toggle('is-autoship', shipHasAutoship(node));
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
           const cost = updateCard(node);
@@ -4038,6 +4063,7 @@
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
     });
     renderWarnings();
+    renderCompletedHeaders();
     renderPreemptMirrors();
     updateMonthVisibility();
     updateMonthStrip();
@@ -4384,11 +4410,32 @@
     });
   }
 
+  // A small "Completed Orders" label sits right above the first completed
+  // (Ordered/Entered/Received) order of each month. Like the preemptive
+  // previews it's a .month-aux child of the list -- neither .shipment nor
+  // .card -- so nothing that walks the list's orders sees it.
+  function renderCompletedHeaders() {
+    board.querySelectorAll('.month').forEach((monthEl) => {
+      const list = monthEl.querySelector(':scope > .month-list');
+      if (!list) return;
+      let head = list.querySelector(':scope > .month-done-head');
+      const first = list.querySelector(':scope > .shipment.is-locked:not(.search-hide)');
+      if (!first) { head?.remove(); return; }
+      if (!head) {
+        head = document.createElement('div');
+        head.className = 'month-done-head month-aux';
+        head.textContent = 'Completed Orders';
+        head.title = 'Orders marked Ordered / Entered / Received collect here';
+      }
+      if (head.nextElementSibling !== first || head.parentNode !== list) list.insertBefore(head, first);
+    });
+  }
+
   // A shipment flagged Launch Preemptively is tracked in month N but placed in
   // N-1, so N-1 shows that order at the bottom of its open orders (just above
   // the completed ones) -- the REAL order's structure, not a summary: a
-  // read-only copy of the shipment with every item and field, in the greyed
-  // look completed orders use but left expanded. Visibility only.
+  // read-only copy of the shipment with every item and field, in the same
+  // colours as the original (grey if it has Autoship, else teal). Visibility only.
   //
   // The copy lives in a shadow root (one host per order, inside a
   // .month-preempt block that is neither .shipment nor .card), which is what
@@ -4438,7 +4485,6 @@
     clone.removeAttribute('data-id');
     clone.querySelectorAll('.search-hide').forEach((e) => e.classList.remove('search-hide'));
     clone.classList.remove('search-hide', 'is-collapsed');
-    clone.classList.add('is-locked'); // the completed-order grey -- but NOT collapsed
     return clone;
   }
   function renderPreemptMirrors() {
@@ -4463,9 +4509,9 @@
       }
       let wrap = list.querySelector(':scope > .month-preempt');
       if (!items.length) { wrap?.remove(); return; }
-      if (!wrap) { wrap = document.createElement('div'); wrap.className = 'month-preempt'; }
-      // bottom of the open section: right before the first completed shipment, else the end
-      const firstLocked = list.querySelector(':scope > .shipment.is-locked');
+      if (!wrap) { wrap = document.createElement('div'); wrap.className = 'month-preempt month-aux'; }
+      // bottom of the open section: right before the "Completed Orders" header (or the first completed shipment), else the end
+      const firstLocked = list.querySelector(':scope > .month-done-head') || list.querySelector(':scope > .shipment.is-locked');
       if (firstLocked) { if (wrap.nextElementSibling !== firstLocked || wrap.parentNode !== list) list.insertBefore(wrap, firstLocked); }
       else if (list.lastElementChild !== wrap) list.appendChild(wrap);
       const sig = items.map((i) => i.sig).join('\u0001');
@@ -6435,6 +6481,7 @@
     // was just looking at.
     const anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
     board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
+    renderCompletedHeaders();
     renderPreemptMirrors();
     // A pinned merchant alone no longer shows the × -- tapping the active
     // chip again already clears it, so a second affordance for the exact
@@ -6637,7 +6684,7 @@
     // see shipMatches above) still counts as "has content" here, same as it
     // does everywhere else. Dividers are never real content.
     const anyVisible = [...list.children].some((node) =>
-      !node.classList.contains('card--divider') && !node.classList.contains('search-hide') && !node.classList.contains('month-preempt'));
+      !node.classList.contains('card--divider') && !node.classList.contains('search-hide') && !node.classList.contains('month-aux'));
     monthEl.classList.toggle('search-hide', filterActive && !anyVisible);
     recalcTotalsFor(monthEl);
   }
@@ -7476,7 +7523,7 @@
       const monthEl = cardEl.closest('.month');
       const allMonths = [...board.querySelectorAll('.month')];
       const monthIdx = allMonths.indexOf(monthEl);
-      const siblings = [...container.children].filter((n) => !n.classList.contains('month-preempt'));
+      const siblings = [...container.children].filter((n) => !n.classList.contains('month-aux'));
       const myIdx = siblings.indexOf(cardEl);
       const isFirst = myIdx === 0;
       const isLast = myIdx === siblings.length - 1;
@@ -7660,7 +7707,7 @@
     const list = monthEl.querySelector('.month-list');
     const allMonths = [...board.querySelectorAll('.month')];
     const monthIdx = allMonths.indexOf(monthEl);
-    const listChildren = [...list.children].filter((n) => !n.classList.contains('month-preempt'));
+    const listChildren = [...list.children].filter((n) => !n.classList.contains('month-aux'));
     const myIdx = listChildren.indexOf(shipEl);
     const isFirst = myIdx === 0;
     const firstLocked = listChildren.find((n) => n.classList.contains('shipment') && (STATE.shipmentData[n.dataset.id] || {}).stage);

@@ -246,7 +246,7 @@ try {
   const mnames = await mirrorNames();
   check('mirror: a preemptive next-month order appears in this month', mnames.includes('Pre Auto Co') && mnames.includes('Dup Co') && mnames.includes('Item Date Co'), mnames.join(', '));
   check('mirror: an ordinary next-month order does not', !mnames.includes('Normal Co'));
-  check('mirror: sits at the bottom of the open orders (just above the completed ones)', await m0list.evaluate((l) => { const w = l.querySelector(':scope > .month-preempt'); return !!w && w.nextElementSibling && w.nextElementSibling.classList.contains('is-locked') && !w.previousElementSibling.classList.contains('is-locked'); }));
+  check('mirror: sits at the bottom of the open orders (just above the completed ones)', await m0list.evaluate((l) => { const w = l.querySelector(':scope > .month-preempt'); const h = w && w.nextElementSibling; return !!w && !!h && h.classList.contains('month-done-head') && h.nextElementSibling.classList.contains('is-locked') && !w.previousElementSibling.classList.contains('is-locked'); }));
   check('mirror: invisible to the board (document-wide .shipment/.card/data-id queries never see it)', await page.evaluate(() => {
     const host = document.querySelector('.pre-host'); const root = host.shadowRoot;
     return !!root.querySelector('.shipment') && !host.querySelector('.shipment, .card') && ![...document.querySelectorAll('.shipment, .card')].some((e) => e.closest('.month-preempt'));
@@ -260,7 +260,7 @@ try {
     const names = (el) => [...el.querySelectorAll('.card-name')].map((n) => n.textContent.trim());
     const vals = (el) => [...el.querySelectorAll('.ship-body input')].map((i) => i.value);
     return {
-      greyed: sh.classList.contains('is-locked'), expanded: !sh.classList.contains('is-collapsed') && body.getBoundingClientRect().height > 20,
+      standardColour: !sh.classList.contains('is-locked') && getComputedStyle(sh).backgroundColor === getComputedStyle(real).backgroundColor, expanded: !sh.classList.contains('is-collapsed') && body.getBoundingClientRect().height > 20,
       hasHead: !!sh.querySelector('.ship-head .ship-name') && !!sh.querySelector('.ship-total'), preemptBtn: !!sh.querySelector('.ship-preempt.is-on'),
       sameItems: JSON.stringify(names(sh)) === JSON.stringify(names(real)) && names(sh).length > 0,
       sameFields: JSON.stringify(vals(sh)) === JSON.stringify(vals(real)) && vals(sh).length > 0,
@@ -274,11 +274,28 @@ try {
     await page.waitForTimeout(250);
     await page.screenshot({ path: join(process.env.SHOT_DIR, 'mirror-full.png') });
   }
+  // colour scheme: grey = contains an Autoship item, teal = none; previews follow it too
+  const GREY = 'rgb(243, 244, 244)', TEAL = 'rgb(234, 246, 244)';
+  const bgOf = (sel) => page.evaluate((q) => getComputedStyle(document.querySelector(q)).backgroundColor, sel);
+  const mirrorBg = (name) => page.evaluate((n) => getComputedStyle([...document.querySelectorAll('.pre-host')].find((h) => h.dataset.preName === n).shadowRoot.querySelector('.shipment')).backgroundColor, name);
+  check('colour: an order containing an Autoship item is grey', (await bgOf('.shipment[data-id="o_a"]')) === GREY, await bgOf('.shipment[data-id="o_a"]'));
+  check('colour: an order with a shipment-level autoship is grey', (await bgOf('.shipment[data-id="o_ship"]')) === GREY);
+  check('colour: an order with no Autoship is the standard teal', (await bgOf('.shipment[data-id="o_norm"]')) === TEAL, await bgOf('.shipment[data-id="o_norm"]'));
+  check('colour: a preemptive preview of an autoship order is grey too', (await mirrorBg('Pre Auto Co')) === GREY && (await mirrorBg('Item Date Co')) === GREY);
+  // completed-orders header
+  const doneHead = await page.evaluate((id) => {
+    const list = document.querySelector('.month[data-id="' + id + '"] > .month-list');
+    const h = list.querySelector(':scope > .month-done-head');
+    return { text: h && h.textContent, before: !!h && h.nextElementSibling && h.nextElementSibling.classList.contains('is-locked'), after: !!h && !h.previousElementSibling.classList.contains('is-locked') };
+  }, M0.month + '_' + M0.year);
+  check('completed header: "Completed Orders" sits right above the first completed order', doneHead.text === 'Completed Orders' && doneHead.before && doneHead.after, JSON.stringify(doneHead));
+  check('completed header: a month with no completed orders has none', (await page.locator('.month[data-id="' + M1.month + '_' + M1.year + '"] > .month-list > .month-done-head').count()) === 0);
   check('mirror: shows the real order\'s full structure (header, every item, every field), expanded and greyed', Object.values(full).every(Boolean), JSON.stringify(full));
   const plannedBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent();
   const countBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .mcount`).textContent();
   await pbtn('o_norm').click(); await page.waitForTimeout(700); // flag one more order -> one more mirror
   check('mirror: flagging another order adds its mirror', (await mirrorNames()).includes('Normal Co'));
+  check('colour: a preview of a non-autoship order is the standard teal', (await mirrorBg('Normal Co')) === TEAL, await mirrorBg('Normal Co'));
   check('mirror: does not change the month metrics or count', (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent()) === plannedBefore && (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .mcount`).textContent()) === countBefore);
   const savedOrders = puts[puts.length - 1].orders.map((o) => o.order_id);
   check('mirror: never saved (no duplicate or extra orders)', new Set(savedOrders).size === savedOrders.length && savedOrders.length === (await page.evaluate(() => document.querySelectorAll('.shipment').length)), `${savedOrders.length}`);
@@ -321,7 +338,7 @@ try {
   check('Autoship and Runs-out rows are interlaced, not grouped', names.indexOf('Runner') < names.indexOf('Later Placement') && names.indexOf('Runner') > names.indexOf('Overdue One'), names.join(', '));
   check('panel has no warning icon', (await panel(page).locator('.warn-head svg').count()) === 0);
   const boxBg = await panel(page).locator('.warn-box').evaluate((e) => getComputedStyle(e).backgroundColor);
-  const shipBg = await page.evaluate(() => getComputedStyle(document.querySelector('.shipment')).backgroundColor);
+  const shipBg = await page.evaluate(() => getComputedStyle(document.querySelector('.shipment[data-id="o_norm"]')).backgroundColor);
   check('panel background matches a shipment', boxBg === shipBg, `${boxBg} vs ${shipBg}`);
   check('one-month rule: a 3rd-of-next-month autoship shows in the CURRENT month', names.includes('Next Early'));
   check('one-month rule: …and NOT again in the next month', !m1Panel.includes('Next Early'), m1Panel.join(', '));
