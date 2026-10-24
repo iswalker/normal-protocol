@@ -1050,7 +1050,7 @@
        list (a sibling of .month-list, never inside it -- the list's children
        are assumed to be only cards/shipments all over this file). Same
        orange/red vocabulary as the SOON/OUT badges. ── */
-    #tab-board .month-warn { padding: 4px 11px 0; }
+    #tab-board .month-warn { padding: 0; } /* a child of .month-list now, which supplies the side padding */
     #tab-board .month-warn[hidden] { display: none; }
     /* Same chrome as a shipment block (teal tint, border, radius, shadow),
        with the header/count dressed like .ship-name/.scount. */
@@ -1887,13 +1887,15 @@
     #tab-board .shipment.is-locked .ship-id .scount { cursor: pointer; }
     #tab-board .shipment.is-locked.is-collapsed > .ship-body { display: none; }
 
-    /* "Completed Orders" label above the first completed order of a month, so
-       it's clear why they cluster at the bottom (see renderCompletedHeaders) */
-    #tab-board .month-done-head {
+    /* Small section labels inside a month's list -- Preemptive Orders / In-Month
+       Orders / Preemptive Orders · <next month> / Completed Orders -- so it's
+       clear why orders cluster the way they do (see layoutMonthLists) */
+    #tab-board .month-sec-head {
       display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 0 4px;
       font: 600 10.5px/1 var(--font-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3);
     }
-    #tab-board .month-done-head::after { content: ''; flex: 1 1 auto; height: 1px; background: #dde3e4; }
+    #tab-board .month-sec-head:first-child { margin-top: 0; }
+    #tab-board .month-sec-head::after { content: ''; flex: 1 1 auto; height: 1px; background: #dde3e4; }
 
     /* Divider above the first locked shipment */
     #tab-board .month-list > *:not(.shipment.is-locked):not(.month-done-head) + .shipment.is-locked {
@@ -3448,7 +3450,6 @@
       <div class="month-notes-row${m.notes && m.notes.trim() ? ' notes-open' : ''}">
         <span class="month-notes month-notes--mobile" contenteditable="true" spellcheck="false" placeholder="notes...">${esc(m.notes || '')}</span>
       </div>
-      <div class="month-warn" hidden></div>
       <div class="month-list" data-list="month">${m.blocks.map(blockHTML).join('')}</div>
     </div>`;
   }
@@ -4063,8 +4064,7 @@
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
     });
     renderWarnings();
-    renderCompletedHeaders();
-    renderPreemptMirrors();
+    renderMonthSections();
     updateMonthVisibility();
     updateMonthStrip();
   }
@@ -4291,8 +4291,12 @@
     warnMonthNames = monthNames;
     wins.forEach((w, mi) => { if (w && per[mi]) warnCompletedByYm[w.ym] = { month: w.name, items: per[mi].completed }; });
     monthEls.forEach((monthEl, mi) => {
-      const box = monthEl.querySelector(':scope > .month-warn');
-      if (!box) return;
+      const list = monthEl.querySelector(':scope > .month-list');
+      if (!list) return;
+      // The panel is a child of the month's list (a non-order .month-aux block,
+      // placed by layoutMonthLists) so Preemptive orders can sit ABOVE it.
+      let box = list.querySelector(':scope > .month-warn');
+      if (!box) { box = document.createElement('div'); box.className = 'month-warn month-aux'; box.hidden = true; list.prepend(box); }
       const p = per[mi];
       // Nothing left to act on -> the whole panel goes away (completed items live in its chip)
       const html = p && (p.autoship.length || p.runout.length) ? warnPanelHTML(wins[mi], p, mi, monthNames) : '';
@@ -4410,25 +4414,69 @@
     });
   }
 
-  // A small "Completed Orders" label sits right above the first completed
-  // (Ordered/Entered/Received) order of each month. Like the preemptive
-  // previews it's a .month-aux child of the list -- neither .shipment nor
-  // .card -- so nothing that walks the list's orders sees it.
-  function renderCompletedHeaders() {
+  // ── How a month's list is laid out ────────────────────────────────────────
+  //   a) Preemptive Orders   -- orders tracked in THIS month but placed early
+  //                             (flagged Launch Preemptively); draggable among themselves
+  //   b) Needs Attention     -- the warnings panel
+  //   c) In-Month Orders     -- everything else still open (orders + loose cards)
+  //   d) Preemptive Orders · <next month> -- read-only previews of NEXT month's
+  //                             preemptive orders, which get placed during this one
+  //   e) Completed Orders    -- Ordered / Entered / Received
+  // Everything but the real orders is a .month-aux child (neither .shipment nor
+  // .card), so nothing that walks a list's orders ever sees it.
+  // renderSectionHeaders adds/removes the labels; layoutMonthLists puts every
+  // child in order, keeping each group's own relative order -- so a drag within
+  // a group sticks, while an order dropped into the wrong group snaps back.
+  function renderSectionHeaders() {
+    const vis = (n) => !n.classList.contains('search-hide');
     board.querySelectorAll('.month').forEach((monthEl) => {
       const list = monthEl.querySelector(':scope > .month-list');
       if (!list) return;
-      let head = list.querySelector(':scope > .month-done-head');
-      const first = list.querySelector(':scope > .shipment.is-locked:not(.search-hide)');
-      if (!first) { head?.remove(); return; }
-      if (!head) {
-        head = document.createElement('div');
-        head.className = 'month-done-head month-aux';
-        head.textContent = 'Completed Orders';
-        head.title = 'Orders marked Ordered / Entered / Received collect here';
-      }
-      if (head.nextElementSibling !== first || head.parentNode !== list) list.insertBefore(head, first);
+      const kids = [...list.children].filter(vis);
+      const ships = kids.filter((n) => n.classList.contains('shipment'));
+      const done = ships.filter((n) => n.classList.contains('is-locked'));
+      const pre = ships.filter((n) => !n.classList.contains('is-locked') && isShipPreemptive(n));
+      const std = kids.filter((n) => !done.includes(n) && !pre.includes(n)
+        && (n.classList.contains('shipment') || (n.classList.contains('card') && !n.classList.contains('card--divider'))));
+      const ensure = (cls, text, title, show) => {
+        let h = list.querySelector(':scope > .' + cls);
+        if (!show) { h?.remove(); return; }
+        if (!h) {
+          h = document.createElement('div');
+          h.className = 'month-sec-head ' + cls + ' month-aux';
+          h.textContent = text;
+          h.title = title;
+          list.appendChild(h);
+        }
+      };
+      ensure('month-pre-head', 'Preemptive Orders', 'Tracked in this month, but placed in the previous one', pre.length > 0);
+      ensure('month-in-head', 'In-Month Orders', 'Orders placed during this month', std.length > 0);
+      ensure('month-done-head', 'Completed Orders', 'Orders marked Ordered / Entered / Received collect here', done.length > 0);
     });
+  }
+  function layoutMonthLists() {
+    if (document.body.classList.contains('sb-dragging')) return; // never reshuffle under a drag
+    board.querySelectorAll('.month').forEach((monthEl) => {
+      const list = monthEl.querySelector(':scope > .month-list');
+      if (!list) return;
+      const kids = [...list.children];
+      const aux = (cls) => kids.find((n) => n.classList.contains(cls)) || null;
+      const isShip = (n) => n.classList.contains('shipment');
+      const locked = kids.filter((n) => isShip(n) && n.classList.contains('is-locked'));
+      const pre = kids.filter((n) => isShip(n) && !n.classList.contains('is-locked') && isShipPreemptive(n));
+      const std = kids.filter((n) => (isShip(n) || n.classList.contains('card')) && !locked.includes(n) && !pre.includes(n));
+      const want = [aux('month-pre-head'), ...pre, aux('month-warn'), aux('month-in-head'), ...std,
+        aux('month-mirror-head'), aux('month-preempt'), aux('month-done-head'), ...locked].filter(Boolean);
+      kids.forEach((n) => { if (!want.includes(n)) want.push(n); }); // anything unexpected keeps its place at the end
+      if (want.every((n, i) => kids[i] === n)) return;
+      want.forEach((n) => list.appendChild(n)); // re-appending in order leaves exactly this sequence
+    });
+  }
+  // The one call that (re)builds every non-order block in the lists
+  function renderMonthSections() {
+    renderSectionHeaders();
+    renderPreemptMirrors();
+    layoutMonthLists();
   }
 
   // A shipment flagged Launch Preemptively is tracked in month N but placed in
@@ -4508,12 +4556,13 @@
         });
       }
       let wrap = list.querySelector(':scope > .month-preempt');
-      if (!items.length) { wrap?.remove(); return; }
-      if (!wrap) { wrap = document.createElement('div'); wrap.className = 'month-preempt month-aux'; }
-      // bottom of the open section: right before the "Completed Orders" header (or the first completed shipment), else the end
-      const firstLocked = list.querySelector(':scope > .month-done-head') || list.querySelector(':scope > .shipment.is-locked');
-      if (firstLocked) { if (wrap.nextElementSibling !== firstLocked || wrap.parentNode !== list) list.insertBefore(wrap, firstLocked); }
-      else if (list.lastElementChild !== wrap) list.appendChild(wrap);
+      let mh = list.querySelector(':scope > .month-mirror-head');
+      if (!items.length) { wrap?.remove(); mh?.remove(); return; }
+      // (layoutMonthLists puts the header + block in place: after the in-month orders, before Completed)
+      if (!wrap) { wrap = document.createElement('div'); wrap.className = 'month-preempt month-aux'; list.appendChild(wrap); }
+      if (!mh) { mh = document.createElement('div'); mh.className = 'month-sec-head month-mirror-head month-aux'; list.appendChild(mh); }
+      mh.textContent = 'Preemptive Orders · ' + items[0].nextName;
+      mh.title = 'Orders tracked in ' + items[0].nextName + ' but placed during this month -- shown here for visibility only';
       const sig = items.map((i) => i.sig).join('\u0001');
       if (wrap._sig === sig) return; // nothing changed -- keep the existing shadow content
       wrap._sig = sig;
@@ -6481,8 +6530,7 @@
     // was just looking at.
     const anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
     board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
-    renderCompletedHeaders();
-    renderPreemptMirrors();
+    renderMonthSections();
     // A pinned merchant alone no longer shows the × -- tapping the active
     // chip again already clears it, so a second affordance for the exact
     // same action was redundant. The × still shows for text/Autoship,

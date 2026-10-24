@@ -58,6 +58,9 @@ const ORDERS_BODY = {
     { order_id: 'o_norm', month: M1.month, year: M1.year, merchant: 'Normal Co', position: 7, status: 'Staged', notes: null },
     // no autoship date of its own, but an ITEM in it carries one from before its month -> auto-on
     { order_id: 'o_cardpre', month: M1.month, year: M1.year, merchant: 'Item Date Co', position: 8, status: 'Staged', notes: null },
+    // a preemptive order in the month AFTER M1 (so M1 gets a "from next month" preview group), and a completed one in M1
+    { order_id: 'o_pre2', month: M2.month, year: M2.year, merchant: 'Pre Two Co', position: 9, status: 'Staged', notes: null, autoship_next_date: iso(now) },
+    { order_id: 'o_lock1', month: M1.month, year: M1.year, merchant: 'Locked Nov', position: 9, status: 'Ordered', notes: null },
     { order_id: 'o_ghost', month: M0.month, year: M0.year, merchant: 'Ghost Shop', position: 4, status: 'Staged', notes: null },
   ],
   items: [
@@ -79,6 +82,8 @@ const ORDERS_BODY = {
     card('oi_cardpre', 'o_cardpre', M1, 8, 1, 'Card Pre', { autoship_next_date: iso(now) }),
     card('oi_nextearly', 'o_a', M0, 1, 6, 'Next Early', { autoship_next_date: D_NEXT_EARLY }),
     card('oi_nextmid', 'o_a', M0, 1, 7, 'Next Mid', { autoship_next_date: D_NEXT_MID }),
+    card('oi_pre2', 'o_pre2', M2, 9, 1, 'Pre2 Item'),
+    card('oi_lock1', 'o_lock1', M1, 9, 1, 'Locked Nov Item'),
     card('oi_covered', null, M0, 5, 1, 'Covered', {}),
   ],
 };
@@ -210,7 +215,7 @@ try {
   check('overdue row is flagged', /overdue/.test(await rowFor(page, 'Overdue One').locator('.warn-detail').textContent()));
   check('panel shows a count badge', (await panel(page).locator('.warn-count').textContent()).trim() === String(names.length), String(names.length));
   // past months get no panel; the panel lives outside .month-list
-  check('panel is outside .month-list', (await page.locator('.month-list .month-warn').count()) === 0);
+  check('panel is a (non-order) child of the month list, so Preemptive orders can sit above it', (await page.locator('.month-list > .month-warn.month-aux').count()) > 0 && (await page.locator('.month > .month-warn').count()) === 0);
 
   // ── Launch Preemptively ──
   const pbtn = (id) => page.locator(`.shipment[data-id="${id}"] > .ship-head > .ship-preempt`);
@@ -289,7 +294,62 @@ try {
     return { text: h && h.textContent, before: !!h && h.nextElementSibling && h.nextElementSibling.classList.contains('is-locked'), after: !!h && !h.previousElementSibling.classList.contains('is-locked') };
   }, M0.month + '_' + M0.year);
   check('completed header: "Completed Orders" sits right above the first completed order', doneHead.text === 'Completed Orders' && doneHead.before && doneHead.after, JSON.stringify(doneHead));
-  check('completed header: a month with no completed orders has none', (await page.locator('.month[data-id="' + M1.month + '_' + M1.year + '"] > .month-list > .month-done-head').count()) === 0);
+  check('completed header: a month with no completed orders has none', (await page.locator('.month[data-id="' + M2.month + '_' + M2.year + '"] > .month-list > .month-done-head').count()) === 0);
+  // ── the sandwich: Preemptive / Needs Attention / In-Month / Preemptive-from-next / Completed ──
+  const m1id = M1.month + '_' + M1.year;
+  const seq = await page.evaluate((id) => [...document.querySelectorAll('.month[data-id="' + id + '"] > .month-list > *')].map((n) => {
+    const c = n.classList;
+    if (c.contains('month-pre-head')) return 'pre-head';
+    if (c.contains('month-warn')) return 'warn';
+    if (c.contains('month-in-head')) return 'in-head';
+    if (c.contains('month-mirror-head')) return 'mirror-head';
+    if (c.contains('month-preempt')) return 'mirrors';
+    if (c.contains('month-done-head')) return 'done-head';
+    if (c.contains('shipment')) return c.contains('is-locked') ? 'locked' : (n.querySelector(':scope > .ship-head > .ship-preempt.is-on') ? 'pre' : 'std');
+    return 'other';
+  }), m1id);
+  check('month layout: Preemptive / Needs Attention / In-Month / Preemptive-from-next / Completed', /^pre-head( pre)+ warn in-head( (std|other))+ mirror-head mirrors done-head( locked)+$/.test(seq.join(' ')), seq.join(' '));
+  const heads = await page.evaluate((id) => Object.fromEntries(['pre-head', 'in-head', 'mirror-head', 'done-head'].map((k) => [k, document.querySelector('.month[data-id="' + id + '"] > .month-list > .month-' + k.replace('-head', '') + (k === 'mirror-head' ? '-head' : '-head'))?.textContent])), m1id);
+  check('section headers read Preemptive Orders / In-Month Orders / Preemptive Orders · <next month> / Completed Orders', heads['pre-head'] === 'Preemptive Orders' && heads['in-head'] === 'In-Month Orders' && heads['mirror-head'] === 'Preemptive Orders · ' + M2.month && heads['done-head'] === 'Completed Orders', JSON.stringify(heads));
+  check('the panel really is below the Preemptive group and above In-Month', seq.indexOf('warn') > seq.lastIndexOf('pre') && seq.indexOf('warn') < seq.indexOf('in-head'));
+  // grouping rules: order WITHIN a group sticks; an order dropped in the wrong group snaps back
+  const unlockedOrder = () => page.evaluate((id) => [...document.querySelectorAll('.month[data-id="' + id + '"] > .month-list > .shipment:not(.is-locked)')].map((sh) => sh.querySelector('.ship-name').textContent + (sh.querySelector(':scope > .ship-head > .ship-preempt.is-on') ? '*' : '')), m1id);
+  const orderBefore = await unlockedOrder();
+  const preNames = orderBefore.filter((n) => n.endsWith('*')).map((n) => n.slice(0, -1));
+  await page.evaluate(({ id, a, b }) => {
+    const list = document.querySelector('.month[data-id="' + id + '"] > .month-list');
+    const byName = (n) => [...list.querySelectorAll(':scope > .shipment')].find((sh) => sh.querySelector('.ship-name').textContent === n);
+    list.insertBefore(byName(b), byName(a));            // swap two Preemptive orders (a drag within their group)
+    list.insertBefore(byName('Normal Co'), byName(a));  // and drop an in-month order up into that group
+    window.SupplementBoard.recalc();
+  }, { id: m1id, a: preNames[0], b: preNames[1] });
+  const after = await unlockedOrder();
+  const afterPre = after.filter((n) => n.endsWith('*')).map((n) => n.slice(0, -1));
+  check('dragging a Preemptive order within its group sticks', afterPre[0] === preNames[1] && afterPre[1] === preNames[0], afterPre.join(', '));
+  check('an in-month order dropped among the Preemptive ones snaps back below them', after.indexOf('Normal Co') > after.lastIndexOf(preNames[0] + '*'), after.join(', '));
+  check('Preemptive orders are all grouped at the top of their own month', after.slice(0, afterPre.length).every((n) => n.endsWith('*')), after.join(', '));
+
+  // a REAL pointer drag (Sortable's fallback) within the Preemptive group
+  await page.evaluate((id) => document.querySelector('.month[data-id="' + id + '"] > .month-list > .month-pre-head').scrollIntoView({ block: 'start' }), m1id);
+  await page.waitForTimeout(300);
+  const preList = async () => (await unlockedOrder()).filter((n) => n.endsWith('*')).map((n) => n.slice(0, -1));
+  const p0 = await preList();
+  const gripOf = (name) => page.locator('.month[data-id="' + m1id + '"] > .month-list > .shipment', { has: page.locator('.ship-name', { hasText: new RegExp('^' + name + '$') }) }).first();
+  const gb = await gripOf(p0[p0.length - 1]).locator(':scope > .ship-head > .ship-grip').boundingBox();
+  const tb = await gripOf(p0[0]).locator(':scope > .ship-head').boundingBox();
+  await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 14; i++) { await page.mouse.move(gb.x + gb.width / 2, gb.y + (tb.y + 4 - gb.y) * i / 14, { steps: 2 }); await page.waitForTimeout(25); }
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const p1 = await preList();
+  check('a real drag reorders orders within the Preemptive group (and they stay grouped)', p1[0] === p0[p0.length - 1] && p1.length === p0.length, p0.join(',') + ' -> ' + p1.join(','));
+  if (process.env.SHOT_DIR) {
+    await page.evaluate((id) => document.querySelector('.month[data-id="' + id + '"]').scrollIntoView({ block: 'start', inline: 'start' }), m1id);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(process.env.SHOT_DIR, 'sandwich.png') });
+  }
+
   check('mirror: shows the real order\'s full structure (header, every item, every field), expanded and greyed', Object.values(full).every(Boolean), JSON.stringify(full));
   const plannedBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent();
   const countBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .mcount`).textContent();
