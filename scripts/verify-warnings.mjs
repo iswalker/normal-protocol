@@ -172,6 +172,8 @@ async function openBoard(viewport) {
 const panel = (page) => page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-warn`);
 const rowNames = (page) => panel(page).locator('.warn-row .warn-name').allTextContents();
 const rowFor = (page, name) => panel(page).locator('.warn-row', { has: page.locator('.warn-name', { hasText: new RegExp(`^${name}$`) }) });
+// is the element's top edge just below its month's sticky header (rather than hidden under it)?
+const clearOfHead = (page, sel) => page.evaluate((q) => { const el = document.querySelector(q); const head = el.closest('.month').querySelector(':scope > .month-head'); const t = el.getBoundingClientRect().top, hb = head.getBoundingClientRect().bottom; return { ok: t >= hb - 1 && t <= hb + 80, t, hb }; }, sel);
 
 try {
   const { ctx, page } = await openBoard({ width: 1700, height: 1000 });
@@ -282,6 +284,10 @@ try {
   check('mirror: never saved (no duplicate or extra orders)', new Set(savedOrders).size === savedOrders.length && savedOrders.length === (await page.evaluate(() => document.querySelectorAll('.shipment').length)), `${savedOrders.length}`);
   await page.locator('.pre-host[data-pre-name="Normal Co"]').click();
   await page.waitForTimeout(250);
+  await page.waitForTimeout(900);
+  const sJump = await clearOfHead(page, '.shipment[data-id="o_norm"]');
+  check('jumping to an order lands just BELOW the sticky month header (not under it)', sJump.ok, JSON.stringify(sJump));
+  check('mirror: has no caption line (the Preemptive button says it all)', await page.evaluate(() => [...document.querySelectorAll('.pre-host')].every((h) => !h.shadowRoot.querySelector('.pre-cap') && !/placed early/.test(h.shadowRoot.textContent))));
   check('mirror: clicking it jumps to the real order', await page.locator('.shipment[data-id="o_norm"]').evaluate((e) => e.classList.contains('warn-flash')));
   await pbtn('o_norm').click(); await page.waitForTimeout(700); // back to off
   check('mirror: turning the flag off removes it', !(await mirrorNames()).includes('Normal Co'));
@@ -298,6 +304,9 @@ try {
   await page.waitForTimeout(200);
   await rowFor(page, 'Later Placement').locator('.warn-month').first().click();
   await page.waitForTimeout(250);
+  await page.waitForTimeout(900); // let the smooth scroll settle
+  const cJump = await clearOfHead(page, '.card[data-id="oi_later"]');
+  check('jumping to an item lands just BELOW the sticky month header (not under it)', cJump.ok, JSON.stringify(cJump));
   check('order month jumps to (and highlights) that order', await page.locator('.card[data-id="oi_later"]').evaluate((e) => e.classList.contains('warn-flash')));
   const lateNext = rowFor(page, 'Late').locator('.warn-month');
   check('run-out row offers its next order month', (await lateNext.count()) === 1 && (await lateNext.textContent()).trim() === M1.month);

@@ -4413,8 +4413,7 @@
       #tab-board .board { display: block !important; padding: 0 !important; min-height: 0 !important; gap: 0 !important; }
       #tab-board .month { display: block !important; width: auto !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
       #tab-board .month-list { display: block !important; padding: 0 !important; min-height: 0 !important; }
-      #tab-board * { pointer-events: none !important; }
-      .pre-cap { font: 500 11px/1.4 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; color: #8a979e; padding: 8px 4px 3px; }`;
+      #tab-board * { pointer-events: none !important; }`;
     preSheets = { css, override };
     if (typeof CSSStyleSheet === 'function' && 'replaceSync' in CSSStyleSheet.prototype && 'adoptedStyleSheets' in Document.prototype) {
       try {
@@ -4483,14 +4482,11 @@
         const root = host.attachShadow({ mode: 'open' });
         if (sheets.adopted) root.adoptedStyleSheets = sheets.adopted;
         else [sheets.css, sheets.override].forEach((txt) => { const st = document.createElement('style'); st.textContent = txt; root.appendChild(st); });
-        const cap = document.createElement('div');
-        cap.className = 'pre-cap';
-        cap.textContent = '« ' + it.nextName + ' order · placed early (view only)';
         const shell = document.createElement('div');
         shell.id = 'tab-board'; shell.className = 'pre-root'; shell.setAttribute('inert', '');
         shell.innerHTML = '<div class="' + escAttr(board.className) + '"><div class="month"><div class="month-list"></div></div></div>';
         shell.querySelector('.month-list').appendChild(it.clone);
-        root.append(cap, shell);
+        root.append(shell);
         return host;
       }));
     });
@@ -4580,15 +4576,23 @@
   // months -- scrollIntoView pins flush with no breathing room, so the
   // offset is computed by hand instead. Shared by the month-strip cell
   // click and the Spent/Planned metric jumps below.
+  //
+  // Each month's header is position:sticky at the top of the pane, so anything
+  // INSIDE a month (an order, a card) that's aligned to the pane's top edge
+  // ends up underneath it. A month itself lands on its own header, which is
+  // why those jumps were always right; for anything else the header's height
+  // is added to the offset so the target's top edge sits just below it.
   function scrollElementIntoBoardView(targetEl, instant) {
     const scroller = document.getElementById('tab-board');
     if (!scroller || !targetEl) return;
     const gap = parseFloat(getComputedStyle(board).columnGap) || 16;
     const scrollerRect = scroller.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
+    const stickyHead = targetEl.classList.contains('month') ? null : targetEl.closest('.month')?.querySelector(':scope > .month-head');
+    const stuck = stickyHead ? stickyHead.getBoundingClientRect().height : 0;
     scroller.scrollTo({
       left: Math.max(0, scroller.scrollLeft + (targetRect.left - scrollerRect.left) - gap),
-      top: Math.max(0, scroller.scrollTop + (targetRect.top - scrollerRect.top) - gap),
+      top: Math.max(0, scroller.scrollTop + (targetRect.top - scrollerRect.top) - gap - stuck),
       behavior: instant ? 'auto' : 'smooth',
     });
   }
