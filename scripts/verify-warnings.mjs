@@ -25,6 +25,7 @@ const now = new Date(); now.setHours(0, 0, 0, 0);
 const plusDays = (n) => { const d = new Date(now); d.setDate(d.getDate() + n); return d; };
 const monthAt = (off) => { const d = new Date(now.getFullYear(), now.getMonth() + off, 1); return { month: MON[d.getMonth()], year: d.getFullYear(), start: d }; };
 const M0 = monthAt(0), M1 = monthAt(1), M2 = monthAt(2), M3 = monthAt(3);
+const P1 = monthAt(-1), P2 = monthAt(-2); // empty PAST months (should never be shown)
 const ym0 = `${M0.year}-${String(M0.start.getMonth() + 1).padStart(2, '0')}`;
 
 const D_ALPHA = iso(plusDays(2));                                   // in the current window
@@ -45,7 +46,7 @@ const card = (id, order_id, m, bp, ip, name, extra = {}) => ({
   supplement: name, price_per_bottle: 10, order_qty_bottles: 1, include_in_total: true, notes: null, ...extra,
 });
 const ORDERS_BODY = {
-  months: [M0, M1, M2].map((m, i) => ({ month: m.month, year: m.year, position: i + 1 })),
+  months: [P2, P1, M0, M1, M2].map((m, i) => ({ month: m.month, year: m.year, position: i + 1 })),
   orders: [
     { order_id: 'o_a', month: M0.month, year: M0.year, merchant: 'Alpha Shop', position: 1, status: 'Staged', notes: null },
     { order_id: 'o_ship', month: M0.month, year: M0.year, merchant: 'Ship-level Co', position: 2, status: 'Staged', notes: null, autoship_next_date: D_SHIP },
@@ -167,7 +168,7 @@ async function openBoard(viewport) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(base, { waitUntil: 'load' });
-  await page.waitForSelector('#tab-board #board .month');
+  await page.waitForSelector('#tab-board #board .month', { state: 'attached' });
   // inventory loads after boardReady -- wait for the run-out row it produces
   await page.waitForSelector('.month-warn .warn-row', { timeout: 10000 });
   return { ctx, page };
@@ -204,6 +205,8 @@ try {
   check('run-out: item running out with no order this month', names.includes('Runner'));
   check('run-out: not listed when an order exists this month', !names.includes('Covered'));
   check('run-out: not listed when plenty on hand', !names.includes('Plenty'));
+  const hiddenPast = await page.evaluate((ids) => ids.map((id) => { const e = document.querySelector('.month[data-id="' + id + '"]'); return !e || getComputedStyle(e).display === 'none'; }), [P2.month + '_' + P2.year, P1.month + '_' + P1.year]);
+  check('empty PAST months stay hidden (the panel/headers inside a list don\'t count as content)', hiddenPast.every(Boolean), JSON.stringify(hiddenPast));
   check('heading reads "Needs Attention"', (await panel(page).locator('.warn-head').textContent()).trim().startsWith('Needs Attention'));
   const detailOf = async (n) => (await rowFor(page, n).locator('.warn-detail').textContent()).replace(/\s+/g, ' ').trim();
   check('autoship row text: "<item> autoships <date> ..."', /^autoships \d+\/\d+/.test(await detailOf('Alpha')), await detailOf('Alpha'));
@@ -396,6 +399,15 @@ try {
   const dates = await panel(page).locator('.warn-row').evaluateAll((els) => els.map((e) => e.dataset.wdate));
   check('rows are ordered by date, soonest first', dates.length > 3 && dates.every((d, i) => i === 0 || dates[i - 1] <= d), dates.join(' '));
   check('Autoship and Runs-out rows are interlaced, not grouped', names.indexOf('Runner') < names.indexOf('Later Placement') && names.indexOf('Runner') > names.indexOf('Overdue One'), names.join(', '));
+  check('panel title is OUTSIDE the box, a section label like the others', await panel(page).evaluate((p) => {
+    const h = p.querySelector(':scope > .warn-head'), b = p.querySelector(':scope > .warn-box');
+    return !!h && !!b && h.classList.contains('month-sec-head') && !b.contains(h) && h.getBoundingClientRect().bottom <= b.getBoundingClientRect().top + 1
+      && getComputedStyle(h).textTransform === 'uppercase' && b.querySelectorAll('.warn-row').length > 0;
+  }));
+  check('the title label matches the other section labels (same size/weight/colour)', await page.evaluate((id) => {
+    const q = (sel) => { const e = document.querySelector('.month[data-id="' + id + '"] ' + sel); const c = getComputedStyle(e); return [c.fontSize, c.fontWeight, c.color, c.textTransform].join('|'); };
+    return q('.month-warn > .warn-head') === q('.month-list > .month-in-head');
+  }, M0.month + '_' + M0.year));
   check('panel has no warning icon', (await panel(page).locator('.warn-head svg').count()) === 0);
   const boxBg = await panel(page).locator('.warn-box').evaluate((e) => getComputedStyle(e).backgroundColor);
   const shipBg = await page.evaluate(() => getComputedStyle(document.querySelector('.shipment[data-id="o_norm"]')).backgroundColor);
@@ -478,7 +490,7 @@ try {
   await rowFor(page, 'Runner').locator('[data-act="warn-ignore"]').click();
   await page.waitForTimeout(150);
   await page.reload();
-  await page.waitForSelector('#tab-board #board .month');
+  await page.waitForSelector('#tab-board #board .month', { state: 'attached' });
   await page.waitForFunction(() => window._INV_ITEM_MAP && document.querySelector('.month-warn .warn-row'), null, { timeout: 10000 });
   await page.waitForTimeout(500);
   check('ignore survives a reload', !(await rowNames(page)).includes('Runner'));

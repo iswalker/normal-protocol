@@ -1058,14 +1058,20 @@
       background: var(--accent-tint); border: 1px solid #cfe6e2; border-radius: 11px;
       box-shadow: var(--shadow-card); padding: 5px 9px 6px 12px;
     }
-    #tab-board .warn-head {
-      display: flex; align-items: baseline; gap: 7px; padding: 2px 0 4px;
-      font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--b-ink);
-    }
+    /* The title sits OUTSIDE the box, as a section label like "Preemptive Orders"
+       (it's a .month-sec-head); the count pill follows it and the "n completed"
+       chip sits at the far right of the rule. */
+    #tab-board .warn-head { align-items: center; }
+    #tab-board .warn-head::after { order: 1; }
     #tab-board .warn-count {
-      flex: none; font-family: var(--font-num); font-size: 10px; font-weight: 400; letter-spacing: 0;
+      flex: none; font-family: var(--font-num); font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none;
       color: var(--ink-2); background: #d6e6e2; padding: 1px 7px; border-radius: 20px;
     }
+    #tab-board .month-warn > .month-sec-head { margin-top: 8px; }
+    #tab-board .month-list > .month-warn:first-child > .month-sec-head { margin-top: 0; }
+    /* the panel is hidden when nothing's left, so the next label is the first thing visible */
+    #tab-board .month-list > .month-warn[hidden]:first-child + .month-sec-head { margin-top: 0; }
+    #tab-board .warn-box > .warn-row:first-child { border-top: 0; }
     #tab-board .warn-row {
       display: flex; align-items: center; gap: 8px; min-width: 0;
       padding: 4px 0; border-top: 1px solid #d6e6e2;
@@ -1093,11 +1099,11 @@
     #tab-board .warn-btn:hover { border-color: var(--accent); color: var(--accent-deep); }
     #tab-board .warn-btn.is-approve { border-color: var(--accent); background: #fff; color: var(--accent-deep); }
     #tab-board .warn-btn.is-approve:hover { background: var(--accent); color: #fff; }
-    /* "n completed" chip, top-right of the panel (approved autoships + ignored run-outs): hover (or tap) lists them with restore buttons */
+    /* "n completed" chip, top-right of the panel's header (approved autoships + ignored run-outs): hover (or tap) lists them with restore buttons */
     #tab-board .warn-ign {
-      margin-left: auto; flex: none; border: 1px solid #c4cdd0; border-radius: 20px;
+      order: 2; flex: none; border: 1px solid #c4cdd0; border-radius: 20px;
       background: rgba(255, 255, 255, .7); padding: 1px 9px; font: 500 11px/1.5 var(--font-ui);
-      color: var(--ink-3); cursor: pointer;
+      letter-spacing: 0; text-transform: none; color: var(--ink-3); cursor: pointer;
     }
     #tab-board .warn-ign:hover, #tab-board .warn-ign.is-open { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
     /* Ignored-items popover (lives on <body>, so no #tab-board variables here) */
@@ -4276,8 +4282,8 @@
         <button type="button" class="warn-btn" data-act="warn-ignore" data-wkey="${escAttr(r.key)}" title="Ignore for ${w.name} (comes back in a later month)">Ignore</button>
       </div>` });
     });
-    return `<div class="warn-box">
-      <div class="warn-head">Needs Attention <span class="warn-count">${pending}</span>${p.completed.length ? `<button type="button" class="warn-ign" data-act="warn-ign" data-ym="${w.ym}" aria-haspopup="true" title="Approved autoships and ignored run-outs -- hover to review or restore">${p.completed.length} completed</button>` : ''}</div>
+    return `<div class="month-sec-head warn-head">Needs Attention <span class="warn-count">${pending}</span>${p.completed.length ? `<button type="button" class="warn-ign" data-act="warn-ign" data-ym="${w.ym}" aria-haspopup="true" title="Approved autoships and ignored run-outs -- hover to review or restore">${p.completed.length} completed</button>` : ''}</div>
+    <div class="warn-box">
       ${rows.sort((a, b) => a.date - b.date).map((r) => r.html).join('')}
     </div>`;
   }
@@ -5394,7 +5400,11 @@
       const year = parseInt(monthEl.querySelector('.msub')?.textContent.trim(), 10) || 0;
       const mIdx = MONTH_NAMES.indexOf(name);
       const isPast = year < curYear || (year === curYear && mIdx < curMonth);
-      const isEmpty = monthEl.querySelector('.month-list').children.length === 0;
+      // Empty = no real orders. The list also holds .month-aux blocks (Needs
+      // Attention panel, section headers, previews) that don't count -- the
+      // panel in particular exists, hidden, in every month, so counting
+      // children let every empty PAST month reappear.
+      const isEmpty = ![...monthEl.querySelector('.month-list').children].some((n) => !n.classList.contains('month-aux'));
       monthEl.style.display = isPast && isEmpty ? 'none' : '';
     });
   }
