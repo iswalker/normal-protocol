@@ -4929,6 +4929,47 @@
       requestAnimationFrame(() => { updateCurrentMonthFromScroll(); scrollSpyTicking = false; });
     }, { passive: true });
   }
+  // Mobile axis lock: #tab-board scrolls both ways (months side by side, each
+  // taller than the screen), so a diagonal swipe drifts on both axes at once.
+  // The first few px of a one-finger drag pick the dominant axis, then the
+  // other axis is pinned to where the gesture started -- for the drag and the
+  // momentum after it, until scrolling goes idle. touch-action can't do this
+  // (it's fixed at touchstart, before the direction is known). Pinned from
+  // the scroll event instead, so the browser's own touch scrolling, momentum
+  // and month snapping all stay native. Programmatic jumps (month strip)
+  // aren't affected: the lock only exists around a touch gesture.
+  {
+    const tb = document.getElementById('tab-board');
+    const mobile = window.matchMedia('(max-width: 680px)');
+    const PICK_PX = 6, IDLE_MS = 120;
+    let axis = null, touching = false, startX = 0, startY = 0, pinLeft = 0, pinTop = 0, idleTimer = 0;
+    const release = () => { axis = null; };
+    tb?.addEventListener('touchstart', (e) => {
+      clearTimeout(idleTimer);
+      if (e.touches.length !== 1 || !mobile.matches) { axis = null; return; }
+      touching = true; axis = null;
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      pinLeft = tb.scrollLeft; pinTop = tb.scrollTop;
+    }, { passive: true });
+    tb?.addEventListener('touchmove', (e) => {
+      if (axis || !touching || e.touches.length !== 1) return;
+      const dx = Math.abs(e.touches[0].clientX - startX), dy = Math.abs(e.touches[0].clientY - startY);
+      if (Math.max(dx, dy) < PICK_PX) return;
+      axis = dx > dy ? 'x' : 'y';
+    }, { passive: true });
+    const end = () => {
+      touching = false;
+      if (axis) { clearTimeout(idleTimer); idleTimer = setTimeout(release, IDLE_MS); }
+    };
+    tb?.addEventListener('touchend', end, { passive: true });
+    tb?.addEventListener('touchcancel', end, { passive: true });
+    tb?.addEventListener('scroll', () => {
+      if (!axis) return;
+      if (axis === 'x' && tb.scrollTop !== pinTop) tb.scrollTop = pinTop;
+      else if (axis === 'y' && tb.scrollLeft !== pinLeft) tb.scrollLeft = pinLeft;
+      if (!touching) { clearTimeout(idleTimer); idleTimer = setTimeout(release, IDLE_MS); }
+    }, { passive: true });
+  }
   // Clicking a month-strip cell scrolls the board horizontally to that month,
   // instead of requiring a manual scroll left/right to find it.
   document.getElementById('month-strip')?.addEventListener('click', (e) => {
