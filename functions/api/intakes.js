@@ -33,7 +33,5 @@ export async function onRequestGet({ env }) {
     Object.fromEntries(cols.map((col, i) => [col, row[i].value ?? null]))
   );
 
-  return Response.json(rows, {
-    headers: { "Access-Control-Allow-Origin": "*" },
-  });
+  return Response.json(rows);
 }

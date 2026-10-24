@@ -11,7 +11,8 @@
     "import-items": "node scripts/import-items-from-json.mjs",
     "verify": "node scripts/verify-board.mjs",
     "verify:orders": "node scripts/verify-orders-integration.mjs",
-    "verify:warnings": "node scripts/verify-warnings.mjs"
+    "verify:warnings": "node scripts/verify-warnings.mjs",
+    "verify:access": "node scripts/verify-access-middleware.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0",

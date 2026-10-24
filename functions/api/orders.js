@@ -134,9 +134,7 @@ export async function onRequestGet({ env }) {
       autoship_next_date: it.autoship_next_date || null,
       autoship_approved: it.autoship_approved || null,
     }));
-    return Response.json({ months, orders, items }, {
-      headers: { "Access-Control-Allow-Origin": "*" },
-    });
+    return Response.json({ months, orders, items });
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
   }

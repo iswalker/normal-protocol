@@ -93,7 +93,6 @@ export async function onRequestGet({ env }) {
     const row = results[0].response.result.rows[0] || [];
     return Response.json(
       { pinnedMerchants: parseList(row[0]), dismissedWarnings: parseList(row[1]) },
-      { headers: { "Access-Control-Allow-Origin": "*" } },
     );
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
@@ -115,7 +114,7 @@ export async function onRequestPut({ request, env }) {
       ),
     ]);
     const updated_at = await touchSyncMeta(env);
-    return Response.json({ ok: true, updated_at }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    return Response.json({ ok: true, updated_at });
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
   }
@@ -173,7 +172,7 @@ export async function onRequestPost({ request, env }) {
       if (Array.isArray(v)) pinnedMerchants = v.filter((s) => typeof s === "string");
     } catch { /* shouldn't happen -- the column only ever holds what these statements wrote */ }
     const updated_at = await touchSyncMeta(env);
-    return Response.json({ ok: true, pinnedMerchants, updated_at }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    return Response.json({ ok: true, pinnedMerchants, updated_at });
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
   }
@@ -205,7 +204,7 @@ async function mutateDismissed(env, action, key) {
     const results = await pipeline(env, [SEED, mutate, exec("SELECT dismissed_warnings FROM board_settings WHERE id = 1")]);
     const dismissedWarnings = parseList(results[2].response.result.rows[0]?.[0]);
     const updated_at = await touchSyncMeta(env);
-    return Response.json({ ok: true, dismissedWarnings, updated_at }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    return Response.json({ ok: true, dismissedWarnings, updated_at });
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
   }

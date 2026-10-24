@@ -3081,13 +3081,46 @@
   let SPENT_BY_MONTH = {}; // month name -> $ amount (set by YNAB sync)
   let PROJ_MAP = {};    // lowercased-name -> { daysLeft, runOut } after all board orders
 
+  // ── sign-in (Cloudflare Access) ─────────────────────────────────────────────
+  // The site sits behind Cloudflare Access. When the sign-in lapses, a fetch to
+  // /api/* is redirected to Access's login page on another origin, which the
+  // browser reports as a bare network TypeError -- indistinguishable here from
+  // a dead server. Both read paths below treat it as "sign in again": a page
+  // load simply reloads (a navigation follows the redirect to the login page),
+  // and a failed save shows the banner instead, since a reload would throw
+  // away the edits that just failed to save.
+  const IS_LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  function reloadToSignIn() {
+    if (IS_LOCAL) return false; // no Access in front of the dev server
+    try {
+      const last = Number(sessionStorage.getItem('np_signin_reload') || 0);
+      if (Date.now() - last < 60000) return false; // already tried a moment ago -- don't loop
+      sessionStorage.setItem('np_signin_reload', String(Date.now()));
+    } catch { /* storage blocked: still worth one reload */ }
+    location.reload();
+    return true;
+  }
+  function showSaveFailedBanner() {
+    const banner = document.getElementById('sync-banner');
+    if (!banner) return;
+    const msg = banner.querySelector('.sync-banner-msg');
+    if (msg) msg.textContent = 'Couldn\'t save — you may be offline or your sign-in expired. Refresh to sign in again (changes since then weren\'t saved).';
+    banner.style.display = 'flex';
+  }
+
   // ── data layer: load the board from /api/orders (Turso) ──
+  // Set when the board couldn't be loaded, so init() stops there: rendering an
+  // empty board afterwards would wipe the error message load() just put up.
+  let loadFailed = false;
   async function load() {
+    loadFailed = false;
     try {
       const res = await fetch('/api/orders');
       if (!res.ok) throw new Error('HTTP ' + res.status);
       fromApi(await res.json());
     } catch (e) {
+      loadFailed = true;
+      if (e instanceof TypeError && reloadToSignIn()) return;
       if (e instanceof TypeError) {
         // Network error: server not running. Don't corrupt the visible state
         // with the seed — just show a clear message and leave the board empty.
@@ -5613,6 +5646,8 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
     } catch (e) {
       console.error('Board: save to /api/orders failed —', e.message);
+      // A lapsed sign-in (or being offline) shows up as a bare TypeError -- say so
+      if (e instanceof TypeError && !IS_LOCAL) showSaveFailedBanner();
     }
   }
   function persistSoon() {
@@ -8014,6 +8049,7 @@
       // them in parallel rather than making the pinned chips wait behind
       // the (much larger) board load.
       await Promise.all([load(), loadPinnedMerchants()]);
+      if (loadFailed) return; // leave the "could not load" message on screen
       // Promote any ghosts whose source is already in an ordered shipment (from DB reload)
       cleanupAndPromote();
       render();

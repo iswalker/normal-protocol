@@ -23,7 +23,5 @@ export async function onRequestGet({ env }) {
   const result = data.results[0].response.result;
   const names = result.rows.map((row) => row[0].value);
 
-  return Response.json(names, {
-    headers: { "Access-Control-Allow-Origin": "*" },
-  });
+  return Response.json(names);
 }

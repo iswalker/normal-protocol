@@ -829,6 +829,46 @@ try {
   check('mobile: Approve button within viewport width', mBox && mBox.x >= 0 && mBox.x + mBox.width <= 390, JSON.stringify(mBox));
   check('mobile: no horizontal overflow from the panel', await m.page.evaluate(() => document.getElementById('tab-board').scrollWidth <= document.getElementById('tab-board').clientWidth + 1));
   await m.ctx.close();
+
+  // ── a lapsed Cloudflare Access sign-in must not look like "server down" ──
+  // (localhost has no Access in front, so use a fake non-local hostname mapped to this server)
+  const b2 = await chromium.launch({ args: ['--host-resolver-rules=MAP np.test 127.0.0.1'] });
+  try {
+    const host = `http://np.test:${server.address().port}`;
+    // (1) page load while /api/orders is unreachable -- what a lapsed sign-in looks like to fetch(): ONE reload (to reach the login page), no loop
+    const c1 = await b2.newContext({ viewport: { width: 1400, height: 900 } });
+    const p1 = await c1.newPage();
+    let gets = 0;
+    await p1.route('**/api/orders', (r) => { if (r.request().method() === 'GET') { gets++; return r.abort(); } return r.continue(); });
+    await p1.goto(host, { waitUntil: 'load' });
+    await p1.waitForFunction(() => /Could not reach the board API/.test(document.getElementById('board')?.textContent || ''), null, { timeout: 15000 });
+    check('lapsed sign-in on page load: reloads ONCE to reach the login page, then stops (no reload loop)', gets === 2, String(gets));
+    await c1.close();
+    // (2) a save that fails (sign-in lapsed mid-session) says so instead of failing silently -- and does not reload away the edit
+    const c2 = await b2.newContext({ viewport: { width: 1400, height: 900 } });
+    const p2 = await c2.newPage();
+    await p2.route('**/api/orders', (r) => (r.request().method() === 'PUT' ? r.abort() : r.continue()));
+    await p2.goto(host, { waitUntil: 'load' });
+    await p2.waitForSelector('#tab-board #board .shipment', { state: 'attached', timeout: 15000 });
+    await p2.evaluate(() => document.querySelector('.shipment:not(.is-locked) .card:not(.card--ghost):not(.card--divider) .incl-toggle:not([disabled])').click());
+    await p2.waitForFunction(() => getComputedStyle(document.getElementById('sync-banner')).display !== 'none', null, { timeout: 10000 });
+    const msg = await p2.locator('#sync-banner .sync-banner-msg').textContent();
+    check('a failed save shows a "sign-in expired / offline" banner with a Refresh button', /sign-in expired/.test(msg) && (await p2.locator('#sync-banner-refresh').isVisible()), msg);
+    check('…and does not reload the page out from under the unsaved edit', await p2.evaluate(() => !!document.querySelector('.shipment .card')));
+    await c2.close();
+    // (3) on localhost nothing changes: the dev-server message stays, and there's no reload
+    const c3 = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const p3 = await c3.newPage();
+    let localGets = 0;
+    await p3.route('**/api/orders', (r) => { if (r.request().method() === 'GET') { localGets++; return r.abort(); } return r.continue(); });
+    await p3.goto(base, { waitUntil: 'load' });
+    await p3.waitForFunction(() => /dev server running/.test(document.getElementById('board')?.textContent || ''), null, { timeout: 15000 });
+    await p3.waitForTimeout(500);
+    check('on localhost an unreachable API still shows the dev-server message, with no reload', localGets === 1, String(localGets));
+    await c3.close();
+  } finally {
+    await b2.close();
+  }
 } catch (e) {
   checks.push({ name: 'test run completed', ok: false, detail: String(e && e.stack || e) });
 } finally {
