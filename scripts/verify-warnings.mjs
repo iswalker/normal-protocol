@@ -499,6 +499,32 @@ try {
     const q = (sel) => { const e = document.querySelector('.month[data-id="' + id + '"] ' + sel); const c = getComputedStyle(e); return [c.fontSize, c.fontWeight, c.color, c.textTransform].join('|'); };
     return q('.month-list > .month-warn-head') === q('.month-list > .month-in-head');
   }, M0.month + '_' + M0.year));
+  // ── search / filters apply to the Needs Attention rows too ──
+  const q = page.locator('#global-search-input');
+  const rowTexts = async () => (await panel(page).locator('.warn-row').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
+  const nameList = async () => (await rowNames(page));
+  const allRows = (await nameList()).length;
+  await q.fill('alpha'); await page.waitForTimeout(300);
+  const aRows = await rowTexts();
+  check('search: Needs Attention shows only rows with a partial match (item OR order name)', aRows.length > 0 && aRows.length < allRows && aRows.every((x) => x.toLowerCase().includes('alpha')), aRows.join(' | '));
+  check('search: a matching item is kept, and so are items in a matching order', (await nameList()).includes('Alpha') && (await nameList()).includes('Stale Approval'));
+  check('search: run-out rows with no match are gone', !(await nameList()).includes('Runner') && !(await nameList()).includes('Late'));
+  await q.fill('runn'); await page.waitForTimeout(300);
+  check('search: a partial match also finds run-out rows (by item name)', (await nameList()).includes('Runner') && (await nameList()).every((n) => /runn/i.test(n)), (await nameList()).join(', '));
+  await q.fill('zzqx'); await page.waitForTimeout(300);
+  check('search: with no match the whole Needs Attention block is gone', (await panel(page).count()) === 0 && (await panelHead(page).count()) === 0);
+  await q.fill(''); await page.waitForTimeout(300);
+  check('clearing the search brings every row back', (await nameList()).length === allRows);
+  await page.locator('#inv-autoship-btn').click(); await page.waitForTimeout(300);
+  const autoNames = await nameList();
+  check('Autoship filter: only rows with a saved autoship link (no run-outs)', autoNames.length > 0 && autoNames.includes('Alpha') && !autoNames.includes('Runner') && !autoNames.includes('Stale Approval'), autoNames.join(', '));
+  await page.locator('#inv-autoship-btn').click(); await page.waitForTimeout(300);
+  await page.locator('#inv-preempt-btn').click(); await page.waitForTimeout(300);
+  const preNamesRows = await nameList();
+  check('Preemptive filter: only rows of preemptive orders (no run-outs)', preNamesRows.length > 0 && !preNamesRows.includes('Runner') && !preNamesRows.includes('Alpha') && preNamesRows.includes('Card Pre'), preNamesRows.join(', '));
+  await page.locator('#inv-preempt-btn').click(); await page.waitForTimeout(300);
+  check('turning the filters off restores every row', (await nameList()).length === allRows);
+
   check('panel has no warning icon', (await panelHead(page).locator('svg').count()) === 0);
   const boxBg = await panel(page).evaluate((e) => getComputedStyle(e).backgroundColor);
   const shipBg = await page.evaluate(() => getComputedStyle(document.querySelector('.shipment[data-id="o_norm"]')).backgroundColor);

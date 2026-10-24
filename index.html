@@ -4206,7 +4206,7 @@
         addAutoship({
           kind: 'card', id: cardEl.dataset.id, name: c.name, date: SB.parseDate(c.autoshipNextDate),
           where: shipEl ? (STATE.shipmentData[shipEl.dataset.id]?.name || '') : '', homeMi, link: c.autoshipLink || '',
-          approved: isAutoshipApproved(c), runOut: cardRunOut(c),
+          approved: isAutoshipApproved(c), runOut: cardRunOut(c), preemptive: shipEl ? isShipPreemptive(shipEl) : false,
         });
       });
       monthEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
@@ -4215,7 +4215,7 @@
         const cards = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
           .map((el) => STATE.cardData[el.dataset.id]).filter((c) => c && c.name !== '__divider__');
         if (cards.length && cards.every((c) => c.ghostOf)) return; // only holds projections
-        addAutoship({ kind: 'ship', id: shipEl.dataset.id, name: sd.name || 'Order', date: SB.parseDate(sd.autoshipNextDate), where: '', homeMi, link: sd.autoshipLink || '', approved: isAutoshipApproved(sd) });
+        addAutoship({ kind: 'ship', id: shipEl.dataset.id, name: sd.name || 'Order', date: SB.parseDate(sd.autoshipNextDate), where: '', homeMi, link: sd.autoshipLink || '', approved: isAutoshipApproved(sd), preemptive: isShipPreemptive(shipEl) });
       });
     });
 
@@ -4235,6 +4235,7 @@
         first.homeMis.push(...r.homeMis);
         if (!first.link) first.link = r.link;
         if (!first.runOut) first.runOut = r.runOut;
+        first.preemptive = first.preemptive || r.preemptive;
         first.approved = first.approved && r.approved; // done only once every copy is
       });
       // Approved ones aren't to-do any more -- they're "completed" (still the
@@ -4361,10 +4362,36 @@
     return { head: 'Needs Attention' + chip, box: rows.sort((a, b) => a.date - b.date).map((r) => r.html).join('') };
   }
 
+  // Does a Needs Attention row survive the board's active search/filter? Same
+  // rules the orders follow: a text search needs a PARTIAL match on the item or
+  // order name (an item inside a matching merchant's order counts too); the
+  // Autoship filter keeps rows with a saved autoship link; Preemptive keeps rows
+  // of preemptive orders; a pinned merchant keeps only that merchant's rows.
+  // Run-out rows aren't autoship/merchant things, so those modes hide them.
+  function warnRowVisible(kind, name, where, link, preemptive) {
+    const isRunout = kind === 'runout';
+    const merchant = (kind === 'ship' ? name : where) || '';
+    if (globalPreemptiveOnly) return !isRunout && !!preemptive;
+    if (globalAutoshipOnly) return !isRunout && !!link;
+    const pm = globalPinnedMerchant.toLowerCase();
+    if (pm && (isRunout || merchant.toLowerCase() !== pm)) return false;
+    const lq = globalSearchQuery.trim().toLowerCase();
+    if (lq && !(String(name || '').toLowerCase().includes(lq) || (where || '').toLowerCase().includes(lq))) return false;
+    return true;
+  }
+
   function renderWarnings() {
     const monthEls = [...board.querySelectorAll('.month')];
     const wins = warnMonthWindows(monthEls);
     const per = computeWarnings(monthEls, wins);
+    per.forEach((p) => {
+      if (!p) return;
+      p.autoship = p.autoship.filter((r) => warnRowVisible(r.kind, r.name, r.where, r.link, r.preemptive));
+      p.runout = p.runout.filter((r) => warnRowVisible('runout', r.name));
+      p.completed = p.completed.filter((i) => (i.kind === 'approved'
+        ? warnRowVisible(i.row.kind, i.row.name, i.row.where, i.row.link, i.row.preemptive)
+        : warnRowVisible('runout', i.name)));
+    });
     const monthNames = monthEls.map((el) => el.querySelector('.mname')?.textContent.trim() || '');
     warnCompletedByYm = {};
     warnMonthNames = monthNames;
@@ -6636,6 +6663,7 @@
     // viewport silently lands on a different month than the one the user
     // was just looking at.
     const anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
+    renderWarnings(); // the Needs Attention rows follow the same filter (before months decide whether they have content)
     board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
     renderMonthSections();
     // A pinned merchant alone no longer shows the × -- tapping the active
@@ -6839,7 +6867,8 @@
     // see shipMatches above) still counts as "has content" here, same as it
     // does everywhere else. Dividers are never real content.
     const anyVisible = [...list.children].some((node) =>
-      !node.classList.contains('card--divider') && !node.classList.contains('search-hide') && !node.classList.contains('month-aux'));
+      !node.classList.contains('card--divider') && !node.classList.contains('search-hide')
+      && (!node.classList.contains('month-aux') || node.classList.contains('month-warn'))); // matching Needs Attention rows count as content
     monthEl.classList.toggle('search-hide', filterActive && !anyVisible);
     recalcTotalsFor(monthEl);
   }
