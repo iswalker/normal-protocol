@@ -62,6 +62,8 @@ const ORDERS_BODY = {
     // a preemptive order in the month AFTER M1 (so M1 gets a "from next month" preview group), and a completed one in M1
     { order_id: 'o_pre2', month: M2.month, year: M2.year, merchant: 'Pre Two Co', position: 9, status: 'Staged', notes: null, autoship_next_date: iso(now) },
     { order_id: 'o_lock1', month: M1.month, year: M1.year, merchant: 'Locked Nov', position: 9, status: 'Ordered', notes: null },
+    // every item an approved autoship -> shows the "Approved" status (its date is mid-M1, so it isn't preemptive)
+    { order_id: 'o_appr', month: M1.month, year: M1.year, merchant: 'Approved Co', position: 10, status: 'Staged', notes: null },
     { order_id: 'o_ghost', month: M0.month, year: M0.year, merchant: 'Ghost Shop', position: 4, status: 'Staged', notes: null },
   ],
   items: [
@@ -85,6 +87,7 @@ const ORDERS_BODY = {
     card('oi_nextmid', 'o_a', M0, 1, 7, 'Next Mid', { autoship_next_date: D_NEXT_MID }),
     card('oi_pre2', 'o_pre2', M2, 9, 1, 'Pre2 Item'),
     card('oi_lock1', 'o_lock1', M1, 9, 1, 'Locked Nov Item'),
+    card('oi_appr', 'o_appr', M1, 10, 1, 'Appr Item', { autoship_next_date: D_NEXT_MID, autoship_approved: D_NEXT_MID }),
     card('oi_covered', null, M0, 5, 1, 'Covered', {}),
   ],
 };
@@ -311,13 +314,63 @@ try {
     if (c.contains('month-mirror-head')) return 'mirror-head';
     if (c.contains('month-preempt')) return 'mirrors';
     if (c.contains('month-done-head')) return 'done-head';
-    if (c.contains('shipment')) return c.contains('is-locked') ? 'locked' : (n.querySelector(':scope > .ship-head > .ship-preempt.is-on') ? 'pre' : 'std');
+    if (c.contains('month-appr-head')) return 'appr-head';
+    if (c.contains('shipment')) return c.contains('is-locked') ? 'locked' : c.contains('is-approved') ? 'approved' : (n.querySelector(':scope > .ship-head > .ship-preempt.is-on') ? 'pre' : 'std');
     return 'other';
   }), m1id);
-  check('month layout: Preemptive / Needs Attention / In-Month / Preemptive-from-next / Completed', /^pre-head( pre)+ warn-head warn in-head( (std|other))+ mirror-head mirrors done-head( locked)+$/.test(seq.join(' ')), seq.join(' '));
+  check('month layout: Preemptive / Needs Attention / In-Month / Preemptive-from-next / Completed', /^pre-head( pre)+ warn-head warn in-head( (std|other))+ mirror-head mirrors appr-head( approved)+ done-head( locked)+$/.test(seq.join(' ')), seq.join(' '));
   const heads = await page.evaluate((id) => Object.fromEntries(['pre-head', 'in-head', 'mirror-head', 'done-head'].map((k) => [k, document.querySelector('.month[data-id="' + id + '"] > .month-list > .month-' + k.replace('-head', '') + (k === 'mirror-head' ? '-head' : '-head'))?.textContent])), m1id);
   check('section headers read Preemptive Orders / In-Month Orders / Preemptive Orders · <next month> / Completed Orders', heads['pre-head'] === 'Preemptive Orders' && heads['in-head'] === 'In-Month Orders' && heads['mirror-head'] === 'Preemptive Orders · ' + M2.month && heads['done-head'] === 'Completed Orders', JSON.stringify(heads));
   check('the panel really is below the Preemptive group and above In-Month', seq.indexOf('warn') > seq.lastIndexOf('pre') && seq.indexOf('warn') < seq.indexOf('in-head'));
+  // ── the "Approved" status: every item an approved autoship ──
+  const apprSel = '.shipment[data-id="o_appr"]';
+  const apprInfo = () => page.evaluate((sel) => {
+    const sh = document.querySelector(sel), body = sh.querySelector(':scope > .ship-body');
+    return { approved: sh.classList.contains('is-approved'), locked: sh.classList.contains('is-locked'), label: sh.querySelector(':scope > .ship-head > .ship-stage-select').textContent.trim(), bodyHidden: getComputedStyle(body).display === 'none' };
+  }, apprSel);
+  const m1Planned = () => page.locator('.month[data-id="' + m1id + '"] .plannedv').textContent();
+  const a0 = await apprInfo();
+  check('Approved: an order whose items are all approved autoships reads "Approved", collapsed -- and is NOT locked', a0.approved && !a0.locked && a0.label === 'Approved' && a0.bodyHidden, JSON.stringify(a0));
+  check('Approved: it has its own "Approved Orders" header above Completed', (await page.locator('.month[data-id="' + m1id + '"] > .month-list > .month-appr-head').textContent()) === 'Approved Orders');
+  check('Approved: an order with items that are NOT all approved autoships is not Approved', !(await page.evaluate(() => document.querySelector('.shipment[data-id="o_a"]').classList.contains('is-approved'))) && !(await page.evaluate(() => document.querySelector('.shipment[data-id="o_norm"]').classList.contains('is-approved'))));
+  const planned0 = await m1Planned();
+  // revoke one approval -> pulled straight back out to blank
+  await page.evaluate(() => window.SupplementBoard.setAutoshipApproved('card', 'oi_appr', false));
+  await page.waitForTimeout(300);
+  const a1 = await apprInfo();
+  check('Approved: revoking the approval pulls the order back out (status blank, expanded)', !a1.approved && a1.label === 'Status' && !a1.bodyHidden, JSON.stringify(a1));
+  check('Approved: back among the In-Month orders (not in the Approved group)', await page.evaluate(() => { const sh = document.querySelector('.shipment[data-id="o_appr"]'); let n = sh.previousElementSibling; while (n && !n.classList.contains('month-sec-head')) n = n.previousElementSibling; return !!n && n.classList.contains('month-in-head'); }));
+  check('Approved: neither state changes the month\'s Planned figure (it is not placed yet)', (await m1Planned()) === planned0, planned0 + ' vs ' + await m1Planned());
+  // status dropdown: approve the whole order from its Status menu...
+  const stageBtn = (sel) => page.locator(sel + ' > .ship-head > .ship-stage-select');
+  // the Status menu opens on hover (desktop) -- a click on top of that would just close it again
+  const openStatus = async (sel) => { await page.keyboard.press('Escape'); await page.mouse.move(5, 5); await page.waitForTimeout(350); await stageBtn(sel).hover(); await page.waitForSelector('.ship-ctx-menu .ship-ctx-item'); };
+  const menuItems = () => page.evaluate(() => [...document.querySelectorAll('.ship-ctx-menu .ship-ctx-item')].map((e) => ({ t: e.textContent, active: e.classList.contains('ctx-active'), disabled: e.classList.contains('ctx-disabled') })));
+  await openStatus(apprSel);
+  await page.waitForSelector('.ship-ctx-menu .ship-ctx-item');
+  const mi = await menuItems();
+  check('Status menu lists Approved first after clear, before Ordered', mi.map((x) => x.t).join('|') === 'Status (clear)|Approved|Ordered|Entered|Received', mi.map((x) => x.t).join('|'));
+  check('…and "Approved" is enabled (every item has an autoship date)', !mi.find((x) => x.t === 'Approved').disabled);
+  await page.locator('.ship-ctx-menu .ship-ctx-item', { hasText: /^Approved$/ }).click();
+  await page.waitForTimeout(400);
+  check('picking Approved in the Status menu approves every item and the order flips to Approved', (await apprInfo()).approved && (await apprInfo()).label === 'Approved');
+  check('Approved stays "Staged" in storage (derived, never written as a status)', puts[puts.length - 1]?.orders.find((o) => o.order_id === 'o_appr')?.status === 'Staged');
+  // ...and "Status (clear)" while Approved revokes it
+  await openStatus(apprSel);
+  await page.waitForSelector('.ship-ctx-menu .ship-ctx-item');
+  check('while Approved the menu shows Approved as the active status', (await menuItems()).find((x) => x.t === 'Approved').active);
+  await page.locator('.ship-ctx-menu .ship-ctx-item', { hasText: /^Status \(clear\)$/ }).click();
+  await page.waitForTimeout(400);
+  check('"Status (clear)" while Approved revokes the approvals (back to blank)', !(await apprInfo()).approved);
+  await page.evaluate(() => window.SupplementBoard.setAutoshipApproved('card', 'oi_appr', true)); // fixture back to Approved
+  await page.waitForTimeout(250);
+  // an order whose items aren't all autoships can't be approved from the menu
+  await openStatus('.shipment[data-id="o_norm"]');
+  await page.waitForSelector('.ship-ctx-menu .ship-ctx-item');
+  check('an order with non-autoship items has "Approved" disabled in its Status menu', (await menuItems()).find((x) => x.t === 'Approved').disabled);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(5, 5); await page.waitForTimeout(300);
+
   // grouping rules: order WITHIN a group sticks; an order dropped in the wrong group snaps back
   const unlockedOrder = () => page.evaluate((id) => [...document.querySelectorAll('.month[data-id="' + id + '"] > .month-list > .shipment:not(.is-locked)')].map((sh) => sh.querySelector('.ship-name').textContent + (sh.querySelector(':scope > .ship-head > .ship-preempt.is-on') ? '*' : '')), m1id);
   const orderBefore = await unlockedOrder();

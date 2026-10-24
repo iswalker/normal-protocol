@@ -1883,6 +1883,11 @@
        commitStageChange), so this never hides an open order's own body. */
     #tab-board .shipment.is-locked .ship-id .scount { cursor: pointer; }
     #tab-board .shipment.is-locked.is-collapsed > .ship-body { display: none; }
+    /* "Approved" (every item an approved autoship): tucked away like a completed
+       order -- header row only until the count pill is clicked -- but NOT
+       locked, so nothing else about the order changes. */
+    #tab-board .shipment.is-approved.is-collapsed > .ship-body { display: none; }
+    #tab-board .shipment.is-approved .ship-id .scount { cursor: pointer; }
 
     /* Small section labels inside a month's list -- Preemptive Orders / In-Month
        Orders / Preemptive Orders · <next month> / Completed Orders -- so it's
@@ -3958,6 +3963,56 @@
     const s = STATE.shipmentData[shipEl.dataset.id];
     return s && typeof s.preemptive === 'boolean' ? s.preemptive : shipAutoPreemptive(shipEl);
   }
+  // ── "Approved" status ──────────────────────────────────────────────────────
+  // Sits before Ordered: an order whose every item (the ones actually being
+  // ordered, qty > 0) is an approved autoship -- and whose own shipment-level
+  // autoship date, if it has one, is approved too -- reads "Approved" and is
+  // tucked away like a completed order. It is DERIVED from the approvals, never
+  // stored (the order stays "Staged" in Turso), so revoking any approval puts
+  // it straight back to blank. Display only: unlike Ordered it does NOT lock
+  // the order, touch Inventory, advance a recurring series, or leave Planned/
+  // Max (nothing has been placed yet).
+  function shipLiveCards(shipEl) {
+    return [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
+      .map((el) => ({ id: el.dataset.id, c: STATE.cardData[el.dataset.id] }))
+      .filter(({ c }) => c && c.name !== '__divider__' && Number(c.qty) > 0);
+  }
+  function shipAllApproved(shipEl) {
+    const s = STATE.shipmentData[shipEl.dataset.id] || {};
+    if (s.stage) return false;
+    const live = shipLiveCards(shipEl);
+    if (!live.length) return false;
+    if (s.autoshipNextDate && !isAutoshipApproved(s)) return false;
+    return live.every(({ c }) => !c.ghostOf && isAutoshipApproved(c));
+  }
+  // Could it be approved wholesale? Every item needs an autoship date to approve.
+  function shipCanApprove(shipEl) {
+    const live = shipLiveCards(shipEl);
+    return live.length > 0 && live.every(({ c }) => !c.ghostOf && !!c.autoshipNextDate);
+  }
+  function shipApprovalTargets(shipEl) {
+    const s = STATE.shipmentData[shipEl.dataset.id] || {};
+    const targets = shipLiveCards(shipEl).map(({ id }) => ({ kind: 'card', id }));
+    if (s.autoshipNextDate) targets.push({ kind: 'ship', id: shipEl.dataset.id });
+    return targets;
+  }
+  // Approve every item in the order, or -- if it's already Approved -- revoke them
+  function toggleShipApproved(shipEl) {
+    if (shipAllApproved(shipEl)) setAutoshipApprovedMany(shipApprovalTargets(shipEl), false);
+    else if (shipCanApprove(shipEl)) setAutoshipApprovedMany(shipApprovalTargets(shipEl), true);
+  }
+  function updateShipApproved(shipEl) {
+    const on = shipAllApproved(shipEl);
+    const stage = (STATE.shipmentData[shipEl.dataset.id] || {}).stage;
+    shipEl.classList.toggle('is-approved', on);
+    // Collapse on ENTERING Approved and expand on leaving it, but leave it alone
+    // otherwise so an order the user expanded stays expanded.
+    if (stage) shipEl._approvedSeen = false;
+    else if (on !== !!shipEl._approvedSeen) { shipEl.classList.toggle('is-collapsed', on); shipEl._approvedSeen = on; }
+    const btn = shipEl.querySelector(':scope > .ship-head > .ship-stage-select');
+    if (btn && !stage) btn.textContent = on ? 'Approved' : 'Status';
+  }
+
   // Does this order contain an Autoship item? Its own autoship date/link counts,
   // and so does any item in it (a recurring copy reads its root's, like the
   // date shown on the card does).
@@ -4041,6 +4096,7 @@
           updateShipAutoship(node);
           updateShipPreempt(node);
           node.classList.toggle('is-autoship', shipHasAutoship(node));
+          updateShipApproved(node);
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
           const cost = updateCard(node);
@@ -4424,7 +4480,8 @@
   //   c) In-Month Orders     -- everything else still open (orders + loose cards)
   //   d) Preemptive Orders · <next month> -- read-only previews of NEXT month's
   //                             preemptive orders, which get placed during this one
-  //   e) Completed Orders    -- Ordered / Entered / Received
+  //   e) Approved Orders     -- every item an approved autoship (display-only status)
+  //   f) Completed Orders    -- Ordered / Entered / Received
   // Everything but the real orders is a .month-aux child (neither .shipment nor
   // .card), so nothing that walks a list's orders ever sees it.
   // renderSectionHeaders adds/removes the labels; layoutMonthLists puts every
@@ -4438,8 +4495,9 @@
       const kids = [...list.children].filter(vis);
       const ships = kids.filter((n) => n.classList.contains('shipment'));
       const done = ships.filter((n) => n.classList.contains('is-locked'));
-      const pre = ships.filter((n) => !n.classList.contains('is-locked') && isShipPreemptive(n));
-      const std = kids.filter((n) => !done.includes(n) && !pre.includes(n)
+      const appr = ships.filter((n) => !n.classList.contains('is-locked') && n.classList.contains('is-approved'));
+      const pre = ships.filter((n) => !n.classList.contains('is-locked') && !appr.includes(n) && isShipPreemptive(n));
+      const std = kids.filter((n) => !done.includes(n) && !pre.includes(n) && !appr.includes(n)
         && (n.classList.contains('shipment') || (n.classList.contains('card') && !n.classList.contains('card--divider'))));
       const ensure = (cls, text, title, show) => {
         let h = list.querySelector(':scope > .' + cls);
@@ -4454,6 +4512,7 @@
       };
       ensure('month-pre-head', 'Preemptive Orders', 'Tracked in this month, but placed in the previous one', pre.length > 0);
       ensure('month-in-head', 'In-Month Orders', 'Orders placed during this month', std.length > 0);
+      ensure('month-appr-head', 'Approved Orders', 'Every item is an approved autoship -- tucked away until it is placed', appr.length > 0);
       ensure('month-done-head', 'Completed Orders', 'Orders marked Ordered / Entered / Received collect here', done.length > 0);
     });
   }
@@ -4466,10 +4525,11 @@
       const aux = (cls) => kids.find((n) => n.classList.contains(cls)) || null;
       const isShip = (n) => n.classList.contains('shipment');
       const locked = kids.filter((n) => isShip(n) && n.classList.contains('is-locked'));
-      const pre = kids.filter((n) => isShip(n) && !n.classList.contains('is-locked') && isShipPreemptive(n));
-      const std = kids.filter((n) => (isShip(n) || n.classList.contains('card')) && !locked.includes(n) && !pre.includes(n));
+      const appr = kids.filter((n) => isShip(n) && !n.classList.contains('is-locked') && n.classList.contains('is-approved'));
+      const pre = kids.filter((n) => isShip(n) && !n.classList.contains('is-locked') && !appr.includes(n) && isShipPreemptive(n));
+      const std = kids.filter((n) => (isShip(n) || n.classList.contains('card')) && !locked.includes(n) && !pre.includes(n) && !appr.includes(n));
       const want = [aux('month-pre-head'), ...pre, aux('month-warn-head'), aux('month-warn'), aux('month-in-head'), ...std,
-        aux('month-mirror-head'), aux('month-preempt'), aux('month-done-head'), ...locked].filter(Boolean);
+        aux('month-mirror-head'), aux('month-preempt'), aux('month-appr-head'), ...appr, aux('month-done-head'), ...locked].filter(Boolean);
       kids.forEach((n) => { if (!want.includes(n)) want.push(n); }); // anything unexpected keeps its place at the end
       if (want.every((n, i) => kids[i] === n)) return;
       want.forEach((n) => list.appendChild(n)); // re-appending in order leaves exactly this sequence
@@ -5631,12 +5691,22 @@
     const menu = document.createElement('div');
     menu.className = 'ship-ctx-menu';
     menu._forBtn = btn; // tags this menu as the hover-openable stage dropdown, see hover handling below
-    ['', 'ordered', 'entered', 'received'].forEach((st) => {
+    // "Approved" is derived (see shipAllApproved): picking it approves every item
+    // in the order (enabled only if each has an autoship date), picking it while
+    // Approved -- or "Status (clear)" -- revokes them; the status follows.
+    const approvedNow = shipAllApproved(shipEl);
+    const canApprove = shipCanApprove(shipEl);
+    ['', 'approved', 'ordered', 'entered', 'received'].forEach((st) => {
       const item = document.createElement('div');
-      item.className = 'ship-ctx-item' + (st === currentStage ? ' ctx-active' : '');
+      const active = st === currentStage || (st === 'approved' && approvedNow);
+      const disabled = st === 'approved' && !approvedNow && !canApprove;
+      item.className = 'ship-ctx-item' + (active ? ' ctx-active' : '') + (disabled ? ' ctx-disabled' : '');
       item.textContent = st ? st[0].toUpperCase() + st.slice(1) : 'Status (clear)';
+      if (disabled) item.title = 'Every item needs an Autoship date to approve the whole order';
       item.addEventListener('click', () => {
+        if (disabled) return;
         closeCtxMenu();
+        if (st === 'approved' || (st === '' && approvedNow && !currentStage)) { toggleShipApproved(shipEl); return; }
         const targetBtn = st
           ? shipEl.querySelector(`.stage-btn[data-stage="${st}"]`)
           : shipEl.querySelector('.stage-btn.active');
@@ -6327,7 +6397,7 @@
     }
     if (a === 'toggle-ship-collapse') {
       const shipEl = act.closest('.shipment');
-      if (!shipEl || !shipEl.classList.contains('is-locked')) return;
+      if (!shipEl || !(shipEl.classList.contains('is-locked') || shipEl.classList.contains('is-approved'))) return;
       shipEl.classList.toggle('is-collapsed');
       return;
     }
