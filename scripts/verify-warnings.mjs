@@ -239,21 +239,48 @@ try {
   check('filter: turning filters off restores the board', (await visibleShips()).includes('Normal Co'));
 
   // ── preemptive mirrors in the PREVIOUS month ──
-  const m0list = page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-list`);
-  const mirrorNames = () => m0list.locator('.month-preempt .pre-name').allTextContents();
+  const m0list = page.locator(`.month[data-id="${M0.month}_${M0.year}"] > .month-list`);
+  const mirrorNames = () => m0list.locator('.month-preempt > .pre-host').evaluateAll((els) => els.map((e) => e.dataset.preName));
   const mnames = await mirrorNames();
   check('mirror: a preemptive next-month order appears in this month', mnames.includes('Pre Auto Co') && mnames.includes('Dup Co') && mnames.includes('Item Date Co'), mnames.join(', '));
   check('mirror: an ordinary next-month order does not', !mnames.includes('Normal Co'));
   check('mirror: sits at the bottom of the open orders (just above the completed ones)', await m0list.evaluate((l) => { const w = l.querySelector(':scope > .month-preempt'); return !!w && w.nextElementSibling && w.nextElementSibling.classList.contains('is-locked') && !w.previousElementSibling.classList.contains('is-locked'); }));
-  check('mirror: greyed read-only block, not a shipment/card', await m0list.evaluate((l) => { const m = l.querySelector('.pre-ship'); return !m.classList.contains('shipment') && !m.querySelector('.card, [data-id], input, [contenteditable]'); }));
+  check('mirror: invisible to the board (document-wide .shipment/.card/data-id queries never see it)', await page.evaluate(() => {
+    const host = document.querySelector('.pre-host'); const root = host.shadowRoot;
+    return !!root.querySelector('.shipment') && !host.querySelector('.shipment, .card') && ![...document.querySelectorAll('.shipment, .card')].some((e) => e.closest('.month-preempt'));
+  }));
+  // the FULL order structure: same header + every item with its fields, greyed like a completed order but expanded
+  const full = await page.evaluate(() => {
+    const host = [...document.querySelectorAll('.pre-host')].find((h) => h.dataset.preName === 'Pre Auto Co');
+    const sh = host.shadowRoot.querySelector('.shipment');
+    const real = [...document.querySelectorAll('.shipment')].find((e) => e.querySelector('.ship-name')?.textContent === 'Pre Auto Co');
+    const body = sh.querySelector('.ship-body');
+    const names = (el) => [...el.querySelectorAll('.card-name')].map((n) => n.textContent.trim());
+    const vals = (el) => [...el.querySelectorAll('.ship-body input')].map((i) => i.value);
+    return {
+      greyed: sh.classList.contains('is-locked'), expanded: !sh.classList.contains('is-collapsed') && body.getBoundingClientRect().height > 20,
+      hasHead: !!sh.querySelector('.ship-head .ship-name') && !!sh.querySelector('.ship-total'), preemptBtn: !!sh.querySelector('.ship-preempt.is-on'),
+      sameItems: JSON.stringify(names(sh)) === JSON.stringify(names(real)) && names(sh).length > 0,
+      sameFields: JSON.stringify(vals(sh)) === JSON.stringify(vals(real)) && vals(sh).length > 0,
+      fields: !!sh.querySelector('.card .proj') && !!sh.querySelector('.card .order') && !!sh.querySelector('.card .card-foot'),
+      readonly: [...sh.querySelectorAll('input')].every((i) => i.disabled) && sh.querySelectorAll('[contenteditable]').length === 0,
+      sameTotal: sh.querySelector('.ship-total .amt').textContent === real.querySelector('.ship-total .amt').textContent,
+    };
+  });
+  if (process.env.SHOT_DIR) {
+    await page.evaluate(() => document.querySelector('.month-preempt').scrollIntoView({ block: 'center' }));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: join(process.env.SHOT_DIR, 'mirror-full.png') });
+  }
+  check('mirror: shows the real order\'s full structure (header, every item, every field), expanded and greyed', Object.values(full).every(Boolean), JSON.stringify(full));
   const plannedBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent();
   const countBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .mcount`).textContent();
   await pbtn('o_norm').click(); await page.waitForTimeout(700); // flag one more order -> one more mirror
   check('mirror: flagging another order adds its mirror', (await mirrorNames()).includes('Normal Co'));
   check('mirror: does not change the month metrics or count', (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent()) === plannedBefore && (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .mcount`).textContent()) === countBefore);
   const savedOrders = puts[puts.length - 1].orders.map((o) => o.order_id);
-  check('mirror: never saved (no duplicate or extra orders)', new Set(savedOrders).size === savedOrders.length && savedOrders.length === (await page.locator('.shipment').count()), `${savedOrders.length} vs ${await page.locator('.shipment').count()}`);
-  await page.locator('.pre-ship', { hasText: 'Normal Co' }).click();
+  check('mirror: never saved (no duplicate or extra orders)', new Set(savedOrders).size === savedOrders.length && savedOrders.length === (await page.evaluate(() => document.querySelectorAll('.shipment').length)), `${savedOrders.length}`);
+  await page.locator('.pre-host[data-pre-name="Normal Co"]').click();
   await page.waitForTimeout(250);
   check('mirror: clicking it jumps to the real order', await page.locator('.shipment[data-id="o_norm"]').evaluate((e) => e.classList.contains('warn-flash')));
   await pbtn('o_norm').click(); await page.waitForTimeout(700); // back to off
@@ -285,7 +312,7 @@ try {
   check('Autoship and Runs-out rows are interlaced, not grouped', names.indexOf('Runner') < names.indexOf('Later Placement') && names.indexOf('Runner') > names.indexOf('Overdue One'), names.join(', '));
   check('panel has no warning icon', (await panel(page).locator('.warn-head svg').count()) === 0);
   const boxBg = await panel(page).locator('.warn-box').evaluate((e) => getComputedStyle(e).backgroundColor);
-  const shipBg = await page.locator('.shipment').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+  const shipBg = await page.evaluate(() => getComputedStyle(document.querySelector('.shipment')).backgroundColor);
   check('panel background matches a shipment', boxBg === shipBg, `${boxBg} vs ${shipBg}`);
   check('one-month rule: a 3rd-of-next-month autoship shows in the CURRENT month', names.includes('Next Early'));
   check('one-month rule: …and NOT again in the next month', !m1Panel.includes('Next Early'), m1Panel.join(', '));
@@ -314,23 +341,54 @@ try {
   check('clicking the date opens the Autoship link', popup && popup.url().startsWith('https://example.com/alpha'), popup ? popup.url() : 'no popup');
   await popup?.close();
 
-  // ── run-out Ignore / restore ──
+  // ── "completed" chip: ignored run-outs + approved autoships, restorable ──
+  const chip = panel(page).locator('.warn-head .warn-ign');
+  const popRow = (n) => page.locator('.warn-ign-pop .wip-row', { has: page.locator('.wip-name', { hasText: new RegExp(`^${n}$`) }) });
+  const completedN = async () => parseInt(await chip.textContent(), 10);
+  const n0 = await completedN();
+  check('chip counts the already-approved autoships as completed', n0 >= 1, await chip.textContent());
+  await chip.hover();
+  await page.waitForSelector('.warn-ign-pop .wip-row', { state: 'visible' });
+  const apprDetail = (await popRow('Approved One').locator('.wip-detail').textContent()).trim();
+  check('completed list shows an approved autoship, worded like the panel rows', /^autoships \d+\/\d+ · \S/.test(apprDetail), apprDetail);
+  await page.mouse.move(5, 5); await page.waitForTimeout(400);
+
   await rowFor(page, 'Runner').locator('[data-act="warn-ignore"]').click();
   await page.waitForTimeout(150);
   check('Ignore removes the run-out row', !(await rowNames(page)).includes('Runner'));
   check('Ignore posts a dismiss with a month-scoped key', posts.some((b) => b.action === 'dismiss' && b.key === `runout|runner|${ym0}`), JSON.stringify(posts));
-  const chip = panel(page).locator('.warn-head .warn-ign');
-  check('"n ignored" chip sits in the panel header (top right), not at the bottom', /1 ignored/.test(await chip.textContent()) && await chip.evaluate((c) => { const h = c.closest('.warn-head').getBoundingClientRect(), r = c.getBoundingClientRect(); return r.right > h.right - 40 && r.top < h.top + 30; }));
+  check('"n completed" chip sits in the panel header (top right), not at the bottom', (await completedN()) === n0 + 1 && /completed$/.test((await chip.textContent()).trim()) && await chip.evaluate((c) => { const h = c.closest('.warn-head').getBoundingClientRect(), r = c.getBoundingClientRect(); return r.right > h.right - 40 && r.top < h.top + 30; }));
   check('no restore link at the bottom of the list any more', (await panel(page).locator('.warn-foot, .warn-restore').count()) === 0);
   await chip.hover();
   await page.waitForSelector('.warn-ign-pop .wip-row', { state: 'visible' });
-  check('hovering the chip previews the ignored item (name + run-out date)', /Runner/.test(await page.locator('.warn-ign-pop').textContent()) && /runs out \d+\/\d+/.test(await page.locator('.warn-ign-pop .wip-detail').first().textContent()));
-  await page.locator('.warn-ign-pop .wip-btn[data-wip="one"]').first().click();
+  const runDetail = (await popRow('Runner').locator('.wip-detail').textContent()).trim();
+  check('hovering the chip previews the ignored run-out (name + run-out date)', /^runs out \d+\/\d+$/.test(runDetail), runDetail);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: join(process.env.SHOT_DIR, 'ign-pop.png'), clip: { x: 0, y: 0, width: 900, height: 560 } });
+  // layout: one line per item, Restore all in the header
+  const lay = await page.evaluate(() => {
+    const pop = document.querySelector('.warn-ign-pop').getBoundingClientRect();
+    const rows = [...document.querySelectorAll('.warn-ign-pop .wip-row')];
+    const oneLine = rows.every((r) => { const n = r.querySelector('.wip-name').getBoundingClientRect(), d = r.querySelector('.wip-detail').getBoundingClientRect(); return Math.abs(n.top - d.top) < 6 && r.getBoundingClientRect().height < 44; });
+    const all = document.querySelector('.warn-ign-pop .wip-all');
+    const a = all && all.getBoundingClientRect(), first = rows[0].getBoundingClientRect();
+    return { oneLine, allTopRight: !!a && a.bottom <= first.top + 2 && a.right > pop.right - 40 };
+  });
+  check('each completed item is a single line', lay.oneLine, JSON.stringify(lay));
+  check('Restore all sits in the top-right of the popover', lay.allTopRight, JSON.stringify(lay));
+  await popRow('Runner').locator('[data-wip="one"]').click();
   await page.waitForTimeout(250);
-  check('the popover closes itself once nothing is left ignored', !(await page.locator('.warn-ign-pop').isVisible()));
-  check('Restore brings the row back', (await rowNames(page)).includes('Runner'));
+  check('Restore brings the run-out row back', (await rowNames(page)).includes('Runner'));
   check('Restore posts an undismiss', posts.some((b) => b.action === 'undismiss' && b.key === `runout|runner|${ym0}`));
-  // …and a reload keeps an ignore (server-side state), but only for THIS month's key
+  check('the popover stays open for what is still completed', await page.locator('.warn-ign-pop').isVisible() && (await popRow('Approved One').count()) === 1);
+  // restoring an APPROVED autoship un-approves it (back to a to-do row)
+  await popRow('Approved One').locator('[data-wip="one"]').click();
+  await page.waitForTimeout(500);
+  check('restoring an approved autoship puts its row back on the list', (await rowNames(page)).includes('Approved One'));
+  check('…and un-approves it in storage', !puts[puts.length - 1]?.items.find((i) => i.order_item_id === 'oi_approved')?.autoship_approved);
+  await rowFor(page, 'Approved One').locator('[data-act="warn-approve"]').click(); // back to the fixture's state
+  await page.waitForTimeout(400);
+  await page.mouse.move(5, 5); await page.waitForTimeout(400);
+  // …and an ignore survives a reload (server-side state), but only for THIS month's key
   await rowFor(page, 'Runner').locator('[data-act="warn-ignore"]').click();
   await page.waitForTimeout(150);
   await page.reload();
@@ -339,26 +397,29 @@ try {
   await page.waitForTimeout(500);
   check('ignore survives a reload', !(await rowNames(page)).includes('Runner'));
   await panel(page).locator('.warn-ign').hover(); // leave the mock clean
-  await page.locator('.warn-ign-pop .wip-btn[data-wip="one"]').first().click();
+  await popRow('Runner').locator('[data-wip="one"]').click();
   await page.waitForTimeout(250);
   await page.mouse.move(5, 5); await page.waitForTimeout(400);
 
-  // ── several ignored: per-item restore and Restore all ──
+  // ── several completed: restore one, then Restore all ──
   for (const n of ['Runner', 'Late']) { await rowFor(page, n).locator('[data-act="warn-ignore"]').click(); await page.waitForTimeout(120); }
+  await page.evaluate(() => window.SupplementBoard.setAutoshipApproved('card', 'oi_approved', true)); // reload dropped the fixture approval
+  await page.waitForTimeout(200);
   await panel(page).locator('.warn-ign').hover();
   await page.waitForSelector('.warn-ign-pop .wip-row', { state: 'visible' });
   const popNames = await page.locator('.warn-ign-pop .wip-name').allTextContents();
-  if (process.env.SHOT_DIR) await page.screenshot({ path: join(process.env.SHOT_DIR, 'ign-pop.png'), clip: { x: 0, y: 0, width: 900, height: 560 } });
-  check('popover lists every ignored item', popNames.includes('Runner') && popNames.includes('Late'), popNames.join(', '));
-  await page.locator('.warn-ign-pop .wip-row', { hasText: 'Late' }).locator('.wip-btn').click();
+  check('popover lists every completed item (ignored + approved)', ['Runner', 'Late', 'Approved One'].every((n) => popNames.includes(n)), popNames.join(', '));
+  await popRow('Late').locator('[data-wip="one"]').click();
   await page.waitForTimeout(250);
-  check('restoring one leaves the others ignored (popover stays open for them)', (await rowNames(page)).includes('Late') && !(await rowNames(page)).includes('Runner') && await page.locator('.warn-ign-pop').isVisible());
-  await rowFor(page, 'Late').locator('[data-act="warn-ignore"]').click(); await page.waitForTimeout(150);
+  check('restoring one leaves the others completed (popover stays open for them)', (await rowNames(page)).includes('Late') && !(await rowNames(page)).includes('Runner') && await page.locator('.warn-ign-pop').isVisible());
   await panel(page).locator('.warn-ign').hover();
   await page.waitForSelector('.warn-ign-pop [data-wip="all"]');
   await page.locator('.warn-ign-pop [data-wip="all"]').click();
+  await page.waitForTimeout(500);
+  const afterAll = await rowNames(page);
+  check('Restore all brings every completed item back', ['Runner', 'Late', 'Approved One'].every((n) => afterAll.includes(n)) && (await panel(page).locator('.warn-ign').count()) === 0 && !(await page.locator('.warn-ign-pop').isVisible()), afterAll.join(', '));
+  await rowFor(page, 'Approved One').locator('[data-act="warn-approve"]').click(); // restore the fixture's approval for what follows
   await page.waitForTimeout(300);
-  check('Restore all brings every ignored item back', (await rowNames(page)).includes('Runner') && (await rowNames(page)).includes('Late') && (await panel(page).locator('.warn-ign').count()) === 0);
   await page.mouse.move(5, 5); await page.waitForTimeout(400);
 
   // ── hover the panel's date: same calendar + approve as every other autoship date ──
@@ -497,6 +558,21 @@ try {
   check('with 0 items left the entire panel is hidden', await panel(page).evaluate((e) => e.hidden && e.innerHTML.trim() === ''));
   dismissed.clear(); // the mock server's ignore list, so the mobile pass below starts clean
 
+  // ── Inventory table: editing On Hand re-patches the row; "Lasts For" must stay a day count ──
+  await page.locator('#inv-search-link').click();
+  await page.waitForSelector('#inv-body tr[data-key="runner"]');
+  const lasts = () => page.locator('#inv-body tr[data-key="runner"] .inv-dpb').textContent();
+  check('Lasts For starts as a day count', /^\d+(\.\d)?d$/.test((await lasts()).trim()), await lasts());
+  await page.locator('#inv-body tr[data-key="runner"] .inv-onhand').click();
+  await page.locator('#inv-body tr[data-key="runner"] input').fill('30');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(600);
+  const todayMD = `${now.getMonth() + 1}/${now.getDate()}`;
+  check('after editing On Hand, Lasts For is still a day count (not the reset date)', /^\d+(\.\d)?d$/.test((await lasts()).trim()), await lasts());
+  check('…and Last Reset got the date instead', (await page.locator('#inv-body tr[data-key="runner"] .inv-reset').textContent()).trim() === todayMD);
+  await page.locator('#inv-modal-close').click();
+  await page.waitForTimeout(200);
+
   // ── nothing leaks into past/other structure ──
   check('no JS errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
@@ -512,18 +588,21 @@ try {
   check('mobile: focusing search gives it the room (header buttons step aside)', (await boxW()) > Math.max(restW + 100, 180), `${restW} -> ${await boxW()}`);
   await m.page.locator('#global-search-input').blur();
   if (process.env.SHOT_DIR) await m.page.locator(`.month[data-id="${M1.month}_${M1.year}"]`).screenshot({ path: join(process.env.SHOT_DIR, 'preempt-mobile.png') });
-  // mobile: ignore one, tap the chip -> the popover fits the screen and Restore works
+  // mobile: ignore one, tap the chip -> the completed list fits the screen and Restore works
   await m.page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-warn [data-act="warn-ignore"]`).first().click();
   await m.page.waitForTimeout(200);
   const mChip = m.page.locator(`.month[data-id="${M0.month}_${M0.year}"] .warn-ign`);
+  const mCount = async () => parseInt(await mChip.textContent(), 10);
+  const mBefore = await mCount();
   await mChip.click();
   await m.page.waitForSelector('.warn-ign-pop .wip-row', { state: 'visible' });
   const popBox = await m.page.locator('.warn-ign-pop').boundingBox();
-  check('mobile: tapping the chip opens the ignored list, within the screen', popBox && popBox.x >= 0 && popBox.x + popBox.width <= 390 && popBox.y >= 0, JSON.stringify(popBox));
+  check('mobile: tapping the chip opens the completed list, within the screen', popBox && popBox.x >= 0 && popBox.x + popBox.width <= 390 && popBox.y >= 0, JSON.stringify(popBox));
+  check('mobile: each completed item is still one line', await m.page.evaluate(() => [...document.querySelectorAll('.warn-ign-pop .wip-row')].every((r) => r.getBoundingClientRect().height < 44)));
   if (process.env.SHOT_DIR) await m.page.screenshot({ path: join(process.env.SHOT_DIR, 'ign-pop-mobile.png') });
-  await m.page.locator('.warn-ign-pop .wip-btn').first().click();
+  await m.page.locator('.warn-ign-pop .wip-btn[data-kind="ignored"]').first().click();
   await m.page.waitForTimeout(250);
-  check('mobile: Restore works and the chip goes away', (await mChip.count()) === 0 && !(await m.page.locator('.warn-ign-pop').isVisible()));
+  check('mobile: Restore works (one fewer completed)', (await mCount()) === mBefore - 1, `${mBefore} -> ${await mCount()}`);
   check('mobile: panel renders', (await m.page.locator('.month-warn:not([hidden]) .warn-row').count()) > 0);
   const mBtn = m.page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-warn [data-act="warn-approve"]`).first();
   const mBox = await mBtn.boundingBox();

@@ -1093,7 +1093,7 @@
     #tab-board .warn-btn:hover { border-color: var(--accent); color: var(--accent-deep); }
     #tab-board .warn-btn.is-approve { border-color: var(--accent); background: #fff; color: var(--accent-deep); }
     #tab-board .warn-btn.is-approve:hover { background: var(--accent); color: #fff; }
-    /* "n ignored" chip, top-right of the panel: hover (or tap) lists them with restore buttons */
+    /* "n completed" chip, top-right of the panel (approved autoships + ignored run-outs): hover (or tap) lists them with restore buttons */
     #tab-board .warn-ign {
       margin-left: auto; flex: none; border: 1px solid #c4cdd0; border-radius: 20px;
       background: rgba(255, 255, 255, .7); padding: 1px 9px; font: 500 11px/1.5 var(--font-ui);
@@ -1103,38 +1103,32 @@
     /* Ignored-items popover (lives on <body>, so no #tab-board variables here) */
     .warn-ign-pop {
       position: fixed; z-index: 9000; display: none; box-sizing: border-box;
-      width: min(340px, calc(100vw - 16px)); max-height: 60vh; overflow-y: auto;
+      width: min(430px, calc(100vw - 16px)); max-height: 60vh; overflow-y: auto;
       background: #fff; border: 1.5px solid var(--ink-12); border-radius: 10px;
       box-shadow: 0 6px 20px rgba(23,26,28,0.14); padding: 6px 10px 8px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--ink);
     }
-    .wip-title { padding: 4px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-60); }
+    .wip-head { display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; }
+    .wip-title { flex: 1 1 auto; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-60); }
     .wip-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #eef0ef; }
-    .wip-main { flex: 1 1 auto; min-width: 0; }
-    .wip-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .wip-detail { font-size: 11.5px; color: var(--ink-60); }
+    /* one line per item: name, then the detail, each ellipsised rather than wrapping */
+    .wip-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+    .wip-name { flex: 0 1 auto; max-width: 50%; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wip-detail { flex: 1 1 0; min-width: 0; font-size: 12px; color: var(--ink-60); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .wip-btn {
       flex: none; height: 24px; padding: 0 11px; border: 1px solid #3f8f87; border-radius: 8px;
       background: #fff; color: #3f8f87; font: 500 12px/1 inherit; font-family: inherit; cursor: pointer;
     }
     .wip-btn:hover { background: #3f8f87; color: #fff; }
-    .wip-all { width: 100%; margin-top: 6px; height: 28px; }
     /* ── Preemptive mirrors: a next-month order flagged Launch Preemptively,
-       echoed greyed-out at the bottom of THIS month's open orders. Visibility
-       only -- a sibling block inside .month-list that is neither .shipment nor
-       .card, so every total/save/sort that walks the list skips it. ── */
+       shown (greyed, read-only, fully expanded) at the bottom of THIS month's
+       open orders. Visibility only -- a block inside .month-list that is
+       neither .shipment nor .card, whose contents live in shadow DOM, so every
+       total/save/sort/query that walks the board skips it. ── */
     #tab-board .month-preempt { display: flex; flex-direction: column; gap: 6px; }
-    #tab-board .pre-ship {
-      background: #f3f5f5; border: 1px dashed #cdd6d8; border-radius: 11px;
-      padding: 5px 10px 6px 12px; color: var(--ink-3); cursor: pointer; opacity: .9;
-    }
-    #tab-board .pre-ship:hover { border-style: solid; }
-    #tab-board .pre-head { display: flex; align-items: baseline; gap: 7px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; padding: 1px 0 3px; }
-    #tab-board .pre-count { flex: none; font-family: var(--font-num); font-size: 10px; font-weight: 400; background: #e3e8e9; padding: 1px 7px; border-radius: 20px; }
-    #tab-board .pre-tag { font-size: 10.5px; font-weight: 500; letter-spacing: 0; }
-    #tab-board .pre-total { margin-left: auto; font-family: var(--font-num); font-size: 13px; font-weight: 600; }
-    #tab-board .pre-item { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 1px 2px; }
-    #tab-board .pre-qty { font-family: var(--font-num); font-size: 11px; flex: none; }
+    /* each mirror is a shadow-DOM host -- see renderPreemptMirrors */
+    #tab-board .pre-host { display: block; cursor: pointer; opacity: .8; transition: opacity .12s; }
+    #tab-board .pre-host:hover { opacity: .95; }
     @keyframes warn-flash { from { box-shadow: 0 0 0 3px rgba(112, 196, 187, .8); } to { box-shadow: 0 0 0 3px rgba(112, 196, 187, 0); } }
     #tab-board .warn-flash { animation: warn-flash 1.4s ease-out; }
 
@@ -4093,7 +4087,7 @@
   }
 
   function computeWarnings(monthEls, wins) {
-    const per = wins.map((w) => (w ? { autoship: [], runout: [], ignored: [] } : null));
+    const per = wins.map((w) => (w ? { autoship: [], runout: [], completed: [] } : null));
     const inWindow = (d, w) => d < w.end && (w.isCurrent || d >= w.start);
     // Only the SOONEST month whose window covers the date lists it: 11/3 shows
     // in October (its window runs into November's first week) and not again in
@@ -4108,21 +4102,22 @@
       monthEl.querySelectorAll('.card[data-id]').forEach((cardEl) => {
         const c = STATE.cardData[cardEl.dataset.id];
         if (!c || c.name === '__divider__' || c.ghostOf || !c.autoshipNextDate) return;
-        if (!(Number(c.qty) > 0) || isAutoshipApproved(c)) return;
+        if (!(Number(c.qty) > 0)) return;
         if (cardEl.closest('.shipment.is-locked')) return;
         const shipEl = cardEl.closest('.shipment');
         addAutoship({
           kind: 'card', id: cardEl.dataset.id, name: c.name, date: SB.parseDate(c.autoshipNextDate),
           where: shipEl ? (STATE.shipmentData[shipEl.dataset.id]?.name || '') : '', homeMi, link: c.autoshipLink || '',
+          approved: isAutoshipApproved(c),
         });
       });
       monthEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
         const sd = STATE.shipmentData[shipEl.dataset.id];
-        if (!sd || !sd.autoshipNextDate || sd.stage || isAutoshipApproved(sd)) return;
+        if (!sd || !sd.autoshipNextDate || sd.stage) return;
         const cards = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
           .map((el) => STATE.cardData[el.dataset.id]).filter((c) => c && c.name !== '__divider__');
         if (cards.length && cards.every((c) => c.ghostOf)) return; // only holds projections
-        addAutoship({ kind: 'ship', id: shipEl.dataset.id, name: sd.name || 'Order', date: SB.parseDate(sd.autoshipNextDate), where: '', homeMi, link: sd.autoshipLink || '' });
+        addAutoship({ kind: 'ship', id: shipEl.dataset.id, name: sd.name || 'Order', date: SB.parseDate(sd.autoshipNextDate), where: '', homeMi, link: sd.autoshipLink || '', approved: isAutoshipApproved(sd) });
       });
     });
 
@@ -4141,8 +4136,13 @@
         first.targets.push(...r.targets);
         first.homeMis.push(...r.homeMis);
         if (!first.link) first.link = r.link;
+        first.approved = first.approved && r.approved; // done only once every copy is
       });
-      p.autoship = [...byKey.values()];
+      // Approved ones aren't to-do any more -- they're "completed" (still the
+      // soonest-month owner of their date, so they don't resurface elsewhere)
+      const rows = [...byKey.values()];
+      p.autoship = rows.filter((r) => !r.approved);
+      p.completed = rows.filter((r) => r.approved).map((r) => ({ kind: 'approved', name: r.name, date: r.date, row: r }));
     });
 
     // First current-or-later month holding a card for each item -- the "next
@@ -4194,7 +4194,7 @@
           if (claimedRunOuts.has(claim)) return;
           claimedRunOuts.add(claim);
           const wkey = 'runout|' + key + '|' + w.ym;
-          if (dismissedWarnings.has(wkey)) { per[mi].ignored.push({ key: wkey, name: inv.name, date: runOut }); return; }
+          if (dismissedWarnings.has(wkey)) { per[mi].completed.push({ kind: 'ignored', key: wkey, name: inv.name, date: runOut }); return; }
           per[mi].runout.push({ key: wkey, name: inv.name, date: runOut, next: firstCardByKey.get(key) || null });
         });
       });
@@ -4251,7 +4251,7 @@
       </div>` });
     });
     return `<div class="warn-box">
-      <div class="warn-head">Needs Attention <span class="warn-count">${pending}</span>${p.ignored.length ? `<button type="button" class="warn-ign" data-act="warn-ign" data-ym="${w.ym}" aria-haspopup="true">${p.ignored.length} ignored</button>` : ''}</div>
+      <div class="warn-head">Needs Attention <span class="warn-count">${pending}</span>${p.completed.length ? `<button type="button" class="warn-ign" data-act="warn-ign" data-ym="${w.ym}" aria-haspopup="true" title="Approved autoships and ignored run-outs -- hover to review or restore">${p.completed.length} completed</button>` : ''}</div>
       ${rows.sort((a, b) => a.date - b.date).map((r) => r.html).join('')}
     </div>`;
   }
@@ -4261,13 +4261,14 @@
     const wins = warnMonthWindows(monthEls);
     const per = computeWarnings(monthEls, wins);
     const monthNames = monthEls.map((el) => el.querySelector('.mname')?.textContent.trim() || '');
-    warnIgnoredByYm = {};
-    wins.forEach((w, mi) => { if (w && per[mi]) warnIgnoredByYm[w.ym] = { month: w.name, items: per[mi].ignored }; });
+    warnCompletedByYm = {};
+    warnMonthNames = monthNames;
+    wins.forEach((w, mi) => { if (w && per[mi]) warnCompletedByYm[w.ym] = { month: w.name, items: per[mi].completed }; });
     monthEls.forEach((monthEl, mi) => {
       const box = monthEl.querySelector(':scope > .month-warn');
       if (!box) return;
       const p = per[mi];
-      // Nothing left to act on -> the whole panel goes away (ignored items live in its chip)
+      // Nothing left to act on -> the whole panel goes away (completed items live in its chip)
       const html = p && (p.autoship.length || p.runout.length) ? warnPanelHTML(wins[mi], p, mi, monthNames) : '';
       // recalcAll runs on every keystroke -- only touch the DOM when the
       // panel's content actually changed, so a button isn't replaced out from
@@ -4281,9 +4282,11 @@
   }
 
   // ── Ignored run-outs popover ──────────────────────────────────────────────
-  // Hover (mouse) or tap the panel's "n ignored" chip to see WHICH items are
-  // ignored for that month, with a Restore button each and Restore all.
-  let warnIgnoredByYm = {};
+  // Hover (mouse) or tap the panel's "n completed" chip to see WHICH items are
+  // done for that month -- approved autoships and ignored run-outs -- each with
+  // a Restore button, plus Restore all in the header.
+  let warnCompletedByYm = {};
+  let warnMonthNames = [];
   let ignPop = null, ignPopYm = '', ignCloseTimer = null;
   const WIP_HOVER = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   function cancelIgnClose() { if (ignCloseTimer) { clearTimeout(ignCloseTimer); ignCloseTimer = null; } }
@@ -4301,8 +4304,15 @@
     ignPop.addEventListener('click', (e) => {
       const t = e.target.closest('[data-wip]');
       if (!t) return;
-      if (t.dataset.wip === 'one') postWarningAction('undismiss', t.dataset.key);
-      else if (t.dataset.wip === 'all') (warnIgnoredByYm[ignPopYm]?.items || []).map((i) => i.key).forEach((k) => postWarningAction('undismiss', k));
+      if (t.dataset.wip === 'one') {
+        if (t.dataset.kind === 'approved') setAutoshipApprovedMany(parseTargets(t.dataset.targets), false);
+        else postWarningAction('undismiss', t.dataset.key);
+      } else if (t.dataset.wip === 'all') {
+        const items = warnCompletedByYm[ignPopYm]?.items || [];
+        items.filter((i) => i.kind === 'ignored').forEach((i) => postWarningAction('undismiss', i.key));
+        const targets = items.filter((i) => i.kind === 'approved').flatMap((i) => i.row.targets);
+        if (targets.length) setAutoshipApprovedMany(targets, false); // one recalc + save for the lot
+      }
     });
     if (WIP_HOVER) {
       ignPop.addEventListener('mouseenter', cancelIgnClose);
@@ -4321,13 +4331,19 @@
     return ignPop;
   }
   function fillIgnPop() {
-    const data = warnIgnoredByYm[ignPopYm];
+    const data = warnCompletedByYm[ignPopYm];
     const df = board.classList.contains('layout-compact') ? SB.fmtDateShort : SB.fmtDate;
     const today = SB.today();
     const items = (data?.items || []).slice().sort((a, b) => a.date - b.date);
-    ignPop.innerHTML = `<div class="wip-title">Ignored for ${esc(data?.month || '')}</div>`
-      + items.map((i) => `<div class="wip-row"><div class="wip-main"><div class="wip-name" title="${escAttr(i.name)}">${esc(i.name)}</div><div class="wip-detail">${i.date < today ? 'ran out' : 'runs out'} ${df(i.date)}</div></div><button type="button" class="wip-btn" data-wip="one" data-key="${escAttr(i.key)}">Restore</button></div>`).join('')
-      + (items.length > 1 ? '<button type="button" class="wip-btn wip-all" data-wip="all">Restore all</button>' : '');
+    // One line each, worded like the Needs Attention rows: "<item> autoships 10/20 · merchant · month"
+    const detail = (i) => {
+      if (i.kind === 'ignored') return `${i.date < today ? 'ran out' : 'runs out'} ${df(i.date)}`;
+      const r = i.row;
+      const months = [...new Set(r.homeMis)].map((m) => warnMonthNames[m]).filter(Boolean).join(', ');
+      return ['autoships ' + df(i.date), r.where, months].filter(Boolean).map((p, n) => (n === 0 ? p : esc(p))).join(' · ');
+    };
+    ignPop.innerHTML = `<div class="wip-head"><span class="wip-title">Completed for ${esc(data?.month || '')}</span>${items.length > 1 ? '<button type="button" class="wip-btn wip-all" data-wip="all">Restore all</button>' : ''}</div>`
+      + items.map((i) => `<div class="wip-row"><div class="wip-main"><span class="wip-name" title="${escAttr(i.name)}">${esc(i.name)}</span><span class="wip-detail">${detail(i)}</span></div><button type="button" class="wip-btn" data-wip="one" data-kind="${i.kind}" title="${i.kind === 'approved' ? 'Un-approve (back on the list)' : 'Stop ignoring (back on the list)'}" ${i.kind === 'approved' ? `data-targets="${escAttr(targetsAttr(i.row.targets))}"` : `data-key="${escAttr(i.key)}"`}>Restore</button></div>`).join('');
   }
   function placeIgnPop(anchor) {
     const r = anchor.getBoundingClientRect();
@@ -4354,7 +4370,7 @@
   function refreshIgnPop() {
     if (!ignPop || !ignPopYm) return;
     const chip = board.querySelector(`.warn-ign[data-ym="${ignPopYm}"]`);
-    if (!chip || !(warnIgnoredByYm[ignPopYm]?.items.length)) { closeIgnPop(); return; }
+    if (!chip || !(warnCompletedByYm[ignPopYm]?.items.length)) { closeIgnPop(); return; }
     chip.classList.add('is-open');
     fillIgnPop();
     placeIgnPop(chip);
@@ -4369,12 +4385,63 @@
   }
 
   // A shipment flagged Launch Preemptively is tracked in month N but placed in
-  // N-1, so N-1 shows a greyed, read-only echo of it at the bottom of its open
-  // orders (just above the completed ones). Rendered into a .month-preempt
-  // block that is neither .shipment nor .card and carries no data-id, so
-  // totals, saves, drag-and-drop and every card/shipment query walk right past
-  // it -- it contributes nothing. Hidden while any filter is active, and only
-  // for still-staged orders in months that haven't passed.
+  // N-1, so N-1 shows that order at the bottom of its open orders (just above
+  // the completed ones) -- the REAL order's structure, not a summary: a
+  // read-only copy of the shipment with every item and field, in the greyed
+  // look completed orders use but left expanded. Visibility only.
+  //
+  // The copy lives in a shadow root (one host per order, inside a
+  // .month-preempt block that is neither .shipment nor .card), which is what
+  // keeps it inert: the board's code finds orders/items with document-wide
+  // querySelectorAll('.shipment' / '.card' / '.card-name' ...), and none of
+  // that pierces a shadow root, so totals, saves, drag-and-drop, "Move to
+  // Order" matching, next-order lookups etc. can never see (or write into) it.
+  // The board's own stylesheet is copied into the root, wrapped in the same
+  // #tab-board > .board > .month > .month-list ancestry its selectors expect,
+  // so it renders exactly like the original. Hidden while any filter is
+  // active, and only for still-staged orders in months that haven't passed.
+  let preSheets = null;
+  function preemptSheets() {
+    if (preSheets) return preSheets;
+    let css = '';
+    for (const ss of document.styleSheets) {
+      try { for (const r of ss.cssRules) { if (r.type !== CSSRule.IMPORT_RULE) css += r.cssText + '\n'; } } catch { /* cross-origin sheet (fonts) -- already global */ }
+    }
+    // Unwrap the board's pane/column chrome, and make the copy inert
+    const override = `
+      #tab-board { height: auto !important; overflow: visible !important; background: transparent !important; }
+      #tab-board .board { display: block !important; padding: 0 !important; min-height: 0 !important; gap: 0 !important; }
+      #tab-board .month { display: block !important; width: auto !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
+      #tab-board .month-list { display: block !important; padding: 0 !important; min-height: 0 !important; }
+      #tab-board * { pointer-events: none !important; }
+      .pre-cap { font: 500 11px/1.4 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; color: #8a979e; padding: 8px 4px 3px; }`;
+    preSheets = { css, override };
+    if (typeof CSSStyleSheet === 'function' && 'replaceSync' in CSSStyleSheet.prototype && 'adoptedStyleSheets' in Document.prototype) {
+      try {
+        const a = new CSSStyleSheet(), b = new CSSStyleSheet();
+        a.replaceSync(css); b.replaceSync(override);
+        preSheets.adopted = [a, b]; // shared by every mirror; order matters (override last)
+      } catch { /* fall back to <style> elements below */ }
+    }
+    return preSheets;
+  }
+  function mirrorOf(shipEl) {
+    const clone = shipEl.cloneNode(true);
+    // an input's live .value isn't in its attributes -- carry what's actually typed
+    const src = shipEl.querySelectorAll('input');
+    clone.querySelectorAll('input').forEach((inp, i) => {
+      const v = src[i] ? src[i].value : inp.value;
+      inp.setAttribute('value', v); inp.value = v; inp.disabled = true;
+    });
+    clone.querySelectorAll('.incl-toggle').forEach((b) => { b.disabled = true; });
+    clone.querySelectorAll('[contenteditable]').forEach((e) => e.removeAttribute('contenteditable'));
+    clone.querySelectorAll('[data-id]').forEach((e) => e.removeAttribute('data-id'));
+    clone.removeAttribute('data-id');
+    clone.querySelectorAll('.search-hide').forEach((e) => e.classList.remove('search-hide'));
+    clone.classList.remove('search-hide', 'is-collapsed');
+    clone.classList.add('is-locked'); // the completed-order grey -- but NOT collapsed
+    return clone;
+  }
   function renderPreemptMirrors() {
     const monthEls = [...board.querySelectorAll('.month')];
     const today = SB.today();
@@ -4385,30 +4452,47 @@
       if (!list) return;
       const start = monthStartOf(monthEl);
       const nextEl = monthEls[mi + 1];
-      let html = '';
+      const items = [];
       if (nextEl && start && start >= curStart && !filterActive) {
         const nextName = nextEl.querySelector('.mname')?.textContent.trim() || '';
         nextEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
           const sd = STATE.shipmentData[shipEl.dataset.id];
           if (!sd || sd.stage || !isShipPreemptive(shipEl)) return;
-          const cards = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
-            .map((el) => STATE.cardData[el.dataset.id]).filter((c) => c && c.name !== '__divider__');
-          let total = 0;
-          cards.forEach((c) => { if (c.includeInMonthTotal) total += (Number(c.price) || 0) * (Number(c.qty) || 0); });
-          html += `<div class="pre-ship" data-act="preempt-goto" data-pre-sid="${escAttr(shipEl.dataset.id)}" title="Tracked in ${esc(nextName)} but placed early -- click to jump to it">
-            <div class="pre-head"><span class="pre-name">${esc(sd.name || 'Order')}</span><span class="pre-count">${cards.length}</span><span class="pre-tag">« ${esc(nextName)} order</span><span class="pre-total">${SB.fmtMoney(total)}</span></div>
-            ${cards.map((c) => `<div class="pre-item"><span class="pre-iname">${esc(c.name)}</span><span class="pre-qty">× ${Number(c.qty) || 0}</span></div>`).join('')}
-          </div>`;
+          const clone = mirrorOf(shipEl);
+          items.push({ sid: shipEl.dataset.id, name: sd.name || 'Order', nextName, clone, sig: nextName + '|' + clone.outerHTML });
         });
       }
       let wrap = list.querySelector(':scope > .month-preempt');
-      if (!html) { wrap?.remove(); return; }
+      if (!items.length) { wrap?.remove(); return; }
       if (!wrap) { wrap = document.createElement('div'); wrap.className = 'month-preempt'; }
       // bottom of the open section: right before the first completed shipment, else the end
       const firstLocked = list.querySelector(':scope > .shipment.is-locked');
       if (firstLocked) { if (wrap.nextElementSibling !== firstLocked || wrap.parentNode !== list) list.insertBefore(wrap, firstLocked); }
       else if (list.lastElementChild !== wrap) list.appendChild(wrap);
-      if (wrap._html !== html) { wrap._html = html; wrap.innerHTML = html; }
+      const sig = items.map((i) => i.sig).join('\u0001');
+      if (wrap._sig === sig) return; // nothing changed -- keep the existing shadow content
+      wrap._sig = sig;
+      const sheets = preemptSheets();
+      wrap.replaceChildren(...items.map((it) => {
+        const host = document.createElement('div');
+        host.className = 'pre-host';
+        host.dataset.act = 'preempt-goto';
+        host.dataset.preSid = it.sid;
+        host.dataset.preName = it.name;
+        host.title = 'Tracked in ' + it.nextName + ' but placed early (view only) -- click to jump to it';
+        const root = host.attachShadow({ mode: 'open' });
+        if (sheets.adopted) root.adoptedStyleSheets = sheets.adopted;
+        else [sheets.css, sheets.override].forEach((txt) => { const st = document.createElement('style'); st.textContent = txt; root.appendChild(st); });
+        const cap = document.createElement('div');
+        cap.className = 'pre-cap';
+        cap.textContent = '« ' + it.nextName + ' order · placed early (view only)';
+        const shell = document.createElement('div');
+        shell.id = 'tab-board'; shell.className = 'pre-root'; shell.setAttribute('inert', '');
+        shell.innerHTML = '<div class="' + escAttr(board.className) + '"><div class="month"><div class="month-list"></div></div></div>';
+        shell.querySelector('.month-list').appendChild(it.clone);
+        root.append(cap, shell);
+        return host;
+      }));
     });
   }
 
@@ -8929,7 +9013,7 @@
         '<td class="inv-num inv-bs" data-key="' + key + '" title="Click to edit bottle size">' + (bs || '—') + '</td>' +
         '<td class="inv-num inv-dose" data-key="' + key + '" title="Click to edit daily dose">' + (dose || '—') + '</td>' +
         '<td class="inv-num inv-dpb">' + (bs > 0 && dose > 0 ? (Math.round(bs / dose * 10) / 10) + 'd' : '—') + '</td>' +
-        '<td class="inv-num">'      + (amt.loggedOn ? ((d => (d.getMonth()+1)+'/'+d.getDate())(new Date(amt.loggedOn+'T00:00:00'))) : '—') + '</td>' +
+        '<td class="inv-num inv-reset">' + (amt.loggedOn ? ((d => (d.getMonth()+1)+'/'+d.getDate())(new Date(amt.loggedOn+'T00:00:00'))) : '—') + '</td>' +
         '<td class="inv-supplier inv-supplier-edit" data-key="' + key + '" data-field="annual_sale" title="Click to edit">' + (meta.annualSale   || '—') + '</td>' +
         '<td class="inv-supplier inv-supplier-edit" data-key="' + key + '" data-field="off_cycle_sale" title="Click to edit">' + (meta.offCycleSale || '—') + '</td>' +
         '<td class="inv-supplier inv-supplier-edit" data-key="' + key + '" data-field="anyday" title="Click to edit">' + (meta.anyday       || '—') + '</td>' +
@@ -9019,7 +9103,10 @@
       const capsCell     = tr.querySelector('.inv-onhand');
       const bottlesCell  = tr.querySelector('.inv-bottles');
       const runoutCell   = tr.querySelector('td:nth-child(2)');
-      const resetCell    = tr.querySelector('td:nth-child(8)');
+      // By class, not column position: this used to be td:nth-child(8), which
+      // stopped being "Last Reset" once Next Order / Lasts For were added and
+      // quietly overwrote the Lasts For cell with the reset date.
+      const resetCell    = tr.querySelector('.inv-reset');
 
       if (capsCell)    { capsCell.dataset.amount = newCaps;    capsCell.textContent = fmtOnHand(newCaps); }
       if (bottlesCell) { bottlesCell.dataset.amount = newCaps; bottlesCell.innerHTML = bottles + bottleBars; }
