@@ -855,9 +855,19 @@
          it onto its own row, right after the month-strip's row. */
       #pinned-merchants-desktop { display: none !important; }
       .pinned-merchants-mobile:not(.is-empty) {
-        display: flex; order: 4; flex: 1 1 100%; justify-content: center;
+        display: flex; order: 4; flex: 1 1 100%;
+        flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+        -webkit-overflow-scrolling: touch; scrollbar-width: none;
         padding: 2px 0px;
       }
+      .pinned-merchants-mobile::-webkit-scrollbar { display: none; }
+      .pinned-merchants-mobile .pin-chip { flex: none; white-space: nowrap; }
+      /* Auto margins on the first/last chip center the row while everything
+         fits, and collapse to flush-left/right once it overflows -- plain
+         justify-content:center would clip the first chip behind the left
+         edge instead (see .month-strip.is-overflowing above). */
+      .pinned-merchants-mobile .pin-chip:first-child { margin-left: auto; }
+      .pinned-merchants-mobile .pin-chip:last-child { margin-right: auto; }
       /* Same fixed 6px radius as desktop, but these cells are noticeably
          shorter here (smaller font, tighter padding) so that radius eats a
          much bigger share of the divider's height -- enough to read as a
@@ -1962,11 +1972,13 @@
 
     /* ── Mobile layout (≤ 680px) ── */
     @media (max-width: 680px) {
-      /* Months already stack to full width below -- there's nothing that's
-         actually supposed to need horizontal scroll room at this width, so
-         lock it down instead of leaving the page free to rubber-band/scroll
-         sideways over a few stray overflow pixels. */
-      body, #tab-board { overflow-x: hidden; }
+      /* Months sit side by side like desktop, one phone-width page each, and
+         #tab-board is the horizontal scroller (snapping month to month). The
+         document itself still has nothing to scroll sideways, so lock it down
+         instead of leaving it free to rubber-band over a few stray overflow
+         pixels. */
+      body { overflow-x: hidden; }
+      #tab-board { overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-left: 12px; }
 
       /* Two scrollable surfaces existed on mobile: the intentional one
          (content within a tab, scrolling normally) and the whole document
@@ -1998,13 +2010,18 @@
          the file. */
       input:focus, textarea:focus, [contenteditable="true"]:focus { font-size: 16px !important; }
 
-      /* Board tab: stack months vertically */
+      /* Board tab: months stay in a row (as on desktop), each one the
+         scroller's width less the board's 12px side padding. 100vw rather
+         than 100% since percentages here would resolve against #board, which
+         is only as wide as the scroller, not its overflowing content. */
       #board {
-        flex-direction: column !important;
         padding: 12px !important;
         gap: 12px !important;
       }
-      .month { min-width: unset !important; width: 100% !important; max-width: 100% !important; }
+      .month {
+        flex: none; scroll-snap-align: start;
+        min-width: unset !important; width: calc(100vw - 24px) !important; max-width: calc(100vw - 24px) !important;
+      }
 
       /* Month header: same clipping problem — 4 fixed-96px metric boxes don't
          fit next to the title/buttons on a phone. Wrap them onto their own
@@ -4853,9 +4870,9 @@
     }
   }
   // Scroll-spy: highlights whichever month is actually scrolled into view
-  // (mobile scrolls vertically, desktop horizontally -- same #tab-board
-  // container either way, just checked along whichever axis #board is
-  // currently laid out on) instead of always today's real-world month.
+  // (months lay out in a row on both desktop and mobile now, but the axis
+  // is still read from #board's flex-direction rather than assumed)
+  // instead of always today's real-world month.
   // Same pass also flags each month's Spent metric teal while the completed
   // (locked) section is the one in view, mirroring the month-strip's own
   // is-current highlight rather than a one-shot click effect.
@@ -6809,6 +6826,9 @@
       new Sortable(cont, {
         animation: 150,
         draggable: '.pin-chip',
+        // The mobile row scrolls horizontally, so an immediate touch-drag
+        // would swallow every swipe -- reorder takes a long-press there.
+        delay: 250, delayOnTouchOnly: true, touchStartThreshold: 5,
         onEnd: () => {
           const draggedOrder = [...cont.querySelectorAll('.pin-chip')].map((c) => c.dataset.merchant);
           saveReorderedMerchants(draggedOrder);
