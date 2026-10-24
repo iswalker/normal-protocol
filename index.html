@@ -1978,7 +1978,7 @@
          instead of leaving it free to rubber-band over a few stray overflow
          pixels. */
       body { overflow-x: hidden; }
-      #tab-board { overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-left: 12px; }
+      #tab-board { overflow-x: auto; scroll-snap-type: x mandatory; }
 
       /* Two scrollable surfaces existed on mobile: the intentional one
          (content within a tab, scrolling normally) and the whole document
@@ -1998,7 +1998,9 @@
          contain stops a board drag that hits its end from chaining out to
          the document the same way. */
       header { touch-action: pan-x; }
-      #tab-board { overscroll-behavior: contain; }
+      /* none (not contain): contain only stops chaining out to the document;
+         the board itself could still rubber-band past its top edge. */
+      #tab-board { overscroll-behavior: none; }
 
       /* iOS Safari auto-zooms the whole page in whenever a focused text
          field's font-size is under 16px -- true of nearly every input/
@@ -2019,7 +2021,11 @@
         gap: 12px !important;
       }
       .month {
-        flex: none; scroll-snap-align: start;
+        /* center, not start: every month is the scroller's width less 12px
+           either side, so centering lands each one with that margin without
+           a scroll-padding offset -- iOS honored that inconsistently, leaving
+           the first month flush against the left edge. */
+        flex: none; scroll-snap-align: center;
         min-width: unset !important; width: calc(100vw - 24px) !important; max-width: calc(100vw - 24px) !important;
       }
 
