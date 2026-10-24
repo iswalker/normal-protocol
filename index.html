@@ -1051,7 +1051,6 @@
        are assumed to be only cards/shipments all over this file). Same
        orange/red vocabulary as the SOON/OUT badges. ── */
     #tab-board .month-warn { padding: 0; } /* a child of .month-list now, which supplies the side padding */
-    #tab-board .month-warn[hidden] { display: none; }
     /* Same chrome as a shipment block (teal tint, border, radius, shadow),
        with the header/count dressed like .ship-name/.scount. */
     #tab-board .warn-box {
@@ -1059,18 +1058,10 @@
       box-shadow: var(--shadow-card); padding: 5px 9px 6px 12px;
     }
     /* The title sits OUTSIDE the box, as a section label like "Preemptive Orders"
-       (it's a .month-sec-head); the count pill follows it and the "n completed"
-       chip sits at the far right of the rule. */
+       (it's a .month-sec-head); the "n completed" chip sits at the far right of
+       the rule. */
     #tab-board .warn-head { align-items: center; }
     #tab-board .warn-head::after { order: 1; }
-    #tab-board .warn-count {
-      flex: none; font-family: var(--font-num); font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none;
-      color: var(--ink-2); background: #d6e6e2; padding: 1px 7px; border-radius: 20px;
-    }
-    #tab-board .month-warn > .month-sec-head { margin-top: 8px; }
-    #tab-board .month-list > .month-warn:first-child > .month-sec-head { margin-top: 0; }
-    /* the panel is hidden when nothing's left, so the next label is the first thing visible */
-    #tab-board .month-list > .month-warn[hidden]:first-child + .month-sec-head { margin-top: 0; }
     #tab-board .warn-box > .warn-row:first-child { border-top: 0; }
     #tab-board .warn-row {
       display: flex; align-items: center; gap: 8px; min-width: 0;
@@ -1101,11 +1092,11 @@
     #tab-board .warn-btn.is-approve:hover { background: var(--accent); color: #fff; }
     /* "n completed" chip, top-right of the panel's header (approved autoships + ignored run-outs): hover (or tap) lists them with restore buttons */
     #tab-board .warn-ign {
-      order: 2; flex: none; border: 1px solid #c4cdd0; border-radius: 20px;
-      background: rgba(255, 255, 255, .7); padding: 1px 9px; font: 500 11px/1.5 var(--font-ui);
+      order: 2; flex: none; border: none; border-radius: 20px;
+      background: rgba(255, 255, 255, .7); padding: 1px 9px 2px 9px; font: 500 11px/1.5 var(--font-ui);
       letter-spacing: 0; text-transform: none; color: var(--ink-3); cursor: pointer;
     }
-    #tab-board .warn-ign:hover, #tab-board .warn-ign.is-open { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
+    #tab-board .warn-ign:hover, #tab-board .warn-ign.is-open { color: var(--accent-deep); background: #fff; }
     /* Ignored-items popover (lives on <body>, so no #tab-board variables here) */
     .warn-ign-pop {
       position: fixed; z-index: 9000; display: none; box-sizing: border-box;
@@ -1900,7 +1891,9 @@
       display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 0 4px;
       font: 600 10.5px/1 var(--font-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3);
     }
-    #tab-board .month-sec-head:first-child { margin-top: 0; }
+    /* only ever the first thing actually in the list: the title and box of the
+       Needs Attention panel are separate children, removed when empty */
+    #tab-board .month-sec-head:first-child { margin-top: 4px; }
     #tab-board .month-sec-head::after { content: ''; flex: 1 1 auto; height: 1px; background: #dde3e4; }
 
     /* Divider above the first locked shipment */
@@ -4282,10 +4275,10 @@
         <button type="button" class="warn-btn" data-act="warn-ignore" data-wkey="${escAttr(r.key)}" title="Ignore for ${w.name} (comes back in a later month)">Ignore</button>
       </div>` });
     });
-    return `<div class="month-sec-head warn-head">Needs Attention <span class="warn-count">${pending}</span>${p.completed.length ? `<button type="button" class="warn-ign" data-act="warn-ign" data-ym="${w.ym}" aria-haspopup="true" title="Approved autoships and ignored run-outs -- hover to review or restore">${p.completed.length} completed</button>` : ''}</div>
-    <div class="warn-box">
-      ${rows.sort((a, b) => a.date - b.date).map((r) => r.html).join('')}
-    </div>`;
+    const chip = p.completed.length
+      ? `<button type="button" class="warn-ign" data-act="warn-ign" data-ym="${w.ym}" aria-haspopup="true" title="Approved autoships and ignored run-outs -- hover to review or restore">${p.completed.length} completed</button>`
+      : '';
+    return { head: 'Needs Attention' + chip, box: rows.sort((a, b) => a.date - b.date).map((r) => r.html).join('') };
   }
 
   function renderWarnings() {
@@ -4299,21 +4292,25 @@
     monthEls.forEach((monthEl, mi) => {
       const list = monthEl.querySelector(':scope > .month-list');
       if (!list) return;
-      // The panel is a child of the month's list (a non-order .month-aux block,
-      // placed by layoutMonthLists) so Preemptive orders can sit ABOVE it.
+      // The title and the box are two non-order .month-aux children of the list
+      // (placed by layoutMonthLists, so Preemptive orders can sit ABOVE them) --
+      // siblings rather than nested, and removed outright when there's nothing
+      // left to act on (completed items live in the title's chip), so that
+      // :first-child means the first thing actually in the list.
+      let head = list.querySelector(':scope > .month-warn-head');
       let box = list.querySelector(':scope > .month-warn');
-      if (!box) { box = document.createElement('div'); box.className = 'month-warn month-aux'; box.hidden = true; list.prepend(box); }
       const p = per[mi];
-      // Nothing left to act on -> the whole panel goes away (completed items live in its chip)
-      const html = p && (p.autoship.length || p.runout.length) ? warnPanelHTML(wins[mi], p, mi, monthNames) : '';
+      if (!(p && (p.autoship.length || p.runout.length))) { head?.remove(); box?.remove(); return; }
+      const parts = warnPanelHTML(wins[mi], p, mi, monthNames);
+      if (!head) { head = document.createElement('div'); head.className = 'month-sec-head warn-head month-warn-head month-aux'; list.prepend(head); }
+      if (!box) { box = document.createElement('div'); box.className = 'month-warn warn-box month-aux'; list.prepend(box); }
       // recalcAll runs on every keystroke -- only touch the DOM when the
-      // panel's content actually changed, so a button isn't replaced out from
-      // under a click that's mid-flight.
-      if (box._html === html) return;
-      box._html = html;
-      box.innerHTML = html;
-      box.hidden = !html;
+      // content actually changed, so a button isn't replaced out from under a
+      // click that's mid-flight.
+      if (head._html !== parts.head) { head._html = parts.head; head.innerHTML = parts.head; }
+      if (box._html !== parts.box) { box._html = parts.box; box.innerHTML = parts.box; }
     });
+    layoutMonthLists(); // (a no-op unless something just appeared or vanished)
     refreshIgnPop();
   }
 
@@ -4423,7 +4420,7 @@
   // ── How a month's list is laid out ────────────────────────────────────────
   //   a) Preemptive Orders   -- orders tracked in THIS month but placed early
   //                             (flagged Launch Preemptively); draggable among themselves
-  //   b) Needs Attention     -- the warnings panel
+  //   b) Needs Attention     -- the warnings panel (a label + a box)
   //   c) In-Month Orders     -- everything else still open (orders + loose cards)
   //   d) Preemptive Orders · <next month> -- read-only previews of NEXT month's
   //                             preemptive orders, which get placed during this one
@@ -4471,7 +4468,7 @@
       const locked = kids.filter((n) => isShip(n) && n.classList.contains('is-locked'));
       const pre = kids.filter((n) => isShip(n) && !n.classList.contains('is-locked') && isShipPreemptive(n));
       const std = kids.filter((n) => (isShip(n) || n.classList.contains('card')) && !locked.includes(n) && !pre.includes(n));
-      const want = [aux('month-pre-head'), ...pre, aux('month-warn'), aux('month-in-head'), ...std,
+      const want = [aux('month-pre-head'), ...pre, aux('month-warn-head'), aux('month-warn'), aux('month-in-head'), ...std,
         aux('month-mirror-head'), aux('month-preempt'), aux('month-done-head'), ...locked].filter(Boolean);
       kids.forEach((n) => { if (!want.includes(n)) want.push(n); }); // anything unexpected keeps its place at the end
       if (want.every((n, i) => kids[i] === n)) return;

@@ -175,6 +175,8 @@ async function openBoard(viewport) {
 }
 
 // the CURRENT month's panel
+// the Needs Attention title label (a sibling just above the box, not inside it)
+const panelHead = (page) => page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-warn-head`);
 const panel = (page) => page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-warn`);
 const rowNames = (page) => panel(page).locator('.warn-row .warn-name').allTextContents();
 const rowFor = (page, name) => panel(page).locator('.warn-row', { has: page.locator('.warn-name', { hasText: new RegExp(`^${name}$`) }) });
@@ -207,7 +209,7 @@ try {
   check('run-out: not listed when plenty on hand', !names.includes('Plenty'));
   const hiddenPast = await page.evaluate((ids) => ids.map((id) => { const e = document.querySelector('.month[data-id="' + id + '"]'); return !e || getComputedStyle(e).display === 'none'; }), [P2.month + '_' + P2.year, P1.month + '_' + P1.year]);
   check('empty PAST months stay hidden (the panel/headers inside a list don\'t count as content)', hiddenPast.every(Boolean), JSON.stringify(hiddenPast));
-  check('heading reads "Needs Attention"', (await panel(page).locator('.warn-head').textContent()).trim().startsWith('Needs Attention'));
+  check('heading reads "Needs Attention"', (await panelHead(page).textContent()).trim().startsWith('Needs Attention'));
   const detailOf = async (n) => (await rowFor(page, n).locator('.warn-detail').textContent()).replace(/\s+/g, ' ').trim();
   check('autoship row text: "<item> autoships <date> ..."', /^autoships \d+\/\d+/.test(await detailOf('Alpha')), await detailOf('Alpha'));
   check('run-out row text: "<item> runs out <date> ..."', /^runs out \d+\/\d+/.test(await detailOf('Runner')), await detailOf('Runner'));
@@ -216,7 +218,7 @@ try {
   const later = await rowFor(page, 'Later Placement').locator('.warn-detail').textContent();
   check('later-placed row says which month it sits in', later.includes(M2.month), later);
   check('overdue row is flagged', /overdue/.test(await rowFor(page, 'Overdue One').locator('.warn-detail').textContent()));
-  check('panel shows a count badge', (await panel(page).locator('.warn-count').textContent()).trim() === String(names.length), String(names.length));
+  check('no count badge next to the Needs Attention title', (await panelHead(page).locator('.warn-count').count()) === 0 && !/\d\s*$/.test((await panelHead(page).evaluate((h) => h.firstChild.textContent)).trim()));
   // past months get no panel; the panel lives outside .month-list
   check('panel is a (non-order) child of the month list, so Preemptive orders can sit above it', (await page.locator('.month-list > .month-warn.month-aux').count()) > 0 && (await page.locator('.month > .month-warn').count()) === 0);
 
@@ -303,6 +305,7 @@ try {
   const seq = await page.evaluate((id) => [...document.querySelectorAll('.month[data-id="' + id + '"] > .month-list > *')].map((n) => {
     const c = n.classList;
     if (c.contains('month-pre-head')) return 'pre-head';
+    if (c.contains('month-warn-head')) return 'warn-head';
     if (c.contains('month-warn')) return 'warn';
     if (c.contains('month-in-head')) return 'in-head';
     if (c.contains('month-mirror-head')) return 'mirror-head';
@@ -311,7 +314,7 @@ try {
     if (c.contains('shipment')) return c.contains('is-locked') ? 'locked' : (n.querySelector(':scope > .ship-head > .ship-preempt.is-on') ? 'pre' : 'std');
     return 'other';
   }), m1id);
-  check('month layout: Preemptive / Needs Attention / In-Month / Preemptive-from-next / Completed', /^pre-head( pre)+ warn in-head( (std|other))+ mirror-head mirrors done-head( locked)+$/.test(seq.join(' ')), seq.join(' '));
+  check('month layout: Preemptive / Needs Attention / In-Month / Preemptive-from-next / Completed', /^pre-head( pre)+ warn-head warn in-head( (std|other))+ mirror-head mirrors done-head( locked)+$/.test(seq.join(' ')), seq.join(' '));
   const heads = await page.evaluate((id) => Object.fromEntries(['pre-head', 'in-head', 'mirror-head', 'done-head'].map((k) => [k, document.querySelector('.month[data-id="' + id + '"] > .month-list > .month-' + k.replace('-head', '') + (k === 'mirror-head' ? '-head' : '-head'))?.textContent])), m1id);
   check('section headers read Preemptive Orders / In-Month Orders / Preemptive Orders · <next month> / Completed Orders', heads['pre-head'] === 'Preemptive Orders' && heads['in-head'] === 'In-Month Orders' && heads['mirror-head'] === 'Preemptive Orders · ' + M2.month && heads['done-head'] === 'Completed Orders', JSON.stringify(heads));
   check('the panel really is below the Preemptive group and above In-Month', seq.indexOf('warn') > seq.lastIndexOf('pre') && seq.indexOf('warn') < seq.indexOf('in-head'));
@@ -399,17 +402,27 @@ try {
   const dates = await panel(page).locator('.warn-row').evaluateAll((els) => els.map((e) => e.dataset.wdate));
   check('rows are ordered by date, soonest first', dates.length > 3 && dates.every((d, i) => i === 0 || dates[i - 1] <= d), dates.join(' '));
   check('Autoship and Runs-out rows are interlaced, not grouped', names.indexOf('Runner') < names.indexOf('Later Placement') && names.indexOf('Runner') > names.indexOf('Overdue One'), names.join(', '));
-  check('panel title is OUTSIDE the box, a section label like the others', await panel(page).evaluate((p) => {
-    const h = p.querySelector(':scope > .warn-head'), b = p.querySelector(':scope > .warn-box');
+  check('panel title is OUTSIDE the box, a section label like the others', await page.evaluate((id) => {
+    const list = document.querySelector('.month[data-id="' + id + '"] > .month-list');
+    const h = list.querySelector(':scope > .month-warn-head'), b = list.querySelector(':scope > .month-warn');
     return !!h && !!b && h.classList.contains('month-sec-head') && !b.contains(h) && h.getBoundingClientRect().bottom <= b.getBoundingClientRect().top + 1
       && getComputedStyle(h).textTransform === 'uppercase' && b.querySelectorAll('.warn-row').length > 0;
-  }));
+  }, M0.month + '_' + M0.year));
+  // margin-top: ONLY the label that is truly first in a month's list gets the 4px "first" spacing
+  const firstOnly = await page.evaluate((ids) => ids.map((id) => {
+    const list = document.querySelector('.month[data-id="' + id + '"] > .month-list');
+    const heads = [...list.querySelectorAll(':scope > .month-sec-head')];
+    return heads.map((h) => ({ first: h === list.firstElementChild, mt: getComputedStyle(h).marginTop })).filter((x) => x.first || x.mt === '4px');
+  }), [M0.month + '_' + M0.year, M1.month + '_' + M1.year]);
+  check('only the label that is really first in a month gets the 4px first-child margin', firstOnly.every((m) => m.length === 1 && m[0].first && m[0].mt === '4px'), JSON.stringify(firstOnly));
+  check('other section labels keep the normal 8px top margin', await page.evaluate((id) => [...document.querySelectorAll('.month[data-id="' + id + '"] > .month-list > .month-sec-head')].filter((h) => h !== h.parentNode.firstElementChild).every((h) => getComputedStyle(h).marginTop === '8px'), M1.month + '_' + M1.year));
+  check('the "n completed" chip has no border and the 1px 9px 2px 9px padding', await page.evaluate(() => { const c = getComputedStyle(document.querySelector('.warn-ign')); return c.borderTopStyle === 'none' && c.paddingTop === '1px' && c.paddingRight === '9px' && c.paddingBottom === '2px' && c.paddingLeft === '9px'; }));
   check('the title label matches the other section labels (same size/weight/colour)', await page.evaluate((id) => {
     const q = (sel) => { const e = document.querySelector('.month[data-id="' + id + '"] ' + sel); const c = getComputedStyle(e); return [c.fontSize, c.fontWeight, c.color, c.textTransform].join('|'); };
-    return q('.month-warn > .warn-head') === q('.month-list > .month-in-head');
+    return q('.month-list > .month-warn-head') === q('.month-list > .month-in-head');
   }, M0.month + '_' + M0.year));
-  check('panel has no warning icon', (await panel(page).locator('.warn-head svg').count()) === 0);
-  const boxBg = await panel(page).locator('.warn-box').evaluate((e) => getComputedStyle(e).backgroundColor);
+  check('panel has no warning icon', (await panelHead(page).locator('svg').count()) === 0);
+  const boxBg = await panel(page).evaluate((e) => getComputedStyle(e).backgroundColor);
   const shipBg = await page.evaluate(() => getComputedStyle(document.querySelector('.shipment[data-id="o_norm"]')).backgroundColor);
   check('panel background matches a shipment', boxBg === shipBg, `${boxBg} vs ${shipBg}`);
   check('one-month rule: a 3rd-of-next-month autoship shows in the CURRENT month', names.includes('Next Early'));
@@ -440,7 +453,7 @@ try {
   await popup?.close();
 
   // ── "completed" chip: ignored run-outs + approved autoships, restorable ──
-  const chip = panel(page).locator('.warn-head .warn-ign');
+  const chip = panelHead(page).locator('.warn-ign');
   const popRow = (n) => page.locator('.warn-ign-pop .wip-row', { has: page.locator('.wip-name', { hasText: new RegExp(`^${n}$`) }) });
   const completedN = async () => parseInt(await chip.textContent(), 10);
   const n0 = await completedN();
@@ -494,7 +507,7 @@ try {
   await page.waitForFunction(() => window._INV_ITEM_MAP && document.querySelector('.month-warn .warn-row'), null, { timeout: 10000 });
   await page.waitForTimeout(500);
   check('ignore survives a reload', !(await rowNames(page)).includes('Runner'));
-  await panel(page).locator('.warn-ign').hover(); // leave the mock clean
+  await panelHead(page).locator('.warn-ign').hover(); // leave the mock clean
   await popRow('Runner').locator('[data-wip="one"]').click();
   await page.waitForTimeout(250);
   await page.mouse.move(5, 5); await page.waitForTimeout(400);
@@ -503,19 +516,19 @@ try {
   for (const n of ['Runner', 'Late']) { await rowFor(page, n).locator('[data-act="warn-ignore"]').click(); await page.waitForTimeout(120); }
   await page.evaluate(() => window.SupplementBoard.setAutoshipApproved('card', 'oi_approved', true)); // reload dropped the fixture approval
   await page.waitForTimeout(200);
-  await panel(page).locator('.warn-ign').hover();
+  await panelHead(page).locator('.warn-ign').hover();
   await page.waitForSelector('.warn-ign-pop .wip-row', { state: 'visible' });
   const popNames = await page.locator('.warn-ign-pop .wip-name').allTextContents();
   check('popover lists every completed item (ignored + approved)', ['Runner', 'Late', 'Approved One'].every((n) => popNames.includes(n)), popNames.join(', '));
   await popRow('Late').locator('[data-wip="one"]').click();
   await page.waitForTimeout(250);
   check('restoring one leaves the others completed (popover stays open for them)', (await rowNames(page)).includes('Late') && !(await rowNames(page)).includes('Runner') && await page.locator('.warn-ign-pop').isVisible());
-  await panel(page).locator('.warn-ign').hover();
+  await panelHead(page).locator('.warn-ign').hover();
   await page.waitForSelector('.warn-ign-pop [data-wip="all"]');
   await page.locator('.warn-ign-pop [data-wip="all"]').click();
   await page.waitForTimeout(500);
   const afterAll = await rowNames(page);
-  check('Restore all brings every completed item back', ['Runner', 'Late', 'Approved One'].every((n) => afterAll.includes(n)) && (await panel(page).locator('.warn-ign').count()) === 0 && !(await page.locator('.warn-ign-pop').isVisible()), afterAll.join(', '));
+  check('Restore all brings every completed item back', ['Runner', 'Late', 'Approved One'].every((n) => afterAll.includes(n)) && (await panelHead(page).locator('.warn-ign').count()) === 0 && !(await page.locator('.warn-ign-pop').isVisible()), afterAll.join(', '));
   await rowFor(page, 'Approved One').locator('[data-act="warn-approve"]').click(); // restore the fixture's approval for what follows
   await page.waitForTimeout(300);
   await page.mouse.move(5, 5); await page.waitForTimeout(400);
@@ -653,7 +666,7 @@ try {
     if (!(await b.count())) break;
     await b.click(); await page.waitForTimeout(80);
   }
-  check('with 0 items left the entire panel is hidden', await panel(page).evaluate((e) => e.hidden && e.innerHTML.trim() === ''));
+  check('with 0 items left the entire panel (title and box) is gone', (await panel(page).count()) === 0 && (await panelHead(page).count()) === 0);
   dismissed.clear(); // the mock server's ignore list, so the mobile pass below starts clean
 
   // ── Inventory table: editing On Hand re-patches the row; "Lasts For" must stay a day count ──
