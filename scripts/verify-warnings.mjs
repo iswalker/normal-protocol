@@ -88,6 +88,7 @@ const ORDERS_BODY = {
     card('oi_pre2', 'o_pre2', M2, 9, 1, 'Pre2 Item'),
     card('oi_lock1', 'o_lock1', M1, 9, 1, 'Locked Nov Item'),
     card('oi_appr', 'o_appr', M1, 10, 1, 'Appr Item', { autoship_next_date: D_NEXT_MID, autoship_approved: D_NEXT_MID }),
+    card('oi_gap', 'o_a', M0, 1, 8, 'Gap Item', { autoship_next_date: iso(plusDays(5)) }),
     card('oi_covered', null, M0, 5, 1, 'Covered', {}),
   ],
 };
@@ -102,6 +103,7 @@ const INV_ITEMS = [
   { id: 2, name: 'Covered', bottle_size: 60, daily_dose: 1 },
   { id: 3, name: 'Plenty', bottle_size: 60, daily_dose: 1 },
   { id: 4, name: 'Alpha', bottle_size: 60, daily_dose: 1 },
+  { id: 9, name: 'Gap Item', bottle_size: 60, daily_dose: 1 },
   { id: 5, name: 'Early', bottle_size: 60, daily_dose: 1 },
   { id: 6, name: 'Late', bottle_size: 60, daily_dose: 1 },
 ];
@@ -112,6 +114,8 @@ const INV_LOG = [
   { id: 2, item: 'Covered', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
   { id: 3, item: 'Plenty', type: 'Reset', amount: 400, logged_on: iso(now), order_id: null },
   { id: 4, item: 'Alpha', type: 'Reset', amount: 400, logged_on: iso(now), order_id: null },
+  // runs out in 2 days -- but its autoship (below) doesn't ship for 5: it runs out FIRST
+  { id: 9, item: 'Gap Item', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
   { id: 5, item: 'Early', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
   { id: 6, item: 'Late', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
 ];
@@ -216,6 +220,12 @@ try {
   const detailOf = async (n) => (await rowFor(page, n).locator('.warn-detail').textContent()).replace(/\s+/g, ' ').trim();
   check('autoship row text: "<item> autoships <date> ..."', /^autoships \d+\/\d+/.test(await detailOf('Alpha')), await detailOf('Alpha'));
   check('run-out row text: "<item> runs out <date> ..."', /^runs out \d+\/\d+/.test(await detailOf('Runner')), await detailOf('Runner'));
+  // the item's run-out sits beside the autoship date, to compare the two
+  if (process.env.SHOT_DIR) await page.screenshot({ path: join(process.env.SHOT_DIR, 'ro-rows.png'), clip: { x: 0, y: 100, width: 760, height: 460 } });
+  check('autoship row shows the item\'s run-out next to the autoship date', /^autoships \d+\/\d+ · runs out \d+\/\d+/.test(await detailOf('Alpha')), await detailOf('Alpha'));
+  check('a run-out later than the autoship is not flagged', (await rowFor(page, 'Alpha').locator('.warn-ro.is-gap').count()) === 0 && (await rowFor(page, 'Alpha').locator('.warn-ro').count()) === 1);
+  check('a run-out BEFORE the autoship ships is flagged red', (await rowFor(page, 'Gap Item').locator('.warn-ro.is-gap').count()) === 1 && /runs out/.test(await rowFor(page, 'Gap Item').locator('.warn-ro').textContent()));
+  check('items with no Inventory data show no run-out', !/runs out/.test(await detailOf('Stale Approval')) && !/runs out/.test(await detailOf('Ship-level Co')));
   check('no label pills left', (await panel(page).locator('.warn-tag').count()) === 0);
   check('item name comes first in the row', await rowFor(page, 'Runner').locator('.warn-main').evaluate((e) => e.firstElementChild.classList.contains('warn-name')));
   const later = await rowFor(page, 'Later Placement').locator('.warn-detail').textContent();
@@ -538,6 +548,11 @@ try {
     return { oneLine, allTopRight: !!a && a.bottom <= first.top + 2 && a.right > pop.right - 40 };
   });
   check('each completed item is a single line', lay.oneLine, JSON.stringify(lay));
+  const heights = await page.evaluate(() => ({
+    panel: [...document.querySelectorAll('.month-warn .warn-row')].slice(1, 4).map((r) => r.getBoundingClientRect().height),
+    pop: [...document.querySelectorAll('.warn-ign-pop .wip-row')].slice(1).map((r) => r.getBoundingClientRect().height),
+  }));
+  check('completed items are the same height as the Needs Attention rows', heights.pop.length > 0 && heights.pop.every((h) => Math.abs(h - heights.panel[0]) <= 1), JSON.stringify(heights));
   check('Restore all sits in the top-right of the popover', lay.allTopRight, JSON.stringify(lay));
   await popRow('Runner').locator('[data-wip="one"]').click();
   await page.waitForTimeout(250);

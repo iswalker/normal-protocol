@@ -1077,6 +1077,8 @@
     /* "<item> autoships <date> · …" -- plain prefix text, no label chrome */
     #tab-board .warn-detail { font-size: 12px; color: var(--ink-3); min-width: 0; }
     #tab-board .warn-overdue { color: var(--out); }
+    /* the item's run-out next to an autoship date: red when it runs out first */
+    #tab-board .warn-ro.is-gap { color: var(--out); }
     /* order month -> jumps to that order; the item name above opens Inventory */
     #tab-board .warn-month { color: var(--accent-deep); font-weight: 500; cursor: pointer; }
     #tab-board .warn-month:hover { text-decoration: underline; }
@@ -1107,14 +1109,15 @@
     }
     .wip-head { display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; }
     .wip-title { flex: 1 1 auto; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-60); }
-    .wip-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #eef0ef; }
+    /* same height as a Needs Attention row (.warn-row): 4px padding around a 22px button */
+    .wip-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid #eef0ef; }
     /* one line per item: name, then the detail, each ellipsised rather than wrapping */
     .wip-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
-    .wip-name { flex: 0 1 auto; max-width: 50%; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wip-name { flex: 0 1 auto; max-width: 50%; min-width: 0; font-size: 12.5px; font-weight: 600; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .wip-detail { flex: 1 1 0; min-width: 0; font-size: 12px; color: var(--ink-60); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .wip-btn {
-      flex: none; height: 24px; padding: 0 11px; border: 1px solid #3f8f87; border-radius: 8px;
-      background: #fff; color: #3f8f87; font: 500 12px/1 inherit; font-family: inherit; cursor: pointer;
+      flex: none; height: 22px; padding: 0 9px; border: 1px solid #3f8f87; border-radius: 8px;
+      background: #fff; color: #3f8f87; font: 500 11.5px/1 inherit; font-family: inherit; cursor: pointer;
     }
     .wip-btn:hover { background: #3f8f87; color: #fff; }
     /* ── Preemptive mirrors: a next-month order flagged Launch Preemptively,
@@ -4167,6 +4170,14 @@
     });
   }
 
+  // The item's run-out BEFORE this order lands -- the same "current" run-out
+  // the card itself shows (carried through any earlier orders), so it can be
+  // read against the autoship date. null without Inventory data.
+  function cardRunOut(c) {
+    if (c.untracked || !c.dose || !c.loggedOn) return null;
+    try { const r = calcForCard(c); return r && isFinite(r.curRunOut) ? r.curRunOut : null; } catch { return null; }
+  }
+
   function computeWarnings(monthEls, wins) {
     const per = wins.map((w) => (w ? { autoship: [], runout: [], completed: [] } : null));
     const inWindow = (d, w) => d < w.end && (w.isCurrent || d >= w.start);
@@ -4189,7 +4200,7 @@
         addAutoship({
           kind: 'card', id: cardEl.dataset.id, name: c.name, date: SB.parseDate(c.autoshipNextDate),
           where: shipEl ? (STATE.shipmentData[shipEl.dataset.id]?.name || '') : '', homeMi, link: c.autoshipLink || '',
-          approved: isAutoshipApproved(c),
+          approved: isAutoshipApproved(c), runOut: cardRunOut(c),
         });
       });
       monthEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
@@ -4217,6 +4228,7 @@
         first.targets.push(...r.targets);
         first.homeMis.push(...r.homeMis);
         if (!first.link) first.link = r.link;
+        if (!first.runOut) first.runOut = r.runOut;
         first.approved = first.approved && r.approved; // done only once every copy is
       });
       // Approved ones aren't to-do any more -- they're "completed" (still the
@@ -4307,10 +4319,16 @@
       r.homeMis.forEach((hm, i) => { if (seen.has(hm)) return; seen.add(hm); links.push(monthLink(monthNames[hm], r.targets[i])); });
       const dateHTML = `<span class="warn-date${r.link ? ' has-link' : ''}" data-act="open-autoship-link" data-link="${escAttr(r.link)}" data-wtargets="${escAttr(targetsAttr(r.targets))}"${r.link ? ' title="Open Autoship link"' : ''}>${df(r.date)}</span>`;
       const extra = [overdue ? '<span class="warn-overdue">overdue</span>' : '', r.where ? esc(r.where) : '', links.join(', ')].filter(Boolean).join(' · ');
+      // The item's run-out beside the autoship date, to compare the two -- red when
+      // it runs out BEFORE the autoship would arrive
+      const gap = !!r.runOut && r.runOut < r.date;
+      const roHTML = r.runOut
+        ? ` · <span class="warn-ro${gap ? ' is-gap' : ''}" title="${gap ? 'Runs out before this autoship ships' : 'Current run-out, before this order'}">${r.runOut < today ? 'ran out' : 'runs out'} ${df(r.runOut)}</span>`
+        : '';
       rows.push({ date: r.date, html: `<div class="warn-row" data-wdate="${toISODate(r.date)}">
         <span class="warn-main">
           ${nameHTML(r.name, r.kind === 'card')}
-          <span class="warn-detail">autoships ${dateHTML}${extra ? ' · ' + extra : ''}</span>
+          <span class="warn-detail">autoships ${dateHTML}${roHTML}${extra ? ' · ' + extra : ''}</span>
         </span>
         <button type="button" class="warn-btn is-approve" data-act="warn-approve" data-wtargets="${escAttr(targetsAttr(r.targets))}" title="Mark this ship date as approved">Approve</button>
       </div>` });
