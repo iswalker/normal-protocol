@@ -1683,14 +1683,12 @@
     }
     /* lock tracked card names (cursor only; actual editing is blocked by no contenteditable) */
     #tab-board .card-name:not([contenteditable]) { cursor: default; user-select: none; }
-    /* Linked-to-Inventory names get the open-inv-item shortcut instead --
-       .no-proj (no run-out to show, so no live Inventory match right now)
-       is the one case that still reads as inert, matching the click
-       handler's own guard. */
-    #tab-board .card-name[data-act="open-inv-item"] { cursor: pointer; }
-    #tab-board .card-name[data-act="open-inv-item"]:hover { text-decoration: underline; text-underline-offset: 2px; }
-    #tab-board .card.no-proj .card-name[data-act="open-inv-item"] { cursor: default; }
-    #tab-board .card.no-proj .card-name[data-act="open-inv-item"]:hover { text-decoration: none; }
+    /* Linked-to-Inventory names send the item to the Search bar; the run-out
+       metrics (Supply: "12x → 37d, 11/29") open it in Inventory. */
+    #tab-board .card-name[data-act="search-item"] { cursor: pointer; }
+    #tab-board .card-name[data-act="search-item"]:hover { text-decoration: underline; text-underline-offset: 2px; }
+    #tab-board .proj .pv[data-act="open-inv-item"] { cursor: pointer; }
+    #tab-board .proj .pv[data-act="open-inv-item"]:hover :is(.dose-tag, .dose-arrow, .cur, .nxt) { text-decoration: underline; text-underline-offset: 2px; }
 
     /* ── COMPACT layout — one dense grid row per card ── */
     #tab-board .board.layout-compact .month-list { gap: 5px; }
@@ -3414,14 +3412,14 @@
     <div class="card${isGhost ? ' card--ghost' : ''}${untracked && !isGhost ? ' card--untracked' : ''}${c.notes && c.notes.trim() ? ' notes-open' : ''}" data-id="${id}" data-kind="card" data-recur="${c.recur || ''}" data-ghost-of="${c.ghostOf || ''}" data-autoship-link="${esc(c.autoshipLink || '').replace(/"/g, '&quot;')}" data-autoship-next="${c.autoshipNextDate || ''}">
       <div class="card-body">
         <div class="card-top">
-          <div class="card-name" ${untracked && !isGhost ? 'contenteditable="true" spellcheck="false"' : 'data-act="open-inv-item" title="Open in Inventory"'} data-field="name">${esc(c.name)}</div>
+          <div class="card-name" ${untracked && !isGhost ? 'contenteditable="true" spellcheck="false"' : 'data-act="search-item" title="Search for this item"'} data-field="name">${esc(c.name)}</div>
           <span class="badge loose-tag">Loose</span>
           <span class="badge status">OK</span>
           <span class="autoship-date-badge" data-act="open-autoship-link" style="display:none"></span>
         </div>
         <div class="proj">
           <div class="pk">Supply</div>
-          <div class="pv">
+          <div class="pv" data-act="open-inv-item" title="Open in Inventory">
             <span class="dose-tag">0x</span>
             <span class="dose-arrow">→</span>
             <span class="cur">
@@ -4947,7 +4945,7 @@
     //  - Holding an Autoship date opens its calendar, for the real record,
     //    over the mirror (mirrorCtx redirects the positioning).
     if (window.matchMedia('(pointer: coarse)').matches) {
-      const TAP_SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"], .autoship-date, .autoship-date-badge, .ship-autoship-date, .card-grip, .ship-grip';
+      const TAP_SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="search-item"], .proj .pv[data-act="open-inv-item"], .autoship-date, .autoship-date-badge, .ship-autoship-date, .card-grip, .ship-grip';
       const HOLD_SEL = '.autoship-date, .autoship-date-badge, .ship-autoship-date';
       const MOVE_TOLERANCE = 10, HOLD_MS = 450;
       let touch = null;
@@ -6804,8 +6802,8 @@
       const c = STATE.cardData[id];
       c.name = t.textContent;
       // Only reachable for an untracked/free-text card in the first place
-      // (an Inventory-matched one opens the Inventory item instead of
-      // editing inline here -- see cardHTML's data-act="open-inv-item"),
+      // (an Inventory-matched one searches for the item instead of
+      // editing inline here -- see cardHTML's data-act="search-item"),
       // same recurring-root propagation every other editable field here
       // already gets.
       if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, 'name', c.name);
@@ -7025,15 +7023,26 @@
       return;
     }
 
+    if (a === 'search-item') {
+      // Clicking a tracked item's name filters the whole board to it, exactly
+      // as if its name had been typed into the header Search box.
+      const cardEl = act.closest('.card');
+      const name = (cardEl && STATE.cardData[cardEl.dataset.id]?.name || '').trim();
+      const input = document.getElementById('global-search-input');
+      if (!name || !input) return;
+      input.value = name;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
     if (a === 'open-inv-item') {
-      // Shortcut to check/update On Hand for a supplement without hunting
-      // for it in the Inventory table -- only meaningful for cards actually
-      // linked to Inventory (a run-out projection showing means there's a
-      // match; see updateCard's hasInv/.no-proj). An untracked/free-text
-      // item never has a data-act here at all (its name is contenteditable
-      // instead), but a tracked item can still be .no-proj at the moment of
-      // click if Inventory data hasn't loaded/matched yet -- bail rather
-      // than open the modal to a search with nothing to show.
+      // Shortcut (the run-out metrics, e.g. "12x → 37d, 11/29") to check/
+      // update On Hand for a supplement without hunting for it in the
+      // Inventory table -- only meaningful for cards actually linked to
+      // Inventory (a run-out projection showing means there's a match; see
+      // updateCard's hasInv/.no-proj). An untracked/free-text item has no
+      // projection to click, but a tracked item can still be .no-proj at the
+      // moment of click if Inventory data hasn't loaded/matched yet -- bail
+      // rather than open the modal to a search with nothing to show.
       const cardEl = act.closest('.card');
       if (!cardEl || cardEl.classList.contains('no-proj')) return;
       openInventoryFor(STATE.cardData[cardEl.dataset.id]?.name || '');
@@ -8207,6 +8216,36 @@
     });
   }
 
+  // An item whose Autoship date is edited into a different calendar month
+  // (10/20 -> 11/3, but not 10/20 -> 10/23) follows it to that month: into
+  // the same-named order there if it came from one (same as the card menu's
+  // "Move to" a month), else loose. Left where it is for: no date before or
+  // after, the same month, a recurring ghost (it mirrors its root), an item
+  // in a placed (locked) order, or a month that isn't on the board.
+  function moveCardToAutoshipMonth(cardEl, oldIso, newIso) {
+    const ym = (iso) => { const m = /^(\d{4})-(\d{2})-\d{2}/.exec(iso || ''); return m ? { y: +m[1], m: +m[2] } : null; };
+    const a = ym(oldIso), b = ym(newIso);
+    if (!cardEl || !a || !b || (a.y === b.y && a.m === b.m)) return false;
+    const c = STATE.cardData[cardEl.dataset.id];
+    if (!c || c.ghostOf || isCardLocked(cardEl.dataset.id)) return false;
+    const monthEl = cardEl.closest('.month');
+    const targetEl = board.querySelector('.month[data-id="' + MONTH_NAMES[b.m - 1] + '_' + b.y + '"]');
+    if (!monthEl || !targetEl || targetEl === monthEl) return false;
+    const container = cardEl.parentElement;
+    let dest;
+    if (container.classList.contains('ship-body')) {
+      const shipName = (STATE.shipmentData[container.closest('.shipment').dataset.id] || {}).name || '';
+      dest = findOrCreateShipInMonth(targetEl, shipName);
+    } else {
+      dest = targetEl.querySelector('.month-list');
+    }
+    dest.prepend(cardEl);
+    reconcileMovedRecurring(cardEl);
+    reapplySearchTo(monthEl);
+    reapplySearchTo(targetEl);
+    return true;
+  }
+
   function findOrCreateShipInMonth(monthEl, shipName) {
     const existing = [...monthEl.querySelectorAll('.shipment')].find(s =>
       ((STATE.shipmentData[s.dataset.id] || {}).name || '').trim().toLowerCase() === shipName.trim().toLowerCase()
@@ -8276,16 +8315,16 @@
   //    this reconstructed click is what actually fixed it). Same fix here:
   //    track the touch ourselves and fire the click by hand. Covers the
   //    notes icon, the include-in-total toggle, "+ Item"/"+ Order", the
-  //    mobile Status menu button, the open-in-Inventory item name
-  //    shortcut, and the inline Autoship date. Scoped to
-  //    [data-act="open-inv-item"] specifically, not bare .card-name -- an
+  //    mobile Status menu button, the search-for-this-item name shortcut,
+  //    the open-in-Inventory run-out metrics, and the inline Autoship
+  //    date. Scoped to [data-act="search-item"] specifically, not bare .card-name -- an
   //    untracked item's name is a plain contenteditable there instead (no
   //    data-act), and this fix's own .click()+preventDefault() would
   //    otherwise swallow the tap needed to place a cursor and start
   //    editing it. ──
   (function initTapFix() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
-    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"], .autoship-date, .autoship-date-badge, .ship-autoship-date';
+    const SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="search-item"], .proj .pv[data-act="open-inv-item"], .autoship-date, .autoship-date-badge, .ship-autoship-date';
     const MOVE_TOLERANCE = 10;
     let startX = 0, startY = 0, target = null, moved = false;
     board.addEventListener('touchstart', (e) => {
@@ -8713,8 +8752,8 @@
             if (nameEl) {
               nameEl.removeAttribute('contenteditable');
               nameEl.removeAttribute('spellcheck');
-              nameEl.dataset.act = 'open-inv-item';
-              nameEl.title = 'Open in Inventory';
+              nameEl.dataset.act = 'search-item';
+              nameEl.title = 'Search for this item';
             }
           }
         }
@@ -8781,6 +8820,7 @@
     saveCardAutoship(id, link, nextDate, approved) {
       const c = STATE.cardData[id];
       if (!c) return false;
+      const prevDate = c.autoshipNextDate || '';
       c.autoshipLink = link;
       c.autoshipNextDate = nextDate;
       // `approved` omitted = leave the approval alone (it lapses on its own
@@ -8790,6 +8830,7 @@
       // Keep the DOM stamp in lockstep -- see pushItem's dom-first read.
       const cardEl = board.querySelector(`.card[data-id="${id}"]`);
       if (cardEl) { cardEl.dataset.autoshipLink = link || ''; cardEl.dataset.autoshipNext = nextDate || ''; }
+      moveCardToAutoshipMonth(cardEl, prevDate, nextDate);
       recalcAll();
       persist();
       return true;

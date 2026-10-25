@@ -271,7 +271,7 @@ try {
 
   // ── preemptive mirrors in the PREVIOUS month ──
   const m0list = page.locator(`.month[data-id="${M0.month}_${M0.year}"] > .month-list`);
-  const mirrorNames = () => m0list.locator('.month-preempt > .pre-host').evaluateAll((els) => els.map((e) => e.dataset.preName));
+  const mirrorNames = () => m0list.locator('.month-preempt > .pre-host').evaluateAll((els) => els.map((e) => e.shadowRoot.querySelector('.ship-name')?.textContent.trim()));
   const mnames = await mirrorNames();
   check('mirror: a preemptive next-month order appears in this month', mnames.includes('Pre Auto Co') && mnames.includes('Dup Co') && mnames.includes('Item Date Co'), mnames.join(', '));
   check('mirror: an ordinary next-month order does not', !mnames.includes('Normal Co'));
@@ -280,9 +280,9 @@ try {
     const host = document.querySelector('.pre-host'); const root = host.shadowRoot;
     return !!root.querySelector('.shipment') && !host.querySelector('.shipment, .card') && ![...document.querySelectorAll('.shipment, .card')].some((e) => e.closest('.month-preempt'));
   }));
-  // the FULL order structure: same header + every item with its fields, greyed like a completed order but expanded
+  // the FULL order structure: same header + every item with its fields, same colours as the real order, expanded
   const full = await page.evaluate(() => {
-    const host = [...document.querySelectorAll('.pre-host')].find((h) => h.dataset.preName === 'Pre Auto Co');
+    const host = [...document.querySelectorAll('.pre-host')].find((h) => h.shadowRoot.querySelector('.ship-name')?.textContent.trim() === 'Pre Auto Co');
     const sh = host.shadowRoot.querySelector('.shipment');
     const real = [...document.querySelectorAll('.shipment')].find((e) => e.querySelector('.ship-name')?.textContent === 'Pre Auto Co');
     const body = sh.querySelector('.ship-body');
@@ -294,7 +294,7 @@ try {
       sameItems: JSON.stringify(names(sh)) === JSON.stringify(names(real)) && names(sh).length > 0,
       sameFields: JSON.stringify(vals(sh)) === JSON.stringify(vals(real)) && vals(sh).length > 0,
       fields: !!sh.querySelector('.card .proj') && !!sh.querySelector('.card .order') && !!sh.querySelector('.card .card-foot'),
-      readonly: [...sh.querySelectorAll('input')].every((i) => i.disabled) && sh.querySelectorAll('[contenteditable]').length === 0,
+      editable: sh.querySelectorAll('.ship-body input').length > 0 && [...sh.querySelectorAll('.ship-body input')].every((i) => !i.disabled),
       sameTotal: sh.querySelector('.ship-total .amt').textContent === real.querySelector('.ship-total .amt').textContent,
     };
   });
@@ -306,7 +306,7 @@ try {
   // colour scheme: grey = contains an Autoship item, teal = none; previews follow it too
   const GREY = 'rgb(243, 244, 244)', TEAL = 'rgb(234, 246, 244)';
   const bgOf = (sel) => page.evaluate((q) => getComputedStyle(document.querySelector(q)).backgroundColor, sel);
-  const mirrorBg = (name) => page.evaluate((n) => getComputedStyle([...document.querySelectorAll('.pre-host')].find((h) => h.dataset.preName === n).shadowRoot.querySelector('.shipment')).backgroundColor, name);
+  const mirrorBg = (name) => page.evaluate((n) => getComputedStyle([...document.querySelectorAll('.pre-host')].find((h) => h.shadowRoot.querySelector('.ship-name')?.textContent.trim() === n).shadowRoot.querySelector('.shipment')).backgroundColor, name);
   check('colour: an order containing an Autoship item is grey', (await bgOf('.shipment[data-id="o_a"]')) === GREY, await bgOf('.shipment[data-id="o_a"]'));
   check('colour: an order with a shipment-level autoship is grey', (await bgOf('.shipment[data-id="o_ship"]')) === GREY);
   check('colour: an order with no Autoship is the standard teal', (await bgOf('.shipment[data-id="o_norm"]')) === TEAL, await bgOf('.shipment[data-id="o_norm"]'));
@@ -429,7 +429,7 @@ try {
     await page.screenshot({ path: join(process.env.SHOT_DIR, 'sandwich.png') });
   }
 
-  check('mirror: shows the real order\'s full structure (header, every item, every field), expanded and greyed', Object.values(full).every(Boolean), JSON.stringify(full));
+  check('mirror: shows the real order\'s full structure (header, every item, every field), expanded and editable', Object.values(full).every(Boolean), JSON.stringify(full));
   const plannedBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent();
   const countBefore = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .mcount`).textContent();
   await pbtn('o_norm').click(); await page.waitForTimeout(700); // flag one more order -> one more mirror
@@ -438,13 +438,7 @@ try {
   check('mirror: does not change the month metrics or count', (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent()) === plannedBefore && (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .mcount`).textContent()) === countBefore);
   const savedOrders = puts[puts.length - 1].orders.map((o) => o.order_id);
   check('mirror: never saved (no duplicate or extra orders)', new Set(savedOrders).size === savedOrders.length && savedOrders.length === (await page.evaluate(() => document.querySelectorAll('.shipment').length)), `${savedOrders.length}`);
-  await page.locator('.pre-host[data-pre-name="Normal Co"]').click();
-  await page.waitForTimeout(250);
-  await page.waitForTimeout(900);
-  const sJump = await clearOfHead(page, '.shipment[data-id="o_norm"]');
-  check('jumping to an order lands just BELOW the sticky month header (not under it)', sJump.ok, JSON.stringify(sJump));
   check('mirror: has no caption line (the Preemptive button says it all)', await page.evaluate(() => [...document.querySelectorAll('.pre-host')].every((h) => !h.shadowRoot.querySelector('.pre-cap') && !/placed early/.test(h.shadowRoot.textContent))));
-  check('mirror: clicking it jumps to the real order', await page.locator('.shipment[data-id="o_norm"]').evaluate((e) => e.classList.contains('warn-flash')));
   await pbtn('o_norm').click(); await page.waitForTimeout(700); // back to off
   check('mirror: turning the flag off removes it', !(await mirrorNames()).includes('Normal Co'));
   await page.locator('#inv-preempt-btn').click();
@@ -784,6 +778,71 @@ try {
   check('the card\'s own order and completed orders are still left out', pickers.every((p) => !p.names.includes('Pre Auto Co') && !p.names.includes('Locked Nov')));
   await page.keyboard.press('Escape');
   await page.mouse.move(5, 5); await page.waitForTimeout(300);
+
+  // ── clicking an item's NAME searches for it; clicking its run-out METRICS opens it in Inventory ──
+  const covered = '.card[data-id="oi_covered"]';
+  await page.locator(covered).evaluate((e) => e.scrollIntoView({ block: 'center', inline: 'center' }));
+  await page.mouse.move(5, 5); await page.waitForTimeout(300);
+  check('a tracked item\'s name is a "search for this item" link, its metrics an "open in Inventory" link', await page.evaluate((q) => {
+    const c = document.querySelector(q);
+    return c.querySelector('.card-name').dataset.act === 'search-item' && c.querySelector('.proj .pv').dataset.act === 'open-inv-item';
+  }, covered));
+  await page.locator(covered + ' .card-name').click();
+  await page.waitForTimeout(500);
+  const searched = await page.evaluate(() => ({
+    box: document.getElementById('global-search-input').value,
+    shown: [...document.querySelectorAll('#board .card')].filter((c) => c.offsetParent !== null).map((c) => c.querySelector('.card-name').textContent.trim()),
+  }));
+  check('clicking the name puts it in the Search bar', searched.box === 'Covered', searched.box);
+  check('…and filters the board to that item', searched.shown.length > 0 && searched.shown.every((n) => /covered/i.test(n)), searched.shown.join(', '));
+  check('…without opening Inventory', !(await page.locator('#inv-filter-item').isVisible()));
+  await page.locator('#global-search-clear').click();
+  await page.waitForTimeout(300);
+  check('clearing the search brings every item back', (await page.evaluate(() => [...document.querySelectorAll('#board .card')].filter((c) => c.offsetParent !== null).length)) > 3);
+  await page.locator(covered).evaluate((e) => e.scrollIntoView({ block: 'center', inline: 'center' }));
+  await page.locator(covered + ' .proj .pv').click();
+  await page.waitForSelector('#inv-filter-item', { state: 'visible' });
+  await page.waitForTimeout(300);
+  check('clicking the run-out metrics opens the item in Inventory', (await page.locator('#inv-filter-item').inputValue()) === 'Covered');
+  check('…and leaves the board\'s Search bar alone', (await page.locator('#global-search-input').inputValue()) === '');
+  await page.locator('#inv-filter-item').fill(''); // leave the Inventory filter clear for the checks after this
+  await page.locator('#inv-modal-close').click();
+  await page.waitForTimeout(200);
+
+  // ── changing an item's Autoship date to a DIFFERENT month moves it to that month ──
+  const monthIdOf = (m) => m.month + '_' + m.year;
+  const inMonth = (id) => page.evaluate((i) => { const c = document.querySelector('.card[data-id="' + i + '"]'); const m = c.closest('.month'); const s = c.closest('.shipment'); return { month: m.dataset.id, ship: s ? s.querySelector('.ship-name').textContent.trim() : null }; }, id);
+  const setDate = async (id, d) => { await page.evaluate(({ id, d }) => window.SupplementBoard.saveCardAutoship(id, '', d), { id, d }); await page.waitForTimeout(150); };
+  const day = (m, n) => iso(new Date(m.start.getFullYear(), m.start.getMonth(), n));
+  check('move setup: the loose test item starts in next month', (await inMonth('oi_far')).month === monthIdOf(M1));
+  await setDate('oi_far', day(M3, 25)); // same month as before (the original date was the 20th of that month)
+  check('Autoship: a new date in the SAME month leaves the item where it is', (await inMonth('oi_far')).month === monthIdOf(M1));
+  await setDate('oi_far', day(M2, 12));
+  check('Autoship: a date in a DIFFERENT month moves the item to that month', (await inMonth('oi_far')).month === monthIdOf(M2), JSON.stringify(await inMonth('oi_far')));
+  await page.waitForTimeout(700);
+  check('…and the move is saved', puts[puts.length - 1]?.items.find((i) => i.order_item_id === 'oi_far')?.month === M2.month, JSON.stringify(puts[puts.length - 1]?.items.find((i) => i.order_item_id === 'oi_far')));
+  await setDate('oi_far', day(M2, 14));
+  check('Autoship: another date in that same month stays put', (await inMonth('oi_far')).month === monthIdOf(M2));
+  await setDate('oi_far', '');
+  check('Autoship: clearing the date does not move it', (await inMonth('oi_far')).month === monthIdOf(M2));
+  await setDate('oi_far', day(M1, 20));
+  check('Autoship: setting a date where there was none does not move it', (await inMonth('oi_far')).month === monthIdOf(M2));
+  await setDate('oi_far', day(M0, 9));
+  check('Autoship: an EARLIER month works too', (await inMonth('oi_far')).month === monthIdOf(M0));
+  await setDate('oi_far', iso(new Date(M0.year - 5, 0, 5)));
+  check('Autoship: a month that is not on the board leaves it where it is', (await inMonth('oi_far')).month === monthIdOf(M0));
+  await setDate('oi_far', day(M3, 20));
+  // inside an order: it follows into the same-named order of the target month
+  check('move setup: an item inside "Alpha Shop" in this month', JSON.stringify(await inMonth('oi_nextmid')) === JSON.stringify({ month: monthIdOf(M0), ship: 'Alpha Shop' }));
+  await setDate('oi_nextmid', day(M2, 9));
+  const mvShip = await inMonth('oi_nextmid');
+  check('Autoship: an item in an order moves into an order of the SAME NAME in the target month', mvShip.month === monthIdOf(M2) && mvShip.ship === 'Alpha Shop', JSON.stringify(mvShip));
+  await setDate('oi_nextmid', day(M0, 11));
+  check('Autoship: …and can be moved back into the original order', JSON.stringify(await inMonth('oi_nextmid')) === JSON.stringify({ month: monthIdOf(M0), ship: 'Alpha Shop' }), JSON.stringify(await inMonth('oi_nextmid')));
+  // an item in a placed (locked) order never moves
+  await setDate('oi_locked', day(M2, 9));
+  check('Autoship: an item in a placed (Ordered) order stays in its order', (await inMonth('oi_locked')).month === monthIdOf(M0));
+  await setDate('oi_locked', D_LOCKED);
 
   // ── at 0 left to act on, the whole panel goes away ──
   for (let i = 0; i < 40; i++) {
