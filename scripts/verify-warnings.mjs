@@ -490,9 +490,9 @@ try {
   const firstOnly = await page.evaluate((ids) => ids.map((id) => {
     const list = document.querySelector('.month[data-id="' + id + '"] > .month-list');
     const heads = [...list.querySelectorAll(':scope > .month-sec-head')];
-    return heads.map((h) => ({ first: h === list.firstElementChild, mt: getComputedStyle(h).marginTop })).filter((x) => x.first || x.mt === '4px');
+    return heads.map((h) => ({ first: h === list.firstElementChild, mt: getComputedStyle(h).marginTop })).filter((x) => x.first || x.mt === '-4px');
   }), [M0.month + '_' + M0.year, M1.month + '_' + M1.year]);
-  check('only the label that is really first in a month gets the 4px first-child margin', firstOnly.every((m) => m.length === 1 && m[0].first && m[0].mt === '4px'), JSON.stringify(firstOnly));
+  check('only the label that is really first in a month gets the -4px first-child margin', firstOnly.every((m) => m.length === 1 && m[0].first && m[0].mt === '-4px'), JSON.stringify(firstOnly));
   check('other section labels keep the normal 8px top margin', await page.evaluate((id) => [...document.querySelectorAll('.month[data-id="' + id + '"] > .month-list > .month-sec-head')].filter((h) => h !== h.parentNode.firstElementChild).every((h) => getComputedStyle(h).marginTop === '8px'), M1.month + '_' + M1.year));
   check('the "n completed" chip has no border and the 1px 9px 2px 9px padding', await page.evaluate(() => { const c = getComputedStyle(document.querySelector('.warn-ign')); return c.borderTopStyle === 'none' && c.paddingTop === '1px' && c.paddingRight === '9px' && c.paddingBottom === '2px' && c.paddingLeft === '9px'; }));
   check('the title label matches the other section labels (same size/weight/colour)', await page.evaluate((id) => {
@@ -856,6 +856,22 @@ try {
     check('a failed save shows a "sign-in expired / offline" banner with a Refresh button', /sign-in expired/.test(msg) && (await p2.locator('#sync-banner-refresh').isVisible()), msg);
     check('…and does not reload the page out from under the unsaved edit', await p2.evaluate(() => !!document.querySelector('.shipment .card')));
     await c2.close();
+    // (2b) an On Hand edit late in the evening logs TODAY (local), not the UTC date, which is already tomorrow
+    const c4 = await b2.newContext({ viewport: { width: 1400, height: 900 }, timezoneId: 'America/New_York' });
+    const p4 = await c4.newPage();
+    await p4.clock.setFixedTime(new Date('2026-10-24T23:30:00-04:00')); // = 2026-10-25T03:30Z
+    let resetBody = null;
+    await p4.route('**/api/inventory', (r) => { if (r.request().method() === 'POST') { resetBody = JSON.parse(r.request().postData() || '{}'); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); } return r.continue(); });
+    await p4.goto(host, { waitUntil: 'load' });
+    await p4.waitForSelector('#tab-board #board .month', { state: 'attached', timeout: 15000 });
+    await p4.locator('#inv-search-link').click();
+    await p4.waitForSelector('#inv-body tr[data-key="runner"]');
+    await p4.locator('#inv-body tr[data-key="runner"] .inv-onhand').click();
+    await p4.locator('#inv-body tr[data-key="runner"] input').fill('30');
+    await p4.keyboard.press('Enter');
+    await p4.waitForTimeout(800);
+    check('an evening On Hand edit logs the LOCAL date (10/24), not tomorrow\'s UTC date', resetBody && resetBody.logged_on === '2026-10-24', JSON.stringify(resetBody));
+    await c4.close();
     // (3) on localhost nothing changes: the dev-server message stays, and there's no reload
     const c3 = await browser.newContext({ viewport: { width: 1400, height: 900 } });
     const p3 = await c3.newPage();

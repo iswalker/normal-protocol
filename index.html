@@ -1000,7 +1000,7 @@
       background: #fff; border: 1px solid #dde3e4; border-radius: 14px;
     }
     #tab-board .month-head {
-      padding: 9px 14px 5px 14px; display: flex; align-items: center; gap: 10px;
+      padding: 7px 11px 7px 11px; display: flex; align-items: center; gap: 10px;
       position: sticky; top: 0; z-index: 20;
       background: #fff; border-radius: 14px 14px 0 0;
       box-shadow: 0 1px 0 transparent;
@@ -1554,7 +1554,7 @@
          it lands under .scount regardless of the (always-short, "Sep"/"Oct"
          style) month name's actual width. Width tuned empirically so that
          edge matches .scount's x. */
-      #tab-board .month-title { width: 134px; min-width: 0; }
+      #tab-board .month-title { width: 123px; min-width: 0; }
       #tab-board .month-title .mname {
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
       }
@@ -1906,12 +1906,12 @@
        Orders / Preemptive Orders · <next month> / Completed Orders -- so it's
        clear why orders cluster the way they do (see layoutMonthLists) */
     #tab-board .month-sec-head {
-      display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 0 4px;
+      display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 4px 4px 4px 0;
       font: 600 10.5px/1 var(--font-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3);
     }
     /* only ever the first thing actually in the list: the title and box of the
        Needs Attention panel are separate children, removed when empty */
-    #tab-board .month-sec-head:first-child { margin-top: 4px; }
+    #tab-board .month-sec-head:first-child { margin-top: -4px; }
     #tab-board .month-sec-head::after { content: ''; flex: 1 1 auto; height: 1px; background: #dde3e4; }
 
     /* Divider above the first locked shipment */
@@ -8669,7 +8669,8 @@
 
   async function writeShipment({ orderId, cards, newStage, oldStage }) {
     if (!newStage) return;
-    const today = new Date().toISOString().slice(0, 10);
+    // LOCAL date -- toISOString() alone is UTC, which from ~8pm Eastern is already tomorrow
+    const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     try {
       if (oldStage == null) {
         // Freshly locking (Ordered/Entered, or straight to Received) -- any
@@ -9084,7 +9085,7 @@
 
         const onHandMap = computeOnHand(logRows);
         const itemMap = window._INV_ITEM_MAP || {};
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); // local date, not UTC
         const today = new Date(todayStr + 'T00:00:00');
 
         body.innerHTML = '';
@@ -9264,8 +9265,11 @@
   // concatenated straight into row/card HTML below, so it needs escaping.
   function escHtml(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+  // The LOCAL date (what logged_on rows mean everywhere else) -- not toISOString()'s
+  // UTC date, which from ~8pm Eastern is already tomorrow and made an On Hand edit
+  // in the evening log a Reset dated a day ahead.
   function isoToday() {
-    return new Date().toISOString().slice(0, 10);
+    return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   }
 
   function computeOnHand(invLogRows) {
