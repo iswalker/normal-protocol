@@ -2043,13 +2043,15 @@
       }
       /* Each month card is its own vertical scroller (its .month-head is
          position:sticky inside it, same as before). overscroll-behavior-y
-         none: no rubber-banding past its top or bottom. y only -- the x
-         axis has to keep chaining, since that's how a sideways drag that
-         starts on a month reaches #tab-board. Children keep their natural
+         contain: the card keeps the platform's own stretchy bounce at its
+         top/bottom (iOS rubber-banding, Android's stretch) but never chains
+         a vertical drag out to the board or the page, which stay put. y
+         only -- the x axis has to keep chaining, since that's how a
+         sideways drag that starts on a month reaches #tab-board. Children keep their natural
          height (flex-shrink:0) -- .month is a flex column, which would
          otherwise squash them to fit instead of letting the card scroll. */
       #tab-board .month {
-        overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: none;
+        overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain;
         -webkit-overflow-scrolling: touch; min-height: 0;
       }
       #tab-board .month > * { flex-shrink: 0; }
