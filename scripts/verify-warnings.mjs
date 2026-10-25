@@ -796,8 +796,15 @@ try {
   check('clicking the name puts it in the Search bar', searched.box === 'Covered', searched.box);
   check('…and filters the board to that item', searched.shown.length > 0 && searched.shown.every((n) => /covered/i.test(n)), searched.shown.join(', '));
   check('…without opening Inventory', !(await page.locator('#inv-filter-item').isVisible()));
+  const monthIdOfM2 = M2.month + '_' + M2.year;
+  // search for something that only exists in a FUTURE month: that month becomes the leftmost one in view
+  await page.locator('#global-search-input').fill('Later Placement');
+  await page.waitForTimeout(500);
+  const farAway = await page.evaluate(() => [...document.querySelectorAll('#board .month')].find((m) => m.offsetParent !== null).dataset.id);
   await page.locator('#global-search-clear').click();
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
+  const atRoot = await page.evaluate(() => { const s = document.getElementById('tab-board').getBoundingClientRect(); const fe = [...document.querySelectorAll('#board .month')].find((m) => m.offsetParent !== null); const f = fe.getBoundingClientRect(); return { first: fe.dataset.id, dx: Math.round(f.left - s.left), dy: Math.round(f.top - s.top) }; });
+  check('clearing a search jumps back to the first month (not wherever the board was scrolled)', farAway === monthIdOfM2 && atRoot.first !== farAway && Math.abs(atRoot.dx) < 40 && Math.abs(atRoot.dy) < 40, JSON.stringify({ farAway, atRoot }));
   check('clearing the search brings every item back', (await page.evaluate(() => [...document.querySelectorAll('#board .card')].filter((c) => c.offsetParent !== null).length)) > 3);
   await page.locator(covered).evaluate((e) => e.scrollIntoView({ block: 'center', inline: 'center' }));
   await page.locator(covered + ' .proj .pv').click();

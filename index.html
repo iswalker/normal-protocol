@@ -7268,7 +7268,9 @@
   // click/unpin handlers below -- the one place that re-applies every active
   // filter (text, Autoship, pinned merchant) to the board and syncs the
   // header controls' own on/off appearance to match.
-  function refreshBoardFilters() {
+  // toStart: clearing a search sends the board back to its first month
+  // instead of holding whichever (possibly far-future) month was in view.
+  function refreshBoardFilters(toStart) {
     const clearBtn = document.getElementById('global-search-clear');
     const autoshipBtn = document.getElementById('inv-autoship-btn');
     const preemptBtn = document.getElementById('inv-preempt-btn');
@@ -7281,7 +7283,7 @@
     // height -- scrollLeft/scrollTop themselves don't change, so the
     // viewport silently lands on a different month than the one the user
     // was just looking at.
-    const anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
+    let anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
     renderWarnings(); // the Needs Attention rows follow the same filter (before months decide whether they have content)
     board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
     renderMonthSections();
@@ -7293,6 +7295,10 @@
     autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
     preemptBtn?.classList.toggle('active', globalPreemptiveOnly);
     renderPinnedMerchants();
+    if (toStart === true) {
+      const first = [...board.querySelectorAll('.month')].find((m) => m.style.display !== 'none' && !m.classList.contains('search-hide'));
+      if (first) anchorId = first.dataset.id;
+    }
     if (anchorId) {
       const anchorEl = board.querySelector(`.month[data-id="${anchorId}"]`);
       if (anchorEl && anchorEl.style.display !== 'none') scrollElementIntoBoardView(anchorEl, true);
@@ -7530,12 +7536,13 @@
     // freeform text search, rather than stacking "pinned merchant AND
     // text" the way it used to -- the pin chip itself stays pinned, just
     // deselected (same as unpinning-by-tap already does).
-    function applyToAllMonths(q) {
+    function applyToAllMonths(q, wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalPreemptiveOnly || globalPinnedMerchant)) {
       globalSearchQuery = q;
       globalAutoshipOnly = false;
       globalPreemptiveOnly = false;
       globalPinnedMerchant = '';
-      refresh();
+      // Clearing a filter returns to the root of the board (first month)
+      refresh(!q.trim() && wasFiltered);
     }
     box.addEventListener('click', (e) => {
       if (e.target.closest('.global-search-clear')) return;
@@ -7549,9 +7556,10 @@
     // an active pinned-merchant selection all reset together (the pinned
     // chips themselves stay pinned, just deselected -- see globalPinnedMerchant).
     clearBtn.addEventListener('click', () => {
+      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalPreemptiveOnly || globalPinnedMerchant);
       input.value = '';
       globalPinnedMerchant = '';
-      applyToAllMonths('');
+      applyToAllMonths('', wasFiltered);
       input.blur();
     });
     // Header "Autoship" button -- same board-wide filtering path as the
