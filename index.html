@@ -1131,13 +1131,14 @@
     }
     .wip-btn:hover { background: #3f8f87; color: #fff; }
     /* ── Preemptive mirrors: a next-month order flagged Launch Preemptively,
-       shown (read-only, fully expanded, standard colours) at the bottom of THIS month's
-       open orders. Visibility only -- a block inside .month-list that is
-       neither .shipment nor .card, whose contents live in shadow DOM, so every
-       total/save/sort/query that walks the board skips it. ── */
+       shown (fully expanded, standard colours, fully editable -- edits apply
+       to the real order) at the bottom of THIS month's open orders. A block
+       inside .month-list that is neither .shipment nor .card, whose contents
+       live in shadow DOM, so every total/save/sort/query that walks the
+       board skips it. ── */
     #tab-board .month-preempt { display: flex; flex-direction: column; gap: 6px; }
     /* each mirror is a shadow-DOM host -- see renderPreemptMirrors */
-    #tab-board .pre-host { display: block; cursor: pointer; }
+    #tab-board .pre-host { display: block; }
     @keyframes warn-flash { from { box-shadow: 0 0 0 3px rgba(112, 196, 187, .8); } to { box-shadow: 0 0 0 3px rgba(112, 196, 187, 0); } }
     #tab-board .warn-flash { animation: warn-flash 1.4s ease-out; }
 
@@ -4684,20 +4685,25 @@
   // A shipment flagged Launch Preemptively is tracked in month N but placed in
   // N-1, so N-1 shows that order at the bottom of its open orders (just above
   // the completed ones) -- the REAL order's structure, not a summary: a
-  // read-only copy of the shipment with every item and field, in the same
-  // colours as the original (grey if it has Autoship, else teal). Visibility only.
+  // copy of the shipment with every item and field, in the same colours as
+  // the original (grey if it has Autoship, else teal). It's a fully editable
+  // mirror image, but UI-only: nothing is ever stored on it. Every edit made
+  // on the copy is replayed onto the matching element of the real order, so
+  // the board's own handlers do the actual work (data, totals, saving)
+  // exactly as if the real order had been edited, and the copy then re-syncs
+  // from the real order -- see wireMirror / syncMirror below.
   //
   // The copy lives in a shadow root (one host per order, inside a
-  // .month-preempt block that is neither .shipment nor .card), which is what
-  // keeps it inert: the board's code finds orders/items with document-wide
-  // querySelectorAll('.shipment' / '.card' / '.card-name' ...), and none of
-  // that pierces a shadow root, so totals, saves, drag-and-drop, "Move to
-  // Order" matching, next-order lookups etc. can never see (or write into) it.
-  // The board's own stylesheet is copied into the root, wrapped in the same
-  // #tab-board > .board > .month > .month-list ancestry its selectors expect,
-  // so it renders exactly like the original. Hidden while any filter is
-  // active, and only for still-staged, not-yet-Approved orders in months that
-  // haven't passed.
+  // .month-preempt block that is neither .shipment nor .card), which keeps it
+  // out of the board's own bookkeeping: the board finds orders/items with
+  // document-wide querySelectorAll('.shipment' / '.card' / '.card-name' ...),
+  // and none of that pierces a shadow root, so totals, saves, drag-and-drop,
+  // "Move to Order" matching, next-order lookups etc. only ever see the real
+  // order. The board's own stylesheet is copied into the root, wrapped in the
+  // same #tab-board > .board > .month > .month-list ancestry its selectors
+  // expect, so it renders exactly like the original. Hidden while any filter
+  // is active, and only for still-staged, not-yet-Approved orders in months
+  // that haven't passed.
   let preSheets = null;
   function preemptSheets() {
     if (preSheets) return preSheets;
@@ -4705,13 +4711,12 @@
     for (const ss of document.styleSheets) {
       try { for (const r of ss.cssRules) { if (r.type !== CSSRule.IMPORT_RULE) css += r.cssText + '\n'; } } catch { /* cross-origin sheet (fonts) -- already global */ }
     }
-    // Unwrap the board's pane/column chrome, and make the copy inert
+    // Unwrap the board's pane/column chrome
     const override = `
       #tab-board { height: auto !important; overflow: visible !important; background: transparent !important; }
-      #tab-board .board { display: block !important; padding: 0 !important; min-height: 0 !important; gap: 0 !important; }
-      #tab-board .month { display: block !important; width: auto !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
-      #tab-board .month-list { display: block !important; padding: 0 !important; min-height: 0 !important; }
-      #tab-board * { pointer-events: none !important; }`;
+      #tab-board .board { display: block !important; padding: 0 !important; min-height: 0 !important; gap: 0 !important; width: auto !important; }
+      #tab-board .month { display: block !important; width: auto !important; max-width: none !important; height: auto !important; overflow: visible !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
+      #tab-board .month-list { display: block !important; padding: 0 !important; min-height: 0 !important; }`;
     preSheets = { css, override };
     if (typeof CSSStyleSheet === 'function' && 'replaceSync' in CSSStyleSheet.prototype && 'adoptedStyleSheets' in Document.prototype) {
       try {
@@ -4728,15 +4733,223 @@
     const src = shipEl.querySelectorAll('input');
     clone.querySelectorAll('input').forEach((inp, i) => {
       const v = src[i] ? src[i].value : inp.value;
-      inp.setAttribute('value', v); inp.value = v; inp.disabled = true;
+      inp.setAttribute('value', v); inp.value = v;
     });
-    clone.querySelectorAll('.incl-toggle').forEach((b) => { b.disabled = true; });
-    clone.querySelectorAll('[contenteditable]').forEach((e) => e.removeAttribute('contenteditable'));
     clone.querySelectorAll('[data-id]').forEach((e) => e.removeAttribute('data-id'));
     clone.removeAttribute('data-id');
     clone.querySelectorAll('.search-hide').forEach((e) => e.classList.remove('search-hide'));
     clone.classList.remove('search-hide', 'is-collapsed');
     return clone;
+  }
+
+  // ── mirror <-> real order mapping ──
+  // The mirror is kept structurally identical to the real order (same
+  // element tree -- syncMirror morphs it to match), so an element maps to its
+  // counterpart by its child-index path from the shipment root.
+  const realShipOf = (host) => board.querySelector(`:scope > .month > .month-list > .shipment[data-id="${host.dataset.preSid}"]`);
+  function counterpart(fromRoot, toRoot, el) {
+    // Walk up from el until something maps (deep inside a contenteditable
+    // being typed into, the two trees can briefly differ).
+    for (let node = el; node && fromRoot.contains(node); node = node.parentElement) {
+      const path = [];
+      let n = node;
+      while (n && n !== fromRoot) { path.unshift([...n.parentElement.children].indexOf(n)); n = n.parentElement; }
+      let t = toRoot;
+      for (const i of path) { t = t && t.children[i]; }
+      if (t) return t;
+    }
+    return null;
+  }
+  // Patches `a` in place to match `b` (both shipment trees), leaving
+  // whatever's focused in the mirror alone so typing there never loses its
+  // caret: an active input keeps its value, an active contenteditable keeps
+  // its contents (both already equal the real order's -- they're what's being
+  // forwarded to it).
+  function morph(a, b, active) {
+    if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) { a.replaceWith(b); return b; }
+    if (a.nodeType !== 1) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; return a; }
+    for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
+    for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+    if (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') {
+      if (a !== active && a.value !== b.value) a.value = b.value;
+      return a;
+    }
+    if (a === active && a.isContentEditable) return a;
+    const ac = [...a.childNodes], bc = [...b.childNodes];
+    bc.forEach((bn, i) => { if (i < ac.length) morph(ac[i], bn, active); else a.appendChild(bn); });
+    for (let i = bc.length; i < ac.length; i++) ac[i].remove();
+    return a;
+  }
+  function syncMirror(host, shipEl = realShipOf(host)) {
+    if (!shipEl) return;
+    const fresh = mirrorOf(shipEl);
+    const sig = fresh.outerHTML;
+    if (host._sig === sig) return;
+    host._sig = sig;
+    if (!host._mship) { host._mlist.appendChild(fresh); host._mship = fresh; }
+    else host._mship = morph(host._mship, fresh, host.shadowRoot.activeElement);
+  }
+
+  // ── which mirror is being worked in ──
+  // While someone's working in a mirror, the board's own code still acts on
+  // the REAL order's elements -- including code that positions a popup off
+  // an element's rect (context menu, item picker, calendar) or moves focus
+  // to a field (opening notes, a newly added item). mirrorCtx redirects
+  // those (getBoundingClientRect / focus / blur on any element of that real
+  // order) to the mirror's counterpart, so the popup opens and the caret
+  // lands where the user actually is, not over in the next month. Set by any
+  // interaction inside a mirror; cleared by a real interaction anywhere else
+  // on the board.
+  let mirrorCtx = null;
+  const mirrorObserver = new MutationObserver(onBoardMutations);
+  function redirectToMirror(el) {
+    const host = mirrorCtx;
+    if (!host || !host.isConnected || !el || el.nodeType !== 1) return null;
+    const ship = realShipOf(host);
+    if (!ship || !ship.contains(el)) return null;
+    // Changes made a moment ago (a just-added item about to be focused, a
+    // notes row just opened) may not be mirrored yet -- catch up first, or
+    // the counterpart could be missing or still hidden. Cheap when nothing
+    // changed (syncMirror bails on an identical snapshot).
+    syncMirror(host, ship);
+    const m = counterpart(ship, host._mship, el);
+    return m && m !== el ? m : null;
+  }
+  {
+    const rect = Element.prototype.getBoundingClientRect;
+    const focus = HTMLElement.prototype.focus, blur = HTMLElement.prototype.blur;
+    Element.prototype.getBoundingClientRect = function () { return rect.call((mirrorCtx && redirectToMirror(this)) || this); };
+    HTMLElement.prototype.focus = function (opts) { return focus.call((mirrorCtx && redirectToMirror(this)) || this, opts); };
+    HTMLElement.prototype.blur = function () { return blur.call((mirrorCtx && redirectToMirror(this)) || this); };
+  }
+  ['pointerdown', 'mouseover', 'focusin'].forEach((type) => board.addEventListener(type, (e) => {
+    // Inside a mirror the event arrives retargeted to its .pre-host; replayed
+    // copies (untrusted) land on the real order and mustn't count either.
+    if (mirrorCtx && e.isTrusted && !e.target.closest('.pre-host')) mirrorCtx = null;
+  }, true));
+
+  // ── real order -> mirror ──
+  // Any change to a mirrored order's DOM (or a value typed into it) re-syncs
+  // its mirror on the next frame. Mutations inside the mirrors themselves
+  // aren't seen (shadow DOM), so this can't feed back into itself.
+  let mirrorSyncQueued = false;
+  function scheduleMirrorSync() {
+    if (mirrorSyncQueued) return;
+    mirrorSyncQueued = true;
+    requestAnimationFrame(() => {
+      mirrorSyncQueued = false;
+      if (document.body.classList.contains('sb-dragging')) return; // the drop's own recalc re-renders
+      renderMonthSections();
+    });
+  }
+  function onBoardMutations(recs) {
+    if (!board.querySelector('.pre-host')) return;
+    const inShip = (n) => (n.nodeType === 1 ? n : n.parentElement)?.closest('.shipment');
+    if (recs.some((r) => inShip(r.target))) scheduleMirrorSync();
+  }
+  mirrorObserver.observe(board, { subtree: true, childList: true, attributes: true, characterData: true });
+  board.addEventListener('input', (e) => { if (e.isTrusted && e.target.closest?.('.shipment')) scheduleMirrorSync(); });
+
+  // ── mirror -> real order ──
+  // Each interaction inside the mirror is replayed on the real order's
+  // matching element as an ordinary DOM event, so it runs through exactly
+  // the same board handlers (and side effects) as the real thing. The
+  // original event is stopped where a replay replaces it, so nothing on
+  // the page handles both.
+  const isField = (el) => el.matches?.('input, textarea, [contenteditable]');
+  function copyValue(from, to) {
+    if (from.matches('input, textarea')) { if (to.value !== from.value) to.value = from.value; }
+    else if (to.textContent !== from.textContent) to.textContent = from.textContent;
+  }
+  const mouseInit = (e, extra) => ({
+    bubbles: true, cancelable: true, composed: true, view: window, detail: e.detail,
+    clientX: e.clientX, clientY: e.clientY, screenX: e.screenX, screenY: e.screenY,
+    button: e.button, buttons: e.buttons, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+    ...extra,
+  });
+  function wireMirror(host) {
+    const root = host.shadowRoot;
+    const real = (el) => { const ship = realShipOf(host); return ship && host._mship ? counterpart(host._mship, ship, el) : null; };
+    const related = (rt) => (rt && root.contains(rt) ? real(rt) : rt) || null;
+    const on = (type, fn) => root.addEventListener(type, (e) => { mirrorCtx = host; fn(e); }, true);
+
+    for (const type of ['click', 'contextmenu']) {
+      on(type, (e) => {
+        e.stopImmediatePropagation();
+        const o = real(e.target);
+        if (!o) return;
+        // A link is followed by the replayed click instead of this one.
+        if (e.target.closest('a[href]')) e.preventDefault();
+        if (!o.dispatchEvent(new MouseEvent(type, mouseInit(e)))) e.preventDefault();
+      });
+    }
+    // Hover-driven UI (the grip's dwell-to-open menu, the Status dropdown).
+    // Native hover events still reach the board, but retargeted to the
+    // .pre-host, which no handler acts on.
+    for (const type of ['mouseover', 'mouseout']) {
+      on(type, (e) => {
+        const o = real(e.target);
+        if (o) o.dispatchEvent(new MouseEvent(type, mouseInit(e, { relatedTarget: related(e.relatedTarget) })));
+      });
+    }
+    // Never replayed (it would start a real drag of the real order); only
+    // the one thing the board does with it -- cancelling a pending grip
+    // dwell-open -- is applied directly.
+    on('mousedown', (e) => { if (e.target.closest('.card-grip, .ship-grip')) cancelGripHoverOpen(); });
+    on('focusin', (e) => {
+      const o = isField(e.target) && real(e.target);
+      if (o) o.dispatchEvent(new FocusEvent('focus')); // lets the board note the starting value
+    });
+    on('focusout', (e) => {
+      const m = e.target, o = isField(m) && real(m);
+      if (!o) return;
+      copyValue(m, o);
+      o.dispatchEvent(new FocusEvent('blur', { relatedTarget: related(e.relatedTarget) }));
+      copyValue(o, m); // blur may have tidied it, e.g. "12*2" -> 24
+    });
+    for (const type of ['input', 'change']) {
+      on(type, (e) => {
+        const o = real(e.target);
+        if (!o) return;
+        copyValue(e.target, o);
+        o.dispatchEvent(new Event(type, { bubbles: true }));
+      });
+    }
+    on('keydown', (e) => {
+      e.stopImmediatePropagation();
+      const m = e.target, o = real(m);
+      if (!o) return;
+      const ev = new KeyboardEvent('keydown', {
+        key: e.key, code: e.code, location: e.location, repeat: e.repeat, isComposing: e.isComposing,
+        ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+        bubbles: true, cancelable: true, composed: true,
+      });
+      if (!o.dispatchEvent(ev)) e.preventDefault();
+      if (m.matches('input, textarea')) copyValue(o, m); // e.g. "-" flips the real price's sign
+    });
+    // Plain text only, same rule as the board's own paste handler.
+    on('paste', (e) => {
+      if (!e.target.closest('[contenteditable]')) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain'));
+    });
+  }
+  function createMirrorHost(sid) {
+    const host = document.createElement('div');
+    host.className = 'pre-host';
+    host.dataset.preSid = sid;
+    const root = host.attachShadow({ mode: 'open' });
+    const sheets = preemptSheets();
+    if (sheets.adopted) root.adoptedStyleSheets = sheets.adopted;
+    else [sheets.css, sheets.override].forEach((txt) => { const st = document.createElement('style'); st.textContent = txt; root.appendChild(st); });
+    const shell = document.createElement('div');
+    shell.id = 'tab-board'; shell.className = 'pre-root';
+    shell.innerHTML = '<div class="' + escAttr(board.className) + '"><div class="month"><div class="month-list"></div></div></div>';
+    root.append(shell);
+    host._mlist = shell.querySelector('.month-list');
+    host._mship = null;
+    wireMirror(host);
+    return host;
   }
   function renderPreemptMirrors() {
     const monthEls = [...board.querySelectorAll('.month')];
@@ -4749,46 +4962,42 @@
       const start = monthStartOf(monthEl);
       const nextEl = monthEls[mi + 1];
       const items = [];
+      let nextName = '';
       if (nextEl && start && start >= curStart && !filterActive) {
-        const nextName = nextEl.querySelector('.mname')?.textContent.trim() || '';
+        nextName = nextEl.querySelector('.mname')?.textContent.trim() || '';
         nextEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
           const sd = STATE.shipmentData[shipEl.dataset.id];
           // Approved orders need no early heads-up -- their own month's
           // Approved Orders section is enough.
           if (!sd || sd.stage || !isShipPreemptive(shipEl) || shipEl.classList.contains('is-approved')) return;
-          const clone = mirrorOf(shipEl);
-          items.push({ sid: shipEl.dataset.id, name: sd.name || 'Order', nextName, clone, sig: nextName + '|' + clone.outerHTML });
+          items.push({ sid: shipEl.dataset.id, shipEl });
         });
       }
       let wrap = list.querySelector(':scope > .month-preempt');
       let mh = list.querySelector(':scope > .month-mirror-head');
-      if (!items.length) { wrap?.remove(); mh?.remove(); return; }
+      if (!items.length) {
+        if (wrap && mirrorCtx && wrap.contains(mirrorCtx)) mirrorCtx = null;
+        wrap?.remove(); mh?.remove();
+        return;
+      }
       // (layoutMonthLists puts the header + block in place: after the in-month orders, before Completed)
       if (!wrap) { wrap = document.createElement('div'); wrap.className = 'month-preempt month-aux'; list.appendChild(wrap); }
       if (!mh) { mh = document.createElement('div'); mh.className = 'month-sec-head month-mirror-head month-aux'; list.appendChild(mh); }
-      mh.textContent = 'Preemptive Orders · ' + items[0].nextName;
-      mh.title = 'Orders tracked in ' + items[0].nextName + ' but placed during this month -- shown here for visibility only';
-      const sig = items.map((i) => i.sig).join('\u0001');
-      if (wrap._sig === sig) return; // nothing changed -- keep the existing shadow content
-      wrap._sig = sig;
-      const sheets = preemptSheets();
-      wrap.replaceChildren(...items.map((it) => {
-        const host = document.createElement('div');
-        host.className = 'pre-host';
-        host.dataset.act = 'preempt-goto';
-        host.dataset.preSid = it.sid;
-        host.dataset.preName = it.name;
-        host.title = 'Tracked in ' + it.nextName + ' but placed early (view only) -- click to jump to it';
-        const root = host.attachShadow({ mode: 'open' });
-        if (sheets.adopted) root.adoptedStyleSheets = sheets.adopted;
-        else [sheets.css, sheets.override].forEach((txt) => { const st = document.createElement('style'); st.textContent = txt; root.appendChild(st); });
-        const shell = document.createElement('div');
-        shell.id = 'tab-board'; shell.className = 'pre-root'; shell.setAttribute('inert', '');
-        shell.innerHTML = '<div class="' + escAttr(board.className) + '"><div class="month"><div class="month-list"></div></div></div>';
-        shell.querySelector('.month-list').appendChild(it.clone);
-        root.append(shell);
+      // Only touch the light DOM when something actually changed -- the
+      // mirror sync observer would otherwise keep re-triggering itself.
+      const text = 'Preemptive Orders · ' + nextName;
+      const title = 'Orders tracked in ' + nextName + ' but placed during this month -- edits here apply to the order itself';
+      if (mh.textContent !== text) mh.textContent = text;
+      if (mh.title !== title) mh.title = title;
+      const existing = new Map([...wrap.children].map((h) => [h.dataset.preSid, h]));
+      const hosts = items.map(({ sid, shipEl }) => {
+        const host = existing.get(sid) || createMirrorHost(sid);
+        existing.delete(sid);
+        syncMirror(host, shipEl);
         return host;
-      }));
+      });
+      existing.forEach((h) => { if (mirrorCtx === h) mirrorCtx = null; h.remove(); });
+      hosts.forEach((h, i) => { if (wrap.children[i] !== h) wrap.insertBefore(h, wrap.children[i] || null); });
     });
   }
 
@@ -6743,16 +6952,6 @@
     }
     if (a === 'toggle-preempt') { toggleShipPreempt(act.closest('.shipment')); return; }
     if (a === 'warn-inv') { openInventoryFor(act.dataset.wname); return; }
-    if (a === 'preempt-goto') {
-      const target = board.querySelector(`.shipment[data-id="${act.dataset.preSid}"]`);
-      if (!target) return;
-      scrollElementIntoBoardView(target);
-      target.classList.remove('warn-flash');
-      void target.offsetWidth;
-      target.classList.add('warn-flash');
-      setTimeout(() => target.classList.remove('warn-flash'), 1500);
-      return;
-    }
     if (a === 'warn-approve') { setAutoshipApprovedMany(parseTargets(act.dataset.wtargets), true); return; }
     if (a === 'warn-ignore') { postWarningAction('dismiss', act.dataset.wkey); return; }
     if (a === 'warn-ign') {
