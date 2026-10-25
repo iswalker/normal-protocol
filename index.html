@@ -521,7 +521,7 @@
        filled white/grey pill -- those don't visually "stand out" from the
        header the way a filled box does, so this shouldn't either. */
     .global-search-box {
-      flex: 0 1 140px; min-width: 90px; height: 30px; display: flex; align-items: center; gap: 6px;
+      flex: 0 1 90px; min-width: 90px; height: 30px; display: flex; align-items: center; gap: 6px;
       padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: transparent;
       cursor: text; transition: border-color .12s, background .12s;
     }
@@ -913,6 +913,10 @@
       #tab-inventory.inv-modal { height: 100%; padding-bottom: 0; }
       .inv-modal { border-radius: 0; height: 100%; }
     }
+
+    /* Settings > "Show Scan Button" (default off): hides the header's Scan
+       button on desktop and the floating one on mobile, reclaiming the space. */
+    body.scan-hidden #inv-scan-btn, body.scan-hidden .mob-inv-fab { display: none !important; }
 
     /* ── Mobile Scan floating action button -- always on-screen (board and
        Inventory both), replaces the header's own Scan button on mobile
@@ -2448,6 +2452,10 @@
         <div class="settings-panel" id="settings-panel">
           <div class="settings-panel-title">Settings</div>
           <button class="settings-action-btn" id="update-ynab">Update YNAB API Key</button>
+          <button class="settings-toggle-row" id="show-scan-toggle" type="button" aria-pressed="false">
+            <span>Show Scan Button</span>
+            <span class="settings-toggle"><i></i></span>
+          </button>
           <button class="settings-toggle-row" id="show-cents-toggle" type="button" aria-pressed="false">
             <span>Show cents</span>
             <span class="settings-toggle"><i></i></span>
@@ -2831,6 +2839,26 @@
     calc, fmtDate, fmtDateShort, fmtDateSlashYear, fmtMoney, fmtMoney0, fmtUnits, tier,
     getShowCents, setShowCents,
   };
+
+  // Settings > "Show Scan Button", defaulted OFF and remembered once turned on.
+  // Only toggles body.scan-hidden (see its CSS) -- the buttons stay in the DOM,
+  // so the mobile FAB's proxy click and any programmatic use keep working.
+  (function initShowScanToggle() {
+    const KEY = 'np_show_scan';
+    let show = false;
+    try { show = localStorage.getItem(KEY) === '1'; } catch {}
+    const apply = () => document.body.classList.toggle('scan-hidden', !show);
+    apply();
+    const toggle = document.getElementById('show-scan-toggle');
+    if (!toggle) return;
+    toggle.setAttribute('aria-pressed', String(show));
+    toggle.addEventListener('click', () => {
+      show = !show;
+      try { localStorage.setItem(KEY, show ? '1' : '0'); } catch {}
+      apply();
+      toggle.setAttribute('aria-pressed', String(show));
+    });
+  })();
 
   // "Show cents" Settings toggle -- lives in <header>, outside the board
   // module, but only needs SB.fmtMoney's own state plus a re-render of

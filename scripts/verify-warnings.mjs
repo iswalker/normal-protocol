@@ -875,6 +875,20 @@ try {
   await page.locator('#inv-modal-close').click();
   await page.waitForTimeout(200);
 
+  // ── Settings > "Show Scan Button": off by default, remembered once turned on ──
+  const scanShown = (p) => p.evaluate(() => getComputedStyle(document.getElementById('inv-scan-btn')).display !== 'none');
+  check('Scan button: hidden by default on desktop', !(await scanShown(page)));
+  check('Settings lists "Show Scan Button" just above "Show cents", off', await page.evaluate(() => { const a = document.getElementById('show-scan-toggle'), b = document.getElementById('show-cents-toggle'); return !!a && a.textContent.trim() === 'Show Scan Button' && a.getAttribute('aria-pressed') === 'false' && a.nextElementSibling === b; }));
+  await page.locator('#settings-btn').click();
+  await page.locator('#show-scan-toggle').click();
+  check('Scan button: turning the setting on shows it', (await scanShown(page)) && (await page.locator('#show-scan-toggle').getAttribute('aria-pressed')) === 'true');
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('#tab-board #board .month', { state: 'attached', timeout: 15000 });
+  check('Scan button: stays on after a reload (remembered)', (await scanShown(page)) && (await page.locator('#show-scan-toggle').getAttribute('aria-pressed')) === 'true');
+  await page.evaluate(() => document.getElementById('show-scan-toggle').click());
+  check('Scan button: turning it back off hides it again', !(await scanShown(page)));
+  check('search box: flex is "0 1 90px"', await page.evaluate(() => { const c = getComputedStyle(document.querySelector('.global-search-box')); return c.flexGrow === '0' && c.flexShrink === '1' && c.flexBasis === '90px'; }));
+
   // ── nothing leaks into past/other structure ──
   check('no JS errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
@@ -917,6 +931,10 @@ try {
     const rows = [...box.querySelectorAll('.warn-row, .warn-btn')];
     return box.scrollWidth <= box.clientWidth + 1 && rows.every((e) => e.getBoundingClientRect().right <= col.right + 1);
   }, M0.month + '_' + M0.year));
+  const fabShown = () => m.page.evaluate(() => getComputedStyle(document.getElementById('mob-inv-fab')).display !== 'none');
+  check('Scan button: the floating mobile one is hidden by default', !(await fabShown()));
+  await m.page.evaluate(() => document.getElementById('show-scan-toggle').click());
+  check('Scan button: …and appears when the setting is turned on', await fabShown());
   await m.ctx.close();
 
   // ── a lapsed Cloudflare Access sign-in must not look like "server down" ──
