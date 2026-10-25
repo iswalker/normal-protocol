@@ -4616,6 +4616,7 @@
   //   c) In-Month Orders     -- everything else still open (orders + loose cards)
   //   d) Preemptive Orders · <next month> -- read-only previews of NEXT month's
   //                             preemptive orders, which get placed during this one
+  //                             (not Approved ones -- those only show in their own month)
   //   e) Approved Orders     -- every item an approved autoship (display-only status)
   //   f) Completed Orders    -- Ordered / Entered / Received
   // Everything but the real orders is a .month-aux child (neither .shipment nor
@@ -4693,7 +4694,8 @@
   // The board's own stylesheet is copied into the root, wrapped in the same
   // #tab-board > .board > .month > .month-list ancestry its selectors expect,
   // so it renders exactly like the original. Hidden while any filter is
-  // active, and only for still-staged orders in months that haven't passed.
+  // active, and only for still-staged, not-yet-Approved orders in months that
+  // haven't passed.
   let preSheets = null;
   function preemptSheets() {
     if (preSheets) return preSheets;
@@ -4749,7 +4751,9 @@
         const nextName = nextEl.querySelector('.mname')?.textContent.trim() || '';
         nextEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
           const sd = STATE.shipmentData[shipEl.dataset.id];
-          if (!sd || sd.stage || !isShipPreemptive(shipEl)) return;
+          // Approved orders need no early heads-up -- their own month's
+          // Approved Orders section is enough.
+          if (!sd || sd.stage || !isShipPreemptive(shipEl) || shipEl.classList.contains('is-approved')) return;
           const clone = mirrorOf(shipEl);
           items.push({ sid: shipEl.dataset.id, name: sd.name || 'Order', nextName, clone, sig: nextName + '|' + clone.outerHTML });
         });
