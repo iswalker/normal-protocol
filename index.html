@@ -4788,6 +4788,10 @@
     host._sig = sig;
     if (!host._mship) { host._mlist.appendChild(fresh); host._mship = fresh; }
     else host._mship = morph(host._mship, fresh, host.shadowRoot.activeElement);
+    // (a morph can swap the list element out, and a fresh clone carries no
+    // Sortable instance -- hence checked on every sync)
+    const body = host._mship.querySelector(':scope > .ship-body');
+    if (body && !body._mirrorSortable) body._mirrorSortable = makeMirrorSortable(body);
   }
 
   // ── which mirror is being worked in ──
@@ -4805,6 +4809,8 @@
   function redirectToMirror(el) {
     const host = mirrorCtx;
     if (!host || !host.isConnected || !el || el.nodeType !== 1) return null;
+    // Mid-drag, Sortable is measuring the real lists themselves.
+    if (document.body.classList.contains('sb-dragging')) return null;
     const ship = realShipOf(host);
     if (!ship || !ship.contains(el)) return null;
     // Changes made a moment ago (a just-added item about to be focused, a
@@ -4909,6 +4915,9 @@
     });
     for (const type of ['input', 'change']) {
       on(type, (e) => {
+        // Real typing only: Sortable dispatches its own 'change' event on
+        // the item list mid-drag, which must never be copied anywhere.
+        if (!e.isTrusted || !isField(e.target)) return;
         const o = real(e.target);
         if (!o) return;
         copyValue(e.target, o);
@@ -4927,6 +4936,60 @@
       if (!o.dispatchEvent(ev)) e.preventDefault();
       if (m.matches('input, textarea')) copyValue(o, m); // e.g. "-" flips the real price's sign
     });
+    // Touch: the board's own tap/hold handlers (initTapFix,
+    // initGripTapContextMenu, initAutoshipHoldToOpen) only ever see the
+    // .pre-host, so their mirror-side equivalents live here.
+    //  - Sortable on the mirror's item list (see makeMirrorSortable) eats
+    //    the first tap's click on controls inside a draggable item, same as
+    //    on the real board -- so a tap is rebuilt by hand as a click on the
+    //    mirror element (with the touch's coordinates, which a menu opened
+    //    from it positions by), and that click is replayed like any other.
+    //  - Holding an Autoship date opens its calendar, for the real record,
+    //    over the mirror (mirrorCtx redirects the positioning).
+    if (window.matchMedia('(pointer: coarse)').matches) {
+      const TAP_SEL = '.notes-toggle, .incl-toggle, .add-btn, .ship-stage-select, .card-name[data-act="open-inv-item"], .autoship-date, .autoship-date-badge, .ship-autoship-date, .card-grip, .ship-grip';
+      const HOLD_SEL = '.autoship-date, .autoship-date-badge, .ship-autoship-date';
+      const MOVE_TOLERANCE = 10, HOLD_MS = 450;
+      let touch = null;
+      root.addEventListener('touchstart', (e) => {
+        if (touch) clearTimeout(touch.timer);
+        touch = null;
+        if (e.touches.length !== 1) return;
+        mirrorCtx = host;
+        const t = e.touches[0];
+        touch = { el: e.target.closest(TAP_SEL), x: t.clientX, y: t.clientY, moved: false, fired: false, timer: 0 };
+        const holdEl = e.target.closest(HOLD_SEL);
+        if (holdEl) {
+          const mine = touch;
+          mine.timer = setTimeout(() => {
+            if (touch !== mine || mine.moved) return;
+            mine.fired = !!openAutoshipCalFor(real(holdEl));
+            if (mine.fired) {
+              suppressAutoshipLinkClick = true;
+              setTimeout(() => { suppressAutoshipLinkClick = false; }, 1000);
+            }
+          }, HOLD_MS);
+        }
+      }, { passive: true });
+      root.addEventListener('touchmove', (e) => {
+        if (!touch) return;
+        const t = e.touches[0];
+        if (Math.abs(t.clientX - touch.x) > MOVE_TOLERANCE || Math.abs(t.clientY - touch.y) > MOVE_TOLERANCE) {
+          touch.moved = true;
+          clearTimeout(touch.timer);
+        }
+      }, { passive: true });
+      root.addEventListener('touchend', (e) => {
+        const tc = touch;
+        touch = null;
+        if (!tc) return;
+        clearTimeout(tc.timer);
+        if (tc.fired) { e.preventDefault(); e.stopImmediatePropagation(); return; } // the hold opened the calendar -- no tap
+        if (!tc.el || tc.moved) return;
+        e.preventDefault(); // no native click on top of the rebuilt one
+        tc.el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window, clientX: tc.x, clientY: tc.y }));
+      }, { passive: false });
+    }
     // Plain text only, same rule as the board's own paste handler.
     on('paste', (e) => {
       if (!e.target.closest('[contenteditable]')) return;
@@ -4950,6 +5013,84 @@
     host._mship = null;
     wireMirror(host);
     return host;
+  }
+  // ── dragging into / out of / within a mirror ──
+  // The mirror's item list is a regular Sortable in the board's own 'sb'
+  // group, so items drag in, out and around it like anywhere else (Sortable
+  // hit-tests through shadow roots). Nothing is decided mid-drag: once the
+  // item is dropped, resolveMirrorDrop reads where it ended up, makes that
+  // same move on the REAL elements -- the real item into the real list the
+  // drop corresponds to -- and runs the board's usual post-drop steps; the
+  // mirror then re-syncs from the real order.
+  const hostOfList = (el) => {
+    const r = el && el.getRootNode && el.getRootNode();
+    return r instanceof ShadowRoot && r.host.classList.contains('pre-host') ? r.host : null;
+  };
+  // The month a list really belongs to -- a mirror's is its real order's
+  // month, not the copy's own stand-in .month wrapper.
+  function realMonthOf(el) {
+    const host = hostOfList(el);
+    return host ? realShipOf(host)?.closest('.month') || null : el.closest('.month');
+  }
+  function makeMirrorSortable(bodyEl) {
+    return new Sortable(bodyEl, Object.assign({}, COMMON, {
+      group: {
+        name: 'sb', pull: true,
+        put: (to, from, drag) => drag.classList.contains('card')
+          && (!drag.classList.contains('card--ghost') || realMonthOf(to.el) === realMonthOf(from.el)),
+      },
+      draggable: '.card',
+      handle: '.card-grip',
+    }));
+  }
+  // mirror element -> real element, for every mirror, captured as a drag
+  // starts (while the two trees still line up index for index)
+  let dragMirrorMap = null;
+  function snapshotMirrors() {
+    dragMirrorMap = new WeakMap();
+    const pair = (a, b) => {
+      dragMirrorMap.set(a, b);
+      for (let i = 0; i < a.children.length && i < b.children.length; i++) pair(a.children[i], b.children[i]);
+    };
+    board.querySelectorAll('.pre-host').forEach((host) => {
+      const ship = realShipOf(host);
+      if (ship && host._mship) pair(host._mship, ship);
+    });
+  }
+  // Returns true when the drop involved a mirror (and has been fully handled).
+  function resolveMirrorDrop(evt) {
+    const fromHost = hostOfList(evt.from), toHost = hostOfList(evt.to);
+    if (!fromHost && !toHost) return false;
+    const map = dragMirrorMap || new WeakMap();
+    dragMirrorMap = null;
+    document.body.classList.remove('sb-dragging');
+    const item = evt.item;
+    const realItem = fromHost ? map.get(item) : item; // a real item dragged in IS the item
+    const fromMonth = fromHost ? realShipOf(fromHost)?.closest('.month') : evt.from.closest('.month');
+    if (realItem) {
+      if (toHost) {
+        // Dropped into a mirror: the real list it stands for, before the
+        // real counterpart of whatever it landed in front of.
+        const realList = map.get(evt.to);
+        let next = item.nextElementSibling;
+        while (next && !next.matches('.card')) next = next.nextElementSibling;
+        if (realList) realList.insertBefore(realItem, (next && map.get(next)) || null);
+        else if (!fromHost) evt.from.appendChild(realItem); // nowhere real to go -- put it back
+      } else {
+        // Dragged out of a mirror into a real list: the real item takes the
+        // copy's place.
+        item.replaceWith(realItem);
+      }
+    }
+    if (fromHost) fromHost._sig = null;
+    if (toHost) toHost._sig = null;
+    if (realItem) {
+      reconcileMovedRecurring(realItem);
+      reapplySearchTo(fromMonth);
+      reapplySearchTo(realItem.closest('.month'));
+    }
+    recalcAll(); persist();
+    return true;
   }
   function renderPreemptMirrors() {
     const monthEls = [...board.querySelectorAll('.month')];
@@ -6086,6 +6227,7 @@
     forceFallback: true, fallbackOnBody: false, swapThreshold: 0.65,
     onStart: () => {
       document.body.classList.add('sb-dragging');
+      snapshotMirrors(); // see resolveMirrorDrop
       // Belt-and-suspenders alongside the sb-dragging check in the grip's
       // own mouseover handler below: kill any dwell-open already ticking
       // and close a menu that happened to be open the instant a drag starts.
@@ -6093,6 +6235,7 @@
       closeCtxMenu();
     },
     onEnd: (evt) => {
+      if (resolveMirrorDrop(evt)) return; // into / out of / within a preemptive mirror
       document.body.classList.remove('sb-dragging');
       reconcileMovedRecurring(evt.item);
       reapplySearchTo(evt.from?.closest('.month'));
@@ -6138,7 +6281,7 @@
           // month's shipment would separate them from the recurring
           // series' own month-by-month projection (see reconcileMovedRecurring).
           if (drag.classList.contains('card--ghost')) {
-            return to.el.closest('.month') === from.el.closest('.month');
+            return realMonthOf(to.el) === realMonthOf(from.el);
           }
           return true;
         },
