@@ -5589,8 +5589,8 @@
     });
   }
 
-  // Shared by the card's "Move to Order" picker and the month-count hover
-  // summary (both list a month's orders the same way) -- "Name (qty)" for
+  // Shared by the card's "Move to" / "Copy to" order pickers and the month-count
+  // hover summary (both describe a month's orders the same way) -- "Name (qty)" for
   // an empty order, "Name (qty) - $price" once it actually holds something,
   // matching .ship-total's own live-rendered $ text so this never drifts
   // out of sync with what the shipment's own header already shows.
@@ -5609,10 +5609,16 @@
     const t = shipEl.querySelector('.ship-total .amt')?.textContent || '';
     return parseFloat(t.replace(/[^0-9.-]/g, '')) || 0;
   }
-  // Shared by the month-count hover summary and the "Move to Order" picker
-  // so both list a month's orders in the same largest-to-smallest order.
+  // Used by the month-count hover summary: a month's orders largest to smallest.
   function sortShipsByCostDesc(ships) {
     return [...ships].sort((a, b) => shipCostValue(b) - shipCostValue(a));
+  }
+  // Used by the "Move to" / "Copy to" order pickers: alphabetical by shipment
+  // name (case-insensitive, numbers in natural order), so an order is easy to
+  // find in a long list. Equal names keep the month's own order.
+  function sortShipsByName(ships) {
+    const nameOf = (el) => (el.querySelector('.ship-name')?.textContent || '').trim();
+    return [...ships].sort((a, b) => nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: 'base', numeric: true }));
   }
 
   // Find the first shipment in a target month whose name matches (case-insensitive).
@@ -8332,7 +8338,7 @@
       // an order that's Ordered/Entered/Received doesn't take new items).
       function ctxOrderPickRow(caption = 'Move to', action = moveCardToOrder) {
         const currentShipEl = container.closest('.shipment') || null;
-        const ships = sortShipsByCostDesc(monthEl.querySelectorAll(':scope > .month-list > .shipment'))
+        const ships = sortShipsByName(monthEl.querySelectorAll(':scope > .month-list > .shipment'))
           .filter((s) => s !== currentShipEl && !s.classList.contains('is-locked'));
         const row = document.createElement('div');
         row.className = 'ship-ctx-pick' + (ships.length ? '' : ' ctx-disabled');

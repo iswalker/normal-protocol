@@ -769,6 +769,22 @@ try {
     }
   }
 
+  // ── "Move to" / "Copy to" order pickers list the month's orders alphabetically by shipment name ──
+  await page.locator('.card[data-id="oi_early"] .card-grip').first().evaluate((g) => g.scrollIntoView({ block: 'center' }));
+  await page.mouse.move(5, 5); await page.waitForTimeout(300);
+  await page.locator('.card[data-id="oi_early"] .card-grip').first().click();
+  await page.waitForSelector('.ship-ctx-menu .ship-ctx-pick');
+  const pickers = await page.evaluate(() => [...document.querySelectorAll('.ship-ctx-menu .ship-ctx-pick')]
+    .map((row) => ({ cap: row.querySelector('span').textContent, opts: [...row.querySelectorAll('select option')].map((o) => o.textContent) }))
+    .filter((p) => p.opts[0] === 'Order')
+    .map((p) => ({ cap: p.cap, names: p.opts.slice(1).map((x) => x.replace(/ \(\d+\).*$/, '')) })));
+  const alpha = (n) => [...n].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+  check('both order pickers exist (Move to / Copy to) with several orders to choose from', pickers.length === 2 && pickers.every((p) => p.names.length >= 4), JSON.stringify(pickers));
+  check('"Move to" and "Copy to" list the orders alphabetically by shipment name', pickers.every((p) => JSON.stringify(p.names) === JSON.stringify(alpha(p.names))), JSON.stringify(pickers.map((p) => p.names)));
+  check('the card\'s own order and completed orders are still left out', pickers.every((p) => !p.names.includes('Pre Auto Co') && !p.names.includes('Locked Nov')));
+  await page.keyboard.press('Escape');
+  await page.mouse.move(5, 5); await page.waitForTimeout(300);
+
   // ── at 0 left to act on, the whole panel goes away ──
   for (let i = 0; i < 40; i++) {
     const b = panel(page).locator('[data-act="warn-approve"], [data-act="warn-ignore"]').first();
