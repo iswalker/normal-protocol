@@ -827,7 +827,14 @@ try {
   const mBtn = m.page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-warn [data-act="warn-approve"]`).first();
   const mBox = await mBtn.boundingBox();
   check('mobile: Approve button within viewport width', mBox && mBox.x >= 0 && mBox.x + mBox.width <= 390, JSON.stringify(mBox));
-  check('mobile: no horizontal overflow from the panel', await m.page.evaluate(() => document.getElementById('tab-board').scrollWidth <= document.getElementById('tab-board').clientWidth + 1));
+  // (the mobile board now scrolls its MONTHS sideways by design, so the whole pane can't be asserted not to --
+  //  what matters is that the panel itself fits inside its own month column)
+  check('mobile: the Needs Attention box and its rows fit inside their month column (no sideways overflow)', await m.page.evaluate((id) => {
+    const box = document.querySelector('.month[data-id="' + id + '"] > .month-list > .month-warn');
+    const col = box.closest('.month').getBoundingClientRect();
+    const rows = [...box.querySelectorAll('.warn-row, .warn-btn')];
+    return box.scrollWidth <= box.clientWidth + 1 && rows.every((e) => e.getBoundingClientRect().right <= col.right + 1);
+  }, M0.month + '_' + M0.year));
   await m.ctx.close();
 
   // ── a lapsed Cloudflare Access sign-in must not look like "server down" ──
