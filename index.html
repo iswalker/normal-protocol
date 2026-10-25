@@ -5092,6 +5092,56 @@
     recalcAll(); persist();
     return true;
   }
+  // Whole preview orders reorder among themselves by their own grip, like
+  // orders anywhere else. Same idea as resolveMirrorDrop: the drag plays out
+  // on the previews, then on release the real orders take that same
+  // relative order in their own month (each keeping the slot one of them
+  // already held, so nothing else in that month moves), and the usual
+  // recalc + save follows; the previews re-render from the result.
+  function makePreemptOrderSortable(wrap) {
+    let cloneWatch = null;
+    return new Sortable(wrap, {
+      animation: COMMON.animation, easing: COMMON.easing,
+      ghostClass: 'sb-ghost', chosenClass: 'sb-chosen', dragClass: 'sb-drag',
+      forceFallback: true, fallbackOnBody: false,
+      group: { name: 'sb-preempt', pull: false, put: false }, // reorder only -- never in/out of the section
+      draggable: '.pre-host',
+      handle: '.ship-grip', // inside the preview's shadow root -- Sortable resolves it through composedPath()
+      onStart: (evt) => {
+        document.body.classList.add('sb-dragging');
+        cancelGripHoverOpen();
+        closeCtxMenu();
+        // The floating drag image is a cloneNode() of the preview host,
+        // which can't carry its shadow root -- fill it in (whether Sortable
+        // has already appended it by now or does so on the next move).
+        const dragged = evt.item;
+        const fill = () => wrap.querySelectorAll(':scope > .sortable-fallback').forEach((n) => {
+          if (n.shadowRoot || !dragged?.shadowRoot) return;
+          const root = n.attachShadow({ mode: 'open' });
+          const sheets = preemptSheets();
+          if (sheets.adopted) root.adoptedStyleSheets = sheets.adopted;
+          else [sheets.css, sheets.override].forEach((txt) => { const st = document.createElement('style'); st.textContent = txt; root.appendChild(st); });
+          root.append(dragged.shadowRoot.querySelector('.pre-root').cloneNode(true));
+        });
+        fill();
+        cloneWatch = new MutationObserver(fill);
+        cloneWatch.observe(wrap, { childList: true });
+      },
+      onEnd: (evt) => {
+        cloneWatch?.disconnect(); cloneWatch = null;
+        document.body.classList.remove('sb-dragging');
+        if (evt.oldIndex === evt.newIndex) return;
+        const ships = [...wrap.querySelectorAll(':scope > .pre-host')]
+          .map((h) => realShipOf(h)).filter(Boolean);
+        // The slots these orders hold now, in page order, then refilled in
+        // the new order -- markers first so no move disturbs another's slot.
+        const slots = [...ships].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+        const marks = slots.map((sh) => { const m = document.createComment(''); sh.before(m); return m; });
+        marks.forEach((m, i) => m.replaceWith(ships[i]));
+        recalcAll(); persist();
+      },
+    });
+  }
   function renderPreemptMirrors() {
     const monthEls = [...board.querySelectorAll('.month')];
     const today = SB.today();
@@ -5122,7 +5172,7 @@
         return;
       }
       // (layoutMonthLists puts the header + block in place: after the in-month orders, before Completed)
-      if (!wrap) { wrap = document.createElement('div'); wrap.className = 'month-preempt month-aux'; list.appendChild(wrap); }
+      if (!wrap) { wrap = document.createElement('div'); wrap.className = 'month-preempt month-aux'; list.appendChild(wrap); makePreemptOrderSortable(wrap); }
       if (!mh) { mh = document.createElement('div'); mh.className = 'month-sec-head month-mirror-head month-aux'; list.appendChild(mh); }
       // Only touch the light DOM when something actually changed -- the
       // mirror sync observer would otherwise keep re-triggering itself.
