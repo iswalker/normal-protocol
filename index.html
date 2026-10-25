@@ -816,16 +816,11 @@
          the search box is the one flexible item absorbing whatever's left
          before .header-right's own fixed-size Scan/gear. */
       .brand { flex: 1 1 0; order: 1; min-width: 0; }
-      .brand img, .brand .inv-search-link, .brand #inv-autoship-btn, .brand #inv-preempt-btn { flex: none; }
-      /* Icon-only on a phone -- the label would crowd the search box out */
-      #inv-preempt-btn .pre-label { display: none; }
-      #inv-preempt-btn { padding: 5px 8px; }
-      #inv-preempt-btn svg { margin-right: -1px !important; }
-      /* While the search box is focused on a phone, the three header buttons
+      .brand img, .brand .inv-search-link, .brand #inv-autoship-btn { flex: none; }
+      /* While the search box is focused on a phone, the header buttons
          step aside so it gets the whole row (it's squeezed to a stub otherwise) */
       .brand:has(.global-search-box:focus-within) .inv-search-link,
-      .brand:has(.global-search-box:focus-within) #inv-autoship-btn,
-      .brand:has(.global-search-box:focus-within) #inv-preempt-btn { display: none; }
+      .brand:has(.global-search-box:focus-within) #inv-autoship-btn { display: none; }
       .header-right { flex: 0 0 auto; order: 2; }
 
       /* Brought back as its own full-width row under the primary toolbar,
@@ -2432,7 +2427,6 @@
       <span class="inv-search-label">Inventory</span>
     </button>
     <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin:0px 2px 2px -1px"><path d="m1087.2 506.4c-12-12-31.199-12-43.199 0l-144 146.4c0-16.801 2.3984-31.199 2.3984-45.602 0-225.6-182.4-408-408-408-225.6 0-408 182.4-408 408 0 225.6 182.4 408 408 408 108 0 211.2-43.199 288-120 12-12 12-31.199 0-43.199s-31.199-12-43.199 0c-64.801 64.801-153.6 100.8-244.8 100.8-192 0-348-156-348-348s156-348 348-348 348 156 348 348c0 16.801-2.3984 38.398-2.3984 60l-163.2-160.8c-12-12-31.199-12-43.199 0s-12 31.199 0 43.199l208.8 208.8c2.3984 0 2.3984 2.3984 4.8008 2.3984 2.3984 0 4.8008 2.3984 4.8008 2.3984h4.8008 2.3984 2.3984 4.8008 4.8008c2.3984 0 4.8008-2.3984 4.8008-2.3984 2.3984 0 2.3984-2.3984 4.8008-2.3984h2.3984l204-204c12-14.395 12-33.598 0-45.598z"/></svg> Autoship</button>
-    <button class="inv-scan-btn" id="inv-preempt-btn" title="Show only orders flagged Launch Preemptively (placed in the previous month)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:middle;margin:0 3px 2px -1px"><path d="M8.5 3.5 4 8l4.5 4.5M13 3.5 8.5 8l4.5 4.5"/></svg><span class="pre-label">Preemptive</span></button>
     <div class="global-search-box" data-act="focus-global-search" title="Search every month">
       <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
       <input type="text" id="global-search-input" class="global-search-input" placeholder="Search…" autocomplete="off" />
@@ -3086,9 +3080,6 @@
   // matching everything with a saved Autoship link instead of a text query.
   // Mutually exclusive with it: turning one on clears the other.
   let globalAutoshipOnly = false;
-  // Header "Preemptive" button: only shipments flagged Launch Preemptively.
-  // Same mutually-exclusive-with-text/Autoship/pin treatment as above.
-  let globalPreemptiveOnly = false;
   // Shipment names pinned via "Pin Merchant" (context menu) -- synced via
   // /api/board-settings (Turso) so a merchant pinned on one device shows up
   // on every other one, not just localStorage on whichever device pinned it.
@@ -4167,8 +4158,6 @@
     // Back to automatic whenever the choice just matches what the date implies
     s.preemptive = next === shipAutoPreemptive(shipEl) ? null : next;
     recalcAll();
-    // The Preemptive header filter keys off this flag, so re-run it
-    if (globalPreemptiveOnly) refreshBoardFilters();
     persist();
   }
 
@@ -4181,7 +4170,7 @@
       // unrelated to which items happen to match the query) would mix an
       // always-present figure into a number that's supposed to represent
       // only the filtered results.
-      const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalPreemptiveOnly || !!globalPinnedMerchant;
+      const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || !!globalPinnedMerchant;
       let plannedItems = 0, maxItems = 0, itemCount = 0;
 
       [...list.children].forEach((node) => {
@@ -4485,7 +4474,6 @@
   function warnRowVisible(kind, name, where, link, preemptive) {
     const isRunout = kind === 'runout';
     const merchant = (kind === 'ship' ? name : where) || '';
-    if (globalPreemptiveOnly) return !isRunout && !!preemptive;
     if (globalAutoshipOnly) return !isRunout && !!link;
     const pm = globalPinnedMerchant.toLowerCase();
     if (pm && (isRunout || merchant.toLowerCase() !== pm)) return false;
@@ -5172,7 +5160,7 @@
     const monthEls = [...board.querySelectorAll('.month')];
     const today = SB.today();
     const curStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const filterActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalPreemptiveOnly || !!globalPinnedMerchant;
+    const filterActive = !!globalSearchQuery.trim() || globalAutoshipOnly || !!globalPinnedMerchant;
     monthEls.forEach((monthEl, mi) => {
       const list = monthEl.querySelector(':scope > .month-list');
       if (!list) return;
@@ -6919,7 +6907,7 @@
     // While searching, monthSpent drops the unattributable YNAB base but
     // keeps matching "Ordered" shipment totals -- a completed order that
     // matches the search still counts toward Spent.
-    const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalPreemptiveOnly || !!globalPinnedMerchant;
+    const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || !!globalPinnedMerchant;
     const spent = monthSpent(monthEl, searchActive);
     const spentEl = monthEl.querySelector('.spentv');
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
@@ -7301,7 +7289,6 @@
   function refreshBoardFilters(toStart) {
     const clearBtn = document.getElementById('global-search-clear');
     const autoshipBtn = document.getElementById('inv-autoship-btn');
-    const preemptBtn = document.getElementById('inv-preempt-btn');
     // Whichever month is anchored at the scroller's leading edge right now
     // (kept in sync by updateCurrentMonthFromScroll -- true whether it got
     // there via a month-strip "jump" or an ordinary manual scroll) needs to
@@ -7319,9 +7306,8 @@
     // chip again already clears it, so a second affordance for the exact
     // same action was redundant. The × still shows for text/Autoship,
     // since those have no other "tap to clear" control of their own.
-    if (clearBtn) clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly || globalPreemptiveOnly) ? 'block' : 'none';
+    if (clearBtn) clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly) ? 'block' : 'none';
     autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
-    preemptBtn?.classList.toggle('active', globalPreemptiveOnly);
     renderPinnedMerchants();
     if (toStart === true) {
       const first = [...board.querySelectorAll('.month')].find((m) => m.style.display !== 'none' && !m.classList.contains('search-hide'));
@@ -7347,7 +7333,6 @@
     const isActive = globalPinnedMerchant.toLowerCase() === name.toLowerCase();
     globalPinnedMerchant = isActive ? '' : name;
     globalAutoshipOnly = false;
-    globalPreemptiveOnly = false;
     refreshBoardFilters();
   });
   // Right-click (desktop) / hold (mobile) a chip -- opens a small menu with
@@ -7474,7 +7459,7 @@
     // exact name (case-insensitive), matching what was actually pinned.
     const merchantActive = !!globalPinnedMerchant;
     const lpm = globalPinnedMerchant.toLowerCase();
-    const filterActive = globalAutoshipOnly || globalPreemptiveOnly || !!lq || merchantActive;
+    const filterActive = globalAutoshipOnly || !!lq || merchantActive;
     const list = monthEl.querySelector('.month-list');
     if (!list) return;
     [...list.children].forEach((node) => {
@@ -7490,13 +7475,12 @@
           node.classList.add('search-hide');
           return;
         }
-        const shipMatches = globalPreemptiveOnly ? isShipPreemptive(node)
-          : globalAutoshipOnly ? shipMatchesAutoshipFilter(node) : (!lq || shipName.includes(lq));
+        const shipMatches = globalAutoshipOnly ? shipMatchesAutoshipFilter(node) : (!lq || shipName.includes(lq));
         let anyItemMatches = false;
         node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           const itemName = cardEl.querySelector('.card-name')?.textContent || '';
           const itemMatches = !filterActive || shipMatches
-            || (globalPreemptiveOnly ? false : globalAutoshipOnly ? cardMatchesAutoshipFilter(cardEl) : itemName.toLowerCase().includes(lq));
+            || (globalAutoshipOnly ? cardMatchesAutoshipFilter(cardEl) : itemName.toLowerCase().includes(lq));
           cardEl.classList.toggle('search-hide', !itemMatches);
           if (itemMatches) anyItemMatches = true;
         });
@@ -7511,7 +7495,7 @@
         if (merchantActive) { node.classList.add('search-hide'); return; }
         const itemName = node.querySelector('.card-name')?.textContent || '';
         const itemMatches = !filterActive
-          || (globalPreemptiveOnly ? false : globalAutoshipOnly ? cardMatchesAutoshipFilter(node) : itemName.toLowerCase().includes(lq));
+          || (globalAutoshipOnly ? cardMatchesAutoshipFilter(node) : itemName.toLowerCase().includes(lq));
         node.classList.toggle('search-hide', !itemMatches);
       }
     });
@@ -7542,7 +7526,7 @@
   // touched -- a no-op when no filter is active.
   function reapplySearchTo(monthEl) {
     if (!monthEl) return;
-    if (!globalAutoshipOnly && !globalPreemptiveOnly && !globalSearchQuery.trim() && !globalPinnedMerchant) return;
+    if (!globalAutoshipOnly && !globalSearchQuery.trim() && !globalPinnedMerchant) return;
     applyMonthSearch(monthEl, globalSearchQuery);
   }
 
@@ -7564,10 +7548,9 @@
     // freeform text search, rather than stacking "pinned merchant AND
     // text" the way it used to -- the pin chip itself stays pinned, just
     // deselected (same as unpinning-by-tap already does).
-    function applyToAllMonths(q, wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalPreemptiveOnly || globalPinnedMerchant)) {
+    function applyToAllMonths(q, wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalPinnedMerchant)) {
       globalSearchQuery = q;
       globalAutoshipOnly = false;
-      globalPreemptiveOnly = false;
       globalPinnedMerchant = '';
       // Clearing a filter returns to the root of the board (first month)
       refresh(!q.trim() && wasFiltered);
@@ -7584,7 +7567,7 @@
     // an active pinned-merchant selection all reset together (the pinned
     // chips themselves stay pinned, just deselected -- see globalPinnedMerchant).
     clearBtn.addEventListener('click', () => {
-      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalPreemptiveOnly || globalPinnedMerchant);
+      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalPinnedMerchant);
       input.value = '';
       globalPinnedMerchant = '';
       applyToAllMonths('', wasFiltered);
@@ -7595,17 +7578,6 @@
     // Toggles: clicking again while already active turns it back off.
     autoshipBtn?.addEventListener('click', () => {
       globalAutoshipOnly = !globalAutoshipOnly;
-      globalPreemptiveOnly = false;
-      input.value = '';
-      globalSearchQuery = '';
-      globalPinnedMerchant = '';
-      refresh();
-    });
-    // Header "Preemptive" button -- same shape as Autoship above, matched on
-    // the Launch Preemptively flag instead.
-    document.getElementById('inv-preempt-btn')?.addEventListener('click', () => {
-      globalPreemptiveOnly = !globalPreemptiveOnly;
-      globalAutoshipOnly = false;
       input.value = '';
       globalSearchQuery = '';
       globalPinnedMerchant = '';
@@ -8895,8 +8867,6 @@
         propagateShipmentAutoship(shipEl, link, nextDate);
       }
       recalcAll();
-      // A new date can flip a shipment's automatic Launch Preemptively state
-      if (globalPreemptiveOnly) refreshBoardFilters();
       persist();
       return true;
     },

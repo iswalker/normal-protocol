@@ -259,13 +259,9 @@ try {
   check('preemptive: turning it back on returns to automatic (null)', lastOrder('o_pre')?.preemptive == null && !(await rowNames(page)).includes('Early'));
   // header filter
   const visibleShips = () => page.evaluate((m) => [...document.querySelectorAll(`.month[data-id="${m}"] .month-list > .shipment:not(.search-hide) .ship-name`)].map((e) => e.textContent), `${M1.month}_${M1.year}`);
-  await page.locator('#inv-preempt-btn').click();
-  const filtered = await visibleShips();
-  check('filter: Preemptive button is active and shows only preemptive orders', (await page.locator('#inv-preempt-btn').getAttribute('class')).includes('active') && ['Pre Auto Co', 'Normal Co', 'Dup Co'].every((n) => filtered.includes(n)), filtered.join(', '));
+  check('the header "Preemptive" filter button is gone', (await page.locator('#inv-preempt-btn').count()) === 0);
   await pbtn('o_norm').click(); await page.waitForTimeout(500); // back to automatic/off
-  check('filter: un-flagged order drops out of the filtered view', !(await visibleShips()).includes('Normal Co'));
   await page.locator('#inv-autoship-btn').click();
-  check('filter: Autoship and Preemptive are mutually exclusive', !(await page.locator('#inv-preempt-btn').getAttribute('class')).includes('active'));
   await page.locator('#inv-autoship-btn').click();
   check('filter: turning filters off restores the board', (await visibleShips()).includes('Normal Co'));
 
@@ -441,9 +437,9 @@ try {
   check('mirror: has no caption line (the Preemptive button says it all)', await page.evaluate(() => [...document.querySelectorAll('.pre-host')].every((h) => !h.shadowRoot.querySelector('.pre-cap') && !/placed early/.test(h.shadowRoot.textContent))));
   await pbtn('o_norm').click(); await page.waitForTimeout(700); // back to off
   check('mirror: turning the flag off removes it', !(await mirrorNames()).includes('Normal Co'));
-  await page.locator('#inv-preempt-btn').click();
+  await page.locator('#inv-autoship-btn').click();
   check('mirror: hidden while a filter is active', (await m0list.locator('.month-preempt').count()) === 0);
-  await page.locator('#inv-preempt-btn').click();
+  await page.locator('#inv-autoship-btn').click();
 
   const m1Panel = await page.locator(`.month[data-id="${M1.month}_${M1.year}"] .month-warn .warn-name`).allTextContents();
   // ── links: name -> Inventory, order month -> the order ──
@@ -513,10 +509,6 @@ try {
   const autoNames = await nameList();
   check('Autoship filter: only rows with a saved autoship link (no run-outs)', autoNames.length > 0 && autoNames.includes('Alpha') && !autoNames.includes('Runner') && !autoNames.includes('Stale Approval'), autoNames.join(', '));
   await page.locator('#inv-autoship-btn').click(); await page.waitForTimeout(300);
-  await page.locator('#inv-preempt-btn').click(); await page.waitForTimeout(300);
-  const preNamesRows = await nameList();
-  check('Preemptive filter: only rows of preemptive orders (no run-outs)', preNamesRows.length > 0 && !preNamesRows.includes('Runner') && !preNamesRows.includes('Alpha') && preNamesRows.includes('Card Pre'), preNamesRows.join(', '));
-  await page.locator('#inv-preempt-btn').click(); await page.waitForTimeout(300);
   check('turning the filters off restores every row', (await nameList()).length === allRows);
 
   check('panel has no warning icon', (await panelHead(page).locator('svg').count()) === 0);
