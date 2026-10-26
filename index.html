@@ -192,6 +192,24 @@
       flex: 1 1 auto; display: flex; align-items: center;
       gap: 0; min-width: 0; overflow: hidden;
     }
+    /* Desktop: when the months outgrow the bar the strip scrolls sideways (phones
+       have their own rule below). Same scrollbar treatment as Blindspot Suite's tab
+       strip: a 2px bar with no arrows that is only visible while the pointer is over
+       the strip. .strip-hot is set from JS rather than :hover, which sticks after
+       dragging the bar and leaving. Chrome/Safari take the ::-webkit-scrollbar
+       rules (scrollbar-width would override them); Firefox can only go "thin". */
+    @media (min-width: 681px) {
+      .month-strip { overflow-x: auto; overflow-y: hidden; }
+      .month-strip::-webkit-scrollbar { height: 2px; }
+      .month-strip::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+      .month-strip::-webkit-scrollbar-track { background: transparent; }
+      .month-strip::-webkit-scrollbar-thumb { background: transparent; border-radius: 1px; }
+      .month-strip.strip-hot::-webkit-scrollbar-thumb { background: rgba(0,0,0,.35); }
+      @supports (-moz-appearance: none) {
+        .month-strip { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+        .month-strip.strip-hot { scrollbar-color: rgba(0,0,0,.35) transparent; }
+      }
+    }
     .month-strip-cell {
       position: relative; display: flex; flex-direction: column; align-items: center;
       padding: 0px 8px; line-height: 1.15; white-space: nowrap;
@@ -5287,6 +5305,30 @@
     strip.classList.toggle('is-overflowing', strip.scrollWidth > strip.clientWidth + 1);
   }
   window.addEventListener('resize', updateStripOverflow);
+  // Desktop strip scrollbar: visible only while the pointer is over the strip
+  // (see .strip-hot's CSS). Tracked by hand because :hover stays latched after
+  // dragging the bar's thumb off the strip -- any pointer move or release
+  // re-checks what is actually under the cursor. A plain mouse wheel (vertical
+  // only) scrolls the strip sideways while it overflows.
+  (function initStripScrollbar() {
+    const strip = document.getElementById('month-strip');
+    if (!strip) return;
+    function syncHot(e) {
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const over = (e.buttons && strip.classList.contains('strip-hot')) || (!!under && strip.contains(under));
+      strip.classList.toggle('strip-hot', !!over);
+    }
+    strip.addEventListener('mouseenter', syncHot);
+    document.addEventListener('mousemove', syncHot, { passive: true });
+    document.addEventListener('mouseup', syncHot, { passive: true });
+    document.addEventListener('mouseleave', () => strip.classList.remove('strip-hot'));
+    window.addEventListener('blur', () => strip.classList.remove('strip-hot'));
+    strip.addEventListener('wheel', (e) => {
+      if (strip.scrollWidth <= strip.clientWidth + 1 || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      strip.scrollLeft += e.deltaY;
+    }, { passive: false });
+  })();
   // Scrolls #tab-board so targetEl's leading edge sits flush against the
   // scroller's edge, with the same gap the board already uses between
   // months -- scrollIntoView pins flush with no breathing room, so the

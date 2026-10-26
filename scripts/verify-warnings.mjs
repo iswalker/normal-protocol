@@ -891,6 +891,29 @@ try {
   await page.setViewportSize({ width: 1400, height: 900 });
   check('…and is back on a wide screen', await h1Shown());
 
+  // ── desktop: a month strip that does not fit scrolls sideways, with a scrollbar only while the pointer is over it ──
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.waitForTimeout(300);
+  const stripInfo = () => page.evaluate(() => { const s = document.getElementById('month-strip'); const cs = getComputedStyle(s); return { ox: cs.overflowX, over: s.scrollWidth - s.clientWidth, left: Math.round(s.scrollLeft), hot: s.classList.contains('strip-hot'), thumb: getComputedStyle(s, '::-webkit-scrollbar-thumb').backgroundColor }; });
+  const s0 = await stripInfo();
+  check('month strip: scrolls sideways on desktop when the months do not all fit', s0.ox === 'auto' && s0.over > 20, JSON.stringify(s0));
+  check('…and shows no scrollbar while the pointer is elsewhere', !s0.hot && ['rgba(0, 0, 0, 0)', 'transparent'].includes(s0.thumb), JSON.stringify(s0));
+  const sb = await page.locator('#month-strip').boundingBox();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await page.waitForTimeout(150);
+  const s1 = await stripInfo();
+  check('…and shows a thin one while the pointer is over the strip', s1.hot && !['rgba(0, 0, 0, 0)', 'transparent'].includes(s1.thumb), JSON.stringify(s1));
+  await page.mouse.wheel(0, 300);
+  await page.waitForTimeout(300);
+  const s2 = await stripInfo();
+  check('…and a plain mouse wheel over it scrolls it sideways', s2.left > 0, JSON.stringify(s2));
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(150);
+  const s3 = await stripInfo();
+  check('…and the scrollbar hides again once the pointer leaves', !s3.hot && ['rgba(0, 0, 0, 0)', 'transparent'].includes(s3.thumb), JSON.stringify(s3));
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.waitForTimeout(200);
+
   // ── nothing leaks into past/other structure ──
   check('no JS errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
