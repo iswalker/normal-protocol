@@ -881,6 +881,16 @@ try {
   check('Scan button: turning it back off hides it again', !(await scanShown(page)));
   check('search box: flex is "0 1 90px"', await page.evaluate(() => { const c = getComputedStyle(document.querySelector('.global-search-box')); return c.flexGrow === '0' && c.flexShrink === '1' && c.flexBasis === '90px'; }));
 
+  // ── layout: header and board padding, and the text logo only from 1250px wide ──
+  check('header padding is 0 16px, board padding 16px', await page.evaluate(() => { const h = getComputedStyle(document.querySelector('header')), b = getComputedStyle(document.querySelector('#tab-board .board')); return h.paddingTop === '0px' && h.paddingLeft === '16px' && h.paddingRight === '16px' && [b.paddingTop, b.paddingRight, b.paddingBottom, b.paddingLeft].every((v) => v === '16px'); }));
+  const h1Shown = () => page.evaluate(() => getComputedStyle(document.querySelector('.brand h1')).display !== 'none');
+  await page.setViewportSize({ width: 1250, height: 900 });
+  check('the "Normal Protocol" text logo shows at 1250px', await h1Shown());
+  await page.setViewportSize({ width: 1249, height: 900 });
+  check('…and is hidden below 1250px (the logo mark stays)', !(await h1Shown()) && (await page.locator('.brand img').isVisible()));
+  await page.setViewportSize({ width: 1400, height: 900 });
+  check('…and is back on a wide screen', await h1Shown());
+
   // ── nothing leaks into past/other structure ──
   check('no JS errors', errors.length === 0, errors.join(' | '));
   await ctx.close();

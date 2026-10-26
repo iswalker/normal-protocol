@@ -46,7 +46,7 @@
       display: flex;
       align-items: stretch;
       gap: 16px;
-      padding: 0 24px;
+      padding: 0 16px;
       min-height: 46px;
       background: var(--cream-dark);
       border-bottom: 1.5px solid var(--ink-12);
@@ -92,6 +92,8 @@
       white-space: nowrap;
       margin-right: 10px;
     }
+    /* Under 1250px the logo mark stands alone -- the text would crowd the controls */
+    @media (max-width: 1249px) { .brand h1 { display: none; } }
 
 
     .table-wrap {
@@ -976,7 +978,7 @@
     /* ── board scroller ── */
     #tab-board .board {
       display: flex; gap: 16px; align-items: flex-start;
-      padding: 18px;
+      padding: 16px;
       min-height: 100%;
     }
     /* Shown until the first render() call overwrites #board's innerHTML --
