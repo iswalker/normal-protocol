@@ -6998,7 +6998,11 @@
       const invCards = [...shipEl.querySelectorAll('.ship-body > .card')]
         .map((c) => STATE.cardData[c.dataset.id] || {})
         .filter((d) => !d.untracked)
-        .map((d) => ({ name: d.name || '', bottleSize: d.bottleSize || 0, qty: Number(d.qty) || 0 }));
+        // price/dose/loggedOn ride along because receiveDelta decides between
+        // "buy bottles" and "withdraw" from them (a quantity-mode card with a
+        // blank Price withdraws). Without them every card read as a purchase and
+        // a decrement item was previewed -- and logged -- as an INCREASE.
+        .map((d) => ({ name: d.name || '', bottleSize: d.bottleSize || 0, qty: Number(d.qty) || 0, price: d.price, dose: d.dose, loggedOn: d.loggedOn, untracked: false }));
 
       // Nothing below runs — no stage flip, no persist, no inventory write — until
       // this resolves. Kept as a function so the "Received" gate below can defer

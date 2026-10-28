@@ -918,6 +918,45 @@ try {
   check('no JS errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
 
+  // ── Receive: a quantity-mode "decrement" item (blank Price, no Dose/Day) must WITHDRAW -- never preview or log an increase ──
+  {
+    const rc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const rp = await rc.newPage();
+    const logged = [];
+    const rBody = {
+      months: [{ month: M0.month, year: M0.year, position: 1 }],
+      orders: [{ order_id: 'o_v', month: M0.month, year: M0.year, merchant: 'Visits Co', position: 1, status: 'Staged', notes: null }],
+      items: [
+        card('oi_visit', 'o_v', M0, 1, 1, 'Visits', { price_per_bottle: null }),   // blank Price, no dose: 1 visit CONSUMED
+        card('oi_bottle', 'o_v', M0, 1, 2, 'Bottled', { price_per_bottle: 10, order_qty_bottles: 2 }), // a normal purchase of 2 bottles
+      ],
+    };
+    const rItems = [{ id: 21, name: 'Visits', bottle_size: 3, daily_dose: 0 }, { id: 22, name: 'Bottled', bottle_size: 60, daily_dose: 1 }];
+    const rLog = [{ id: 21, item: 'Visits', type: 'Reset', amount: 5, logged_on: iso(now), order_id: null }, { id: 22, item: 'Bottled', type: 'Reset', amount: 100, logged_on: iso(now), order_id: null }];
+    await rp.route('**/api/orders', (r) => (r.request().method() === 'GET' ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rBody) }) : r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })));
+    await rp.route('**/api/inventory-items', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rItems) }));
+    await rp.route((u) => new URL(u).pathname === '/api/inventory', (r) => {
+      const m = r.request().method();
+      if (m === 'POST') { logged.push(JSON.parse(r.request().postData() || '{}')); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); }
+      if (m === 'GET' && !r.request().url().includes('order_id=')) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rLog) });
+      return r.fulfill({ status: 200, contentType: 'application/json', body: m === 'GET' ? '[]' : '{"ok":true}' });
+    });
+    await rp.goto(base, { waitUntil: 'load' });
+    await rp.waitForSelector('.shipment[data-id="o_v"]', { state: 'attached', timeout: 15000 });
+    await rp.waitForSelector('.card[data-id="oi_visit"]:not(.no-proj)', { timeout: 10000 });
+    await rp.evaluate(() => document.querySelector('.shipment[data-id="o_v"] [data-act="set-stage"][data-stage="received"]').click());
+    await rp.waitForSelector('#recv-confirm-body tr .rc-after', { timeout: 10000 });
+    const rows = await rp.evaluate(() => Object.fromEntries([...document.querySelectorAll('#recv-confirm-body tr')].map((tr) => [tr.querySelector('.rc-name')?.textContent.trim(), tr.querySelector('.rc-after')?.textContent.split(/ +/).join(' ').trim()])));
+    check('Confirm Receive: a decrement item previews a DECREASE (5 -> 4, not 5 -> 8)', (rows.Visits || '').split(' ').join('') === '4(-1)', JSON.stringify(rows));
+    check('…while an ordinary purchase still previews an increase (2 bottles of 60)', (rows.Bottled || '').split(' ').join('') === '220(+120)', JSON.stringify(rows));
+    await rp.locator('#recv-confirm-approve-btn').click();
+    await rp.waitForTimeout(800);
+    const rec = (n) => logged.find((l) => l.item === n && l.type === 'Received');
+    check('Receive logs the decrement as a negative amount', rec('Visits')?.amount === -1, JSON.stringify(logged));
+    check('…and the purchase as a positive one', rec('Bottled')?.amount === 120, JSON.stringify(logged));
+    await rc.close();
+  }
+
   // ── mobile: panel renders and Approve is tappable ──
   const m = await openBoard({ width: 390, height: 800 });
   if (process.env.SHOT_DIR) await m.page.screenshot({ path: join(process.env.SHOT_DIR, 'warn-mobile.png') });
