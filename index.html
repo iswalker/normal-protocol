@@ -582,6 +582,31 @@
     /* .pin-chip itself reuses .inv-scan-btn/.inv-scan-btn.active as-is (same
        "same styling as Autoship" look) -- no extra rules needed here. */
 
+    /* Merchants Shorthand: below 1250px a configured shipment name / pinned chip
+       shows its abbreviation instead of the full name. The shipment name stays the
+       real (editable) text -- it is only hidden and swapped for its data-short via
+       ::after, and the full name comes back while it is being edited. */
+    .pin-chip .pc-short { display: none; }
+    @media (max-width: 1249px) {
+      .pin-chip.has-short .pc-full { display: none; }
+      .pin-chip.has-short .pc-short { display: inline; }
+      #tab-board .ship-name[data-short]:not(:focus) { font-size: 0; }
+      #tab-board .ship-name[data-short]:not(:focus)::after { content: attr(data-short); font-size: 13px; }
+    }
+    .shorthand-modal { width: 460px; }
+    .sh-hint { font-size: 12px; color: var(--ink-60); margin: -6px 0 12px; line-height: 1.4; }
+    .sh-list { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; margin-bottom: 12px; }
+    .sh-empty { font-size: 12.5px; color: var(--ink-60); font-style: italic; padding: 4px 0; }
+    .sh-row, .sh-add { display: grid; grid-template-columns: minmax(0, 1fr) 96px 26px; gap: 8px; align-items: center; }
+    .sh-name { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sh-row input, .sh-add input {
+      border: 1.5px solid var(--ink-12); border-radius: 6px; padding: 6px 8px; font-size: 13px;
+      font-family: inherit; background: #fff; color: var(--ink); outline: none; width: 100%; box-sizing: border-box; min-width: 0;
+    }
+    .sh-row input:focus, .sh-add input:focus { border-color: var(--teal); }
+    .sh-del { background: none; border: none; cursor: pointer; color: var(--ink-60); font-size: 18px; line-height: 1; padding: 0; border-radius: 4px; }
+    .sh-del:hover { color: #d6504a; }
+    .sh-add { border-top: 1px solid var(--ink-12); padding-top: 12px; grid-template-columns: minmax(0, 1fr) 96px auto; }
     .scan-overlay {
       position: fixed; inset: 0; background: rgba(23,26,28,0.55); z-index: 300;
       display: flex; align-items: center; justify-content: center;
@@ -2466,6 +2491,7 @@
         <div class="settings-panel" id="settings-panel">
           <div class="settings-panel-title">Settings</div>
           <button class="settings-action-btn" id="update-ynab">Update YNAB API Key</button>
+          <button class="settings-action-btn" id="config-shorthand">Configure Merchants Shorthand</button>
           <button class="settings-toggle-row" id="show-scan-toggle" type="button" aria-pressed="false">
             <span>Show Scan Button</span>
             <span class="settings-toggle"><i></i></span>
@@ -3108,6 +3134,27 @@
   // (that part stays purely client-side -- no reason to sync a live filter
   // selection across devices).
   let pinnedMerchants = [];
+  // Merchants Shorthand (Settings): lower-cased full name -> { name, short }. Synced
+  // through the same /api/board-settings row. Display-only: below 1250px a shipment
+  // name / pin chip with an entry shows the abbreviation, everything else (the
+  // stored name, Inventory links, filtering, search) keeps using the full name.
+  let merchantShorthand = new Map();
+  const shortKey = (n) => String(n || '').trim().toLowerCase();
+  function shortOf(name) { const e = merchantShorthand.get(shortKey(name)); return e ? e.short : ''; }
+  function setShorthandList(list) {
+    merchantShorthand = new Map();
+    (Array.isArray(list) ? list : []).forEach((e) => {
+      if (e && typeof e.name === 'string' && typeof e.short === 'string' && e.short) merchantShorthand.set(shortKey(e.name), { name: e.name, short: e.short });
+    });
+  }
+  // Stamps data-short on every shipment name (the CSS does the swapping).
+  function applyShortNames() {
+    board.querySelectorAll('.ship-name').forEach((el) => {
+      const sh = shortOf(el.textContent);
+      if (sh) { if (el.dataset.short !== sh) el.dataset.short = sh; }
+      else if (el.dataset.short !== undefined) delete el.dataset.short;
+    });
+  }
   async function loadPinnedMerchants() {
     try {
       const res = await fetch('/api/board-settings');
@@ -3117,11 +3164,13 @@
       // Same endpoint also carries the Needs-attention panel's "ignored this
       // month" keys (see renderWarnings).
       dismissedWarnings = new Set(Array.isArray(data.dismissedWarnings) ? data.dismissedWarnings.filter((s) => typeof s === 'string') : []);
+      setShorthandList(data.merchantShorthand);
     } catch (e) {
       console.error('Board: /api/board-settings load failed —', e.message);
       pinnedMerchants = [];
     }
     renderPinnedMerchants();
+    applyShortNames();
     initPinnedMerchantsSortable();
   }
   // Reorder-only save (see initPinnedMerchantsSortable's onEnd) -- pin/unpin
@@ -4182,6 +4231,7 @@
   }
 
   function recalcAll() {
+    applyShortNames();
     applyEffectiveMap();
     board.querySelectorAll('.month').forEach((monthEl) => {
       const list = monthEl.querySelector('.month-list');
@@ -6871,6 +6921,7 @@
     } else if (t.matches('.ship-name')) {
       const ship = t.closest('.shipment');
       (STATE.shipmentData[ship.dataset.id] || (STATE.shipmentData[ship.dataset.id] = {})).name = t.textContent;
+      applyShortNames();
       persistSoon();
     } else if (t.matches('.ship-notes')) {
       // Backspacing out the last character often leaves a stray <br> behind
@@ -7267,6 +7318,109 @@
     }
   });
 
+  // ── Settings > "Configure Merchants Shorthand" ──────────────────────────────
+  // A small modal listing full merchant name -> abbreviation pairs. Names are
+  // suggested from Inventory's merchants (the same list the "+ Order" picker
+  // offers) plus whatever shipments are on the board, but any name can be typed.
+  async function postShorthand(action, name, short) {
+    try {
+      const res = await fetch('/api/board-settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, name, short }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (Array.isArray(data.merchantShorthand)) { setShorthandList(data.merchantShorthand); shorthandChanged(); }
+    } catch (e) {
+      console.error('Board: /api/board-settings ' + action + ' failed —', e.message);
+    }
+  }
+  function shorthandChanged() {
+    applyShortNames();
+    renderPinnedMerchants();
+    if (shorthandOv && shorthandOv.style.display !== 'none') renderShorthandList();
+  }
+  function setShorthand(name, short) {
+    name = String(name || '').trim(); short = String(short || '').trim();
+    if (!name) return;
+    if (!short) { clearShorthand(name); return; }
+    merchantShorthand.set(shortKey(name), { name, short });   // optimistic; reconciled with the server's list
+    shorthandChanged();
+    postShorthand('shorthand-set', name, short);
+  }
+  function clearShorthand(name) {
+    merchantShorthand.delete(shortKey(name));
+    shorthandChanged();
+    postShorthand('shorthand-clear', name, '');
+  }
+  let shorthandOv = null;
+  function shorthandMerchantNames() {
+    const seen = new Set(), names = [];
+    const add = (n) => { const t = String(n || '').trim(), k = t.toLowerCase(); if (t && !seen.has(k)) { seen.add(k); names.push(t); } };
+    Object.values(INV_MAP || {}).forEach((inv) => (inv.froms || []).forEach(add));
+    board.querySelectorAll('.shipment .ship-name').forEach((n) => add(n.textContent));
+    pinnedMerchants.forEach(add);
+    return names.sort((a, b) => a.localeCompare(b));
+  }
+  function renderShorthandList() {
+    const list = shorthandOv.querySelector('.sh-list');
+    const rows = [...merchantShorthand.values()].sort((a, b) => a.name.localeCompare(b.name));
+    list.innerHTML = rows.length ? '' : '<div class="sh-empty">No shorthand yet — add one below.</div>';
+    rows.forEach((e) => {
+      const row = document.createElement('div');
+      row.className = 'sh-row';
+      row.dataset.name = e.name;
+      row.innerHTML = '<span class="sh-name"></span><input type="text" maxlength="24" aria-label="Shorthand"><button type="button" class="sh-del" title="Remove" aria-label="Remove">×</button>';
+      row.querySelector('.sh-name').textContent = e.name;
+      row.querySelector('.sh-name').title = e.name;
+      const inp = row.querySelector('input');
+      inp.value = e.short;
+      inp.addEventListener('change', () => setShorthand(e.name, inp.value));
+      inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') inp.blur(); });
+      row.querySelector('.sh-del').addEventListener('click', () => clearShorthand(e.name));
+      list.appendChild(row);
+    });
+  }
+  function openShorthandModal() {
+    if (!shorthandOv) {
+      shorthandOv = document.createElement('div');
+      shorthandOv.id = 'shorthand-overlay'; shorthandOv.className = 'scan-overlay'; shorthandOv.style.display = 'none';
+      shorthandOv.innerHTML = `
+        <div class="scan-modal shorthand-modal">
+          <div class="scan-modal-head"><span>Merchants Shorthand</span><button class="scan-close-btn" id="shorthand-close-btn" aria-label="Close">×</button></div>
+          <div class="sh-hint">Screens narrower than 1250px show the shorthand instead of the full name on shipments and pinned merchants. Names elsewhere (Inventory, search, filters) stay as they are.</div>
+          <div class="sh-list"></div>
+          <div class="sh-add">
+            <input type="text" id="shorthand-name" list="shorthand-names" placeholder="Merchant (as in Inventory)" autocomplete="off">
+            <input type="text" id="shorthand-short" maxlength="24" placeholder="Shorthand" autocomplete="off">
+            <button type="button" class="snm-confirm" id="shorthand-add-btn">Add</button>
+          </div>
+          <datalist id="shorthand-names"></datalist>
+        </div>`;
+      document.body.appendChild(shorthandOv);
+      const close = () => { shorthandOv.style.display = 'none'; };
+      const nameIn = shorthandOv.querySelector('#shorthand-name'), shortIn = shorthandOv.querySelector('#shorthand-short');
+      const add = () => {
+        if (!nameIn.value.trim() || !shortIn.value.trim()) { (nameIn.value.trim() ? shortIn : nameIn).focus(); return; }
+        setShorthand(nameIn.value, shortIn.value);
+        nameIn.value = ''; shortIn.value = ''; nameIn.focus();
+      };
+      shorthandOv.querySelector('#shorthand-add-btn').addEventListener('click', add);
+      [nameIn, shortIn].forEach((i) => i.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') add(); }));
+      shorthandOv.querySelector('#shorthand-close-btn').addEventListener('click', close);
+      shorthandOv.addEventListener('click', (ev) => { if (ev.target === shorthandOv) close(); });
+      document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && shorthandOv.style.display !== 'none') close(); });
+    }
+    shorthandOv.querySelector('#shorthand-names').innerHTML = shorthandMerchantNames().map((n) => '<option value="' + esc(n).replace(/"/g, '&quot;') + '"></option>').join('');
+    renderShorthandList();
+    shorthandOv.style.display = 'flex';
+    shorthandOv.querySelector('#shorthand-name').focus();
+  }
+  document.getElementById('config-shorthand')?.addEventListener('click', () => {
+    document.getElementById('settings-panel')?.classList.remove('open');
+    openShorthandModal();
+  });
+
   // ── "Pin Merchant" chips (see openShipCtxMenu's context-menu item) --
   //    persistent one-click shortcuts for "Shipment name = X", rendered
   //    into both #pinned-merchants-desktop and #pinned-merchants-mobile
@@ -7278,7 +7432,7 @@
   function renderPinnedMerchants() {
     const html = pinnedMerchants.map((name) => {
       const active = globalPinnedMerchant.toLowerCase() === name.toLowerCase();
-      return `<button type="button" class="inv-scan-btn pin-chip${active ? ' active' : ''}" data-merchant="${esc(name).replace(/"/g, '&quot;')}" title="Filter to &quot;${esc(name)}&quot; shipments — right-click/hold to unpin">${esc(name)}</button>`;
+      return `<button type="button" class="inv-scan-btn pin-chip${active ? ' active' : ''}${shortOf(name) ? ' has-short' : ''}" data-merchant="${esc(name).replace(/"/g, '&quot;')}" title="Filter to &quot;${esc(name)}&quot; shipments — right-click/hold to unpin"><span class="pc-full">${esc(name)}</span>${shortOf(name) ? `<span class="pc-short">${esc(shortOf(name))}</span>` : ''}</button>`;
     }).join('');
     ['pinned-merchants-desktop', 'pinned-merchants-mobile'].forEach((id) => {
       const cont = document.getElementById(id);

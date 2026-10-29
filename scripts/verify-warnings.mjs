@@ -1004,6 +1004,88 @@ try {
     await pc.close();
   }
 
+  // ── Settings > Configure Merchants Shorthand: abbreviations below 1250px, full names kept underneath ──
+  {
+    const sc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const sp = await sc.newPage();
+    let shList = [];
+    const shPosts = [];
+    const sBody = {
+      months: [{ month: M0.month, year: M0.year, position: 1 }],
+      orders: [
+        { order_id: 'o_bs', month: M0.month, year: M0.year, merchant: 'Blue Sky Vitamin', position: 1, status: 'Staged', notes: null },
+        { order_id: 'o_ot', month: M0.month, year: M0.year, merchant: 'Other Co', position: 2, status: 'Staged', notes: null },
+      ],
+      items: [card('si_1', 'o_bs', M0, 1, 1, 'Thing A', {}), card('si_2', 'o_ot', M0, 2, 1, 'Thing B', {})],
+    };
+    const jsonRes = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    await sp.route('**/api/orders', (r) => (r.request().method() === 'GET' ? jsonRes(r, sBody) : jsonRes(r, { ok: true })));
+    await sp.route('**/api/inventory-items', (r) => jsonRes(r, []));
+    await sp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jsonRes(r, r.request().method() === 'GET' ? [] : { ok: true }));
+    await sp.route('**/api/board-settings', (r) => {
+      if (r.request().method() === 'POST') {
+        const b = JSON.parse(r.request().postData() || '{}');
+        shPosts.push(b);
+        if (b.action === 'shorthand-set') shList = [...shList.filter((e) => e.name.toLowerCase() !== b.name.toLowerCase()), { name: b.name, short: b.short }];
+        if (b.action === 'shorthand-clear') shList = shList.filter((e) => e.name.toLowerCase() !== b.name.toLowerCase());
+        return jsonRes(r, { ok: true, merchantShorthand: shList, pinnedMerchants: ['Blue Sky Vitamin'] });
+      }
+      return jsonRes(r, { pinnedMerchants: ['Blue Sky Vitamin'], dismissedWarnings: [], merchantShorthand: shList });
+    });
+    await sp.goto(base, { waitUntil: 'load' });
+    await sp.waitForSelector('.shipment[data-id="o_bs"]', { state: 'attached', timeout: 15000 });
+    await sp.waitForSelector('#pinned-merchants-desktop .pin-chip', { state: 'attached', timeout: 10000 });
+    check('Settings has a "Configure Merchants Shorthand" button', (await sp.locator('#config-shorthand').textContent()).trim() === 'Configure Merchants Shorthand');
+    await sp.locator('#settings-btn').click();
+    await sp.locator('#config-shorthand').click();
+    await sp.waitForSelector('#shorthand-overlay', { state: 'visible' });
+    check('…it opens a modal, with the board\'s merchants suggested', await sp.evaluate(() => /No shorthand yet/.test(document.querySelector('#shorthand-overlay .sh-list').textContent) && [...document.querySelectorAll('#shorthand-names option')].some((o) => o.value === 'Blue Sky Vitamin')));
+    await sp.locator('#shorthand-name').fill('Blue Sky Vitamin');
+    await sp.locator('#shorthand-short').fill('BSV');
+    await sp.locator('#shorthand-add-btn').click();
+    await sp.waitForTimeout(400);
+    check('adding a pair saves it (atomic POST) and lists it', shPosts.some((p) => p.action === 'shorthand-set' && p.name === 'Blue Sky Vitamin' && p.short === 'BSV') && (await sp.locator('#shorthand-overlay .sh-row').count()) === 1 && (await sp.locator('#shorthand-overlay .sh-row input').inputValue()) === 'BSV');
+    await sp.keyboard.press('Escape');
+    check('Escape closes the modal', !(await sp.locator('#shorthand-overlay').isVisible()));
+    const probe = () => sp.evaluate(() => {
+      const nm = document.querySelector('.shipment[data-id="o_bs"] .ship-name'), other = document.querySelector('.shipment[data-id="o_ot"] .ship-name');
+      const chip = document.querySelector('#pinned-merchants-desktop .pin-chip'), vis = (e) => !!e && getComputedStyle(e).display !== 'none';
+      return {
+        text: nm.textContent, short: nm.dataset.short, after: getComputedStyle(nm, '::after').content, width: Math.round(nm.getBoundingClientRect().width),
+        otherShort: other.dataset.short, otherText: other.textContent, full: vis(chip.querySelector('.pc-full')), shortVis: vis(chip.querySelector('.pc-short')),
+        merchant: chip.dataset.merchant,
+      };
+    });
+    const wide = await probe();
+    check('at 1400px wide the full names still show (name and pinned chip)', wide.after === 'none' && wide.full && !wide.shortVis && wide.width > 80, JSON.stringify(wide));
+    await sp.setViewportSize({ width: 1250, height: 900 });
+    check('…and at 1250px', (await probe()).after === 'none');
+    await sp.setViewportSize({ width: 1249, height: 900 });
+    await sp.waitForTimeout(200);
+    const narrow = await probe();
+    check('below 1250px the shipment name shows its shorthand', narrow.after === '"BSV"' && narrow.short === 'BSV' && narrow.width < 60, JSON.stringify(narrow));
+    check('…and so does the pinned-merchant chip', !narrow.full && narrow.shortVis, JSON.stringify(narrow));
+    check('…while the real name and Inventory/filter linkage are untouched', narrow.text === 'Blue Sky Vitamin' && narrow.merchant === 'Blue Sky Vitamin');
+    check('…and an order without a shorthand keeps its full name', narrow.otherShort === undefined && narrow.otherText === 'Other Co');
+    await sp.locator('.shipment[data-id="o_bs"] .ship-name').click();
+    check('…editing the name brings the full text back', (await probe()).after === 'none');
+    await sp.keyboard.press('Tab');
+    await sp.reload({ waitUntil: 'load' });
+    await sp.waitForSelector('.shipment[data-id="o_bs"]', { state: 'attached', timeout: 15000 });
+    await sp.waitForTimeout(500);
+    check('the shorthand persists across a reload', (await probe()).short === 'BSV');
+    await sp.setViewportSize({ width: 390, height: 800 });
+    await sp.waitForTimeout(300);
+    check('…and applies on a phone too', (await sp.evaluate(() => getComputedStyle(document.querySelector('.shipment[data-id="o_bs"] .ship-name'), '::after').content)) === '"BSV"');
+    await sp.setViewportSize({ width: 1400, height: 900 });
+    await sp.evaluate(() => document.getElementById('config-shorthand').click());
+    await sp.waitForSelector('#shorthand-overlay .sh-row .sh-del', { state: 'visible' });
+    await sp.locator('#shorthand-overlay .sh-del').click();
+    await sp.waitForTimeout(400);
+    check('removing a pair clears it everywhere', shPosts.some((p) => p.action === 'shorthand-clear' && p.name === 'Blue Sky Vitamin') && (await probe()).short === undefined && (await sp.locator('#shorthand-overlay .sh-row').count()) === 0);
+    await sc.close();
+  }
+
   // ── mobile: panel renders and Approve is tappable ──
   const m = await openBoard({ width: 390, height: 800 });
   if (process.env.SHOT_DIR) await m.page.screenshot({ path: join(process.env.SHOT_DIR, 'warn-mobile.png') });

@@ -20,6 +20,10 @@
    "runout|<item>|2026-10" -- one entry = "this warning is settled for this
    month", so the same item reappears on its own the next month it is seen.
    Mutated only via POST { action: 'dismiss'|'undismiss', key } below.
+   Also holds the "Merchants Shorthand" map (Settings > Configure Merchants
+   Shorthand): GET -> { merchantShorthand: [{ name, short }] }, mutated only via
+   POST { action: 'shorthand-set', name, short } / { action: 'shorthand-clear',
+   name }, each one atomic JSON1 statement like pin/unpin.
 
    POST -> body { action: 'pin'|'unpin', name }; the actual "which merchants
            are pinned" mutation, done as a single atomic SQL UPDATE (SQLite's
@@ -73,6 +77,7 @@ async function ensureSchema(env) {
   if (schemaEnsured) return;
   await pipeline(env, [CREATE]);
   try { await pipeline(env, [exec("ALTER TABLE board_settings ADD COLUMN dismissed_warnings TEXT")]); } catch { /* already exists */ }
+  try { await pipeline(env, [exec("ALTER TABLE board_settings ADD COLUMN merchant_shorthand TEXT")]); } catch { /* already exists */ }
   schemaEnsured = true;
 }
 
@@ -86,13 +91,28 @@ function parseList(cell) {
   return [];
 }
 
+// merchant_shorthand is a JSON object keyed by the lower-cased, URI-encoded
+// merchant name (no characters that need escaping inside a JSON path) with
+// { name, short } values -- returned to the client as a flat list.
+function parseShorthand(cell) {
+  const raw = cell && cell.type !== "null" ? cell.value : null;
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      return Object.values(v).filter((e) => e && typeof e.name === "string" && typeof e.short === "string");
+    }
+  } catch { /* corrupt row -- fall back to empty rather than fail the load */ }
+  return [];
+}
+
 export async function onRequestGet({ env }) {
   try {
     await ensureSchema(env);
-    const results = await pipeline(env, [exec("SELECT pinned_merchants, dismissed_warnings FROM board_settings WHERE id = 1")]);
+    const results = await pipeline(env, [exec("SELECT pinned_merchants, dismissed_warnings, merchant_shorthand FROM board_settings WHERE id = 1")]);
     const row = results[0].response.result.rows[0] || [];
     return Response.json(
-      { pinnedMerchants: parseList(row[0]), dismissedWarnings: parseList(row[1]) },
+      { pinnedMerchants: parseList(row[0]), dismissedWarnings: parseList(row[1]), merchantShorthand: parseShorthand(row[2]) },
     );
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
@@ -130,8 +150,9 @@ export async function onRequestPost({ request, env }) {
   try { body = await request.json(); } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
   const action = body.action;
   if (action === "dismiss" || action === "undismiss") return mutateDismissed(env, action, String(body.key || "").trim());
+  if (action === "shorthand-set" || action === "shorthand-clear") return mutateShorthand(env, action, String(body.name || "").trim(), String(body.short || "").trim());
   const name = String(body.name || "").trim();
-  if (action !== "pin" && action !== "unpin") return Response.json({ error: "action must be 'pin', 'unpin', 'dismiss' or 'undismiss'" }, { status: 400 });
+  if (action !== "pin" && action !== "unpin") return Response.json({ error: "action must be 'pin', 'unpin', 'dismiss', 'undismiss', 'shorthand-set' or 'shorthand-clear'" }, { status: 400 });
   if (!name) return Response.json({ error: "Missing name" }, { status: 400 });
 
   // Single UPDATE statement per action, computed entirely by SQLite's JSON1
@@ -205,6 +226,33 @@ async function mutateDismissed(env, action, key) {
     const dismissedWarnings = parseList(results[2].response.result.rows[0]?.[0]);
     const updated_at = await touchSyncMeta(env);
     return Response.json({ ok: true, dismissedWarnings, updated_at });
+  } catch (e) {
+    return Response.json({ error: String(e && e.message || e) }, { status: 502 });
+  }
+}
+
+// Same single-statement, computed-at-execution-time shape as the others. The
+// JSON path is bound as a parameter ('$."<key>"'), and the key is the
+// URI-encoded lower-cased name, which can never contain a double quote.
+async function mutateShorthand(env, action, name, short) {
+  if (!name) return Response.json({ error: "Missing name" }, { status: 400 });
+  if (action === "shorthand-set" && (!short || short.length > 24)) return Response.json({ error: "short must be 1-24 characters" }, { status: 400 });
+  const path = '$."' + encodeURIComponent(name.toLowerCase()) + '"';
+  const mutate = action === "shorthand-set"
+    ? exec(
+        "UPDATE board_settings SET merchant_shorthand = json_set(COALESCE(merchant_shorthand, '{}'), ?, json(?)) WHERE id = 1",
+        [T(path), T(JSON.stringify({ name, short }))]
+      )
+    : exec(
+        "UPDATE board_settings SET merchant_shorthand = json_remove(COALESCE(merchant_shorthand, '{}'), ?) WHERE id = 1",
+        [T(path)]
+      );
+  try {
+    await ensureSchema(env);
+    const results = await pipeline(env, [SEED, mutate, exec("SELECT merchant_shorthand FROM board_settings WHERE id = 1")]);
+    const merchantShorthand = parseShorthand(results[2].response.result.rows[0]?.[0]);
+    const updated_at = await touchSyncMeta(env);
+    return Response.json({ ok: true, merchantShorthand, updated_at });
   } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
   }
