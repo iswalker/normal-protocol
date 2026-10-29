@@ -5293,7 +5293,49 @@
     }
   }
 
+  // The Needs Attention panel shows ONE row per item (or order) + date, however
+  // many stored records carry it -- an order's autoship is pushed onto every
+  // later month's copy of that order, and a recurring item can leave several
+  // records on the same date -- and the row only counts as approved once every
+  // one of them is (see computeWarnings). Its own Approve button approves all
+  // of them (its targets), but approving from anywhere else -- an order's
+  // Status menu, the calendar's Approve on a single date -- only named the
+  // records it was looking at, so the others stayed pending and the row never
+  // cleared. This widens any set of targets to every record the panel would
+  // fold into the same row(s), so approving (or revoking) an autoship is one
+  // action wherever it comes from. Eligibility mirrors the panel's own: live,
+  // dated items, and orders that aren't placed or only holding projections.
+  function withAutoshipTwins(targets) {
+    const dateKey = (d) => { const t = d && SB.parseDate(d); return t && !isNaN(t) ? toISODate(t) : null; };
+    const recOf = ({ kind, id }) => (kind === 'ship' ? STATE.shipmentData[id] : STATE.cardData[id]);
+    const keyOf = (kind, r) => { const dk = dateKey(r.autoshipNextDate); return dk ? String(kind === 'ship' ? (r.name || 'Order') : r.name).trim().toLowerCase() + '|' + dk : null; };
+    const wanted = new Set();
+    targets.forEach((t) => { const r = recOf(t); const k = r && r.autoshipNextDate ? keyOf(t.kind, r) : null; if (k) wanted.add(k); });
+    const out = [...targets];
+    if (!wanted.size) return out;
+    const have = new Set(targets.map((t) => t.kind + ':' + t.id));
+    const add = (kind, id) => { if (!have.has(kind + ':' + id)) { have.add(kind + ':' + id); out.push({ kind, id }); } };
+    board.querySelectorAll('.month').forEach((monthEl) => {
+      monthEl.querySelectorAll('.card[data-id]').forEach((cardEl) => {
+        const c = STATE.cardData[cardEl.dataset.id];
+        if (!c || c.name === '__divider__' || c.ghostOf || !c.autoshipNextDate || !(Number(c.qty) > 0)) return;
+        if (cardEl.closest('.shipment.is-locked')) return;
+        if (wanted.has(keyOf('card', c))) add('card', cardEl.dataset.id);
+      });
+      monthEl.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
+        const sd = STATE.shipmentData[shipEl.dataset.id];
+        if (!sd || !sd.autoshipNextDate || sd.stage) return;
+        const cards = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
+          .map((el) => STATE.cardData[el.dataset.id]).filter((c) => c && c.name !== '__divider__');
+        if (cards.length && cards.every((c) => c.ghostOf)) return;
+        if (wanted.has(keyOf('ship', sd))) add('ship', shipEl.dataset.id);
+      });
+    });
+    return out;
+  }
+
   function setAutoshipApprovedMany(targets, on) {
+    targets = withAutoshipTwins(targets);
     let any = false;
     targets.forEach(({ kind, id }) => {
       const d = kind === 'ship' ? STATE.shipmentData[id] : STATE.cardData[id];
