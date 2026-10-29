@@ -4,6 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, user-scalable=yes" />
   <title>Normal Protocol</title>
+  <!-- Inventory's two Turso reads (the item catalog + the full on-hand log)
+       start HERE, as the page begins loading -- in parallel with each other
+       and with the board's own /api/orders load -- instead of waiting for the
+       board to finish and then fetching them one after the other. The
+       Inventory script consumes these promises once the board is ready (see
+       InventoryWriter.run(true)); they resolve to null on any failure, which
+       falls back to an ordinary fetch there. -->
+  <script>
+    (function () {
+      const getJson = (url) => fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      window._INV_LOADING = true; // cleared once the first load has been applied
+      window.__invPrefetch = { items: getJson('/api/inventory-items'), log: getJson('/api/inventory') };
+    })();
+  </script>
   <!-- Favicon, top-left logo (see .brand img below), apple-touch-icon, and
        the Android home-screen icon are all driven off the one logo.png
        asset (180x180) -- the filename itself is meaningless to iOS as long
@@ -279,6 +293,23 @@
     }
     .inv-modal-close:hover { color: var(--teal); border-color: var(--teal); }
     .inv-modal-body { overflow: auto; flex: 1 1 auto; }
+    /* Loading / error / empty state for the list -- a block of its own, not a
+       row inside the table: the table is display:none on mobile (the cards
+       replace it), so a "Loading..." row in there was invisible and the
+       popover sat blank until the data arrived. */
+    .inv-status {
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 56px 16px; color: var(--ink-60); font-size: 13px; text-align: center;
+    }
+    .inv-modal-body.has-status .inv-status { display: flex; }
+    #tab-inventory .inv-modal-body.has-status .table-wrap { display: none; }
+    .inv-status.is-error { color: #d6504a; }
+    .inv-spinner {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 3px solid var(--ink-12); border-top-color: var(--teal);
+      animation: inv-spin .6s linear infinite;
+    }
+    @keyframes inv-spin { to { transform: rotate(360deg); } }
     /* Single search box driving both the desktop table's Item-column filter
        and the mobile card filter (one shared input, #inv-filter-item -- see
        applyFilters) -- replaces what used to be two separate "Filter…"
@@ -2546,6 +2577,7 @@
     <div class="inv-head-break"></div>
   </div>
   <div class="inv-modal-body">
+  <div class="inv-status" id="inv-status" role="status" aria-live="polite"></div>
   <div class="table-wrap" style="margin: 20px 20px 20px;">
     <table id="inv-table">
       <colgroup>
@@ -2580,9 +2612,7 @@
           <th></th>
         </tr>
       </thead>
-      <tbody id="inv-body">
-        <tr><td colspan="13" class="loading">Open the Inventory tab to load data.</td></tr>
-      </tbody>
+      <tbody id="inv-body"></tbody>
     </table>
   </div>
   <div id="inv-cards" style="display:none"></div>
@@ -2627,9 +2657,12 @@
   function closeInventory() {
     if (!invOv) return;
     invOv.classList.remove('open');
-    // Inventory edits feed the board's projections, so refresh on the way out.
+    // Inventory edits feed the board's projections, so push the (cache, kept
+    // current by every edit) to the board on the way out -- and, only if
+    // something was edited, re-read from Turso to pick up the server's own
+    // copy. A look-around with no edits costs no network.
     if (window._INV_LOG_ROWS) window.InventoryWriter?.syncBoard(window._INV_LOG_ROWS);
-    window.InventoryWriter?.run().catch(() => {});
+    if (window._INV_DIRTY) window.InventoryWriter?.run().catch(() => {});
   }
   document.getElementById('inv-search-link')?.addEventListener('click', openInventory);
   document.getElementById('inv-modal-close')?.addEventListener('click', closeInventory);
@@ -9597,10 +9630,23 @@
     return itemMap;
   }
 
-  async function fetchLogAndApply() {
-    let invLogRows = [];
-    try { const r = await fetch('/api/inventory'); if (r.ok) invLogRows = await r.json(); } catch {}
+  // GET -> parsed JSON, or null on any failure (network error, non-2xx)
+  const getJson = (url) => fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+  // Reads the on-hand log (from `logP` -- the page-load prefetch, when given
+  // -- else fresh), applies it to the board, and leaves it in
+  // window._INV_LOG_ROWS: the session cache the Inventory popover paints
+  // from. _INV_CACHE_OK says that cache holds a real read; a failed read
+  // leaves it false so opening Inventory knows to try again.
+  async function fetchLogAndApply(logP) {
+    window._INV_LOADING = true;
+    let invLogRows = await (logP || getJson('/api/inventory'));
+    if (!Array.isArray(invLogRows) && logP) invLogRows = await getJson('/api/inventory'); // the prefetch failed -- one retry
+    const ok = Array.isArray(invLogRows);
+    if (!ok) invLogRows = [];
     window._INV_LOG_ROWS = invLogRows;
+    window._INV_CACHE_OK = ok;
+    window._INV_LOADING = false;
     const amountsMap  = computeOnHand(invLogRows);
     const preOrderMap = buildPreOrderMapFromLog(invLogRows);
     if (window.SupplementBoard?.applyInventory) {
@@ -9653,19 +9699,24 @@
     return name.toLowerCase();
   }
 
-  async function run() {
-    try {
-      const r = await fetch('/api/inventory-items');
-      if (r.ok) {
-        const items = await r.json();
-        if (items.length > 0) buildMapsFromItems(items);
-      }
-    } catch {}
-    await fetchLogAndApply();
+  // Full (re)load of the catalog + log. The two reads go out together, not
+  // one after the other. `usePrefetch` (the first call, on board ready) takes
+  // the requests the page already started in <head> instead of making new
+  // ones; every later call is a genuine refresh.
+  async function run(usePrefetch) {
+    window._INV_LOADING = true;
+    window._INV_DIRTY = false;
+    const pre = usePrefetch ? window.__invPrefetch : null;
+    const itemsP = (pre && pre.items) || getJson('/api/inventory-items');
+    const logP   = (pre && pre.log)   || getJson('/api/inventory');
+    let items = await itemsP;
+    if (!Array.isArray(items) && pre) items = await getJson('/api/inventory-items'); // the prefetch failed -- one retry
+    try { if (Array.isArray(items) && items.length > 0) buildMapsFromItems(items); } catch {}
+    await fetchLogAndApply(logP);
   }
 
-  // auto-load Items on board load
-  document.addEventListener('boardReady', () => { run().catch(() => {}); });
+  // auto-load Items + log on board load (already in flight since page start)
+  document.addEventListener('boardReady', () => { run(true).catch(() => {}); });
 
   // Push already-fetched log rows to the board without a second network call
   function syncBoard(invLogRows) {
@@ -10113,36 +10164,78 @@
     return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
   }
 
+  // Keeps the session cache (window._INV_LOG_ROWS) in step with a log row
+  // this tab just wrote, so the next open -- painted from that cache, no
+  // refetch -- already shows it; the refresh on close then swaps in the
+  // server's own copy. The id only has to sort after every existing row.
+  function cacheLogRow(row) {
+    const rows = window._INV_LOG_ROWS || (window._INV_LOG_ROWS = []);
+    const id = rows.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0) + 1;
+    rows.push({ id: String(id), order_id: null, ...row });
+    window._INV_DIRTY = true;
+  }
+
+  // The list's loading / error / empty state (see .inv-status). Shown only
+  // while there's nothing to list -- once rows exist they stay on screen
+  // through any refresh.
+  function setInvStatus(state) {
+    const el = document.getElementById('inv-status');
+    const wrap = el && el.parentElement;
+    if (!el) return;
+    if (!state) { el.innerHTML = ''; wrap.classList.remove('has-status'); return; }
+    el.classList.toggle('is-error', !!state.error);
+    el.innerHTML = state.loading
+      ? '<span class="inv-spinner" aria-hidden="true"></span><span>Loading inventory…</span>'
+      : '<span>' + escHtml(state.error || state.message) + '</span>';
+    wrap.classList.add('has-status');
+  }
+  const hasInvRows = () => !!(body && body.querySelector('tr[data-key]'));
+
+  // Re-reads the log from Turso, then paints. For callers that need the
+  // server's own state -- recovering from a failed save, or after a write
+  // that returned the new row only to the server. Opening the popover does
+  // NOT come through here: it paints from the session cache instead (see
+  // showInventory), so no fetch sits between a tap and the list.
   let _rendering = false;
   async function renderInventory() {
     if (!body || _rendering) return;
     _rendering = true;
-    // Show loading only on first load (table is empty); otherwise keep existing rows visible
-    const isEmpty = !body.querySelector('tr[data-key]');
-    if (isEmpty) body.innerHTML = '<tr><td colspan="13" class="loading">Loading…</td></tr>';
-    let invLogRows = [];
+    // Spinner only when there's nothing to show yet; otherwise keep existing rows visible
+    if (!hasInvRows()) setInvStatus({ loading: true });
+    let invLogRows = null;
     try {
       const r = await fetch('/api/inventory');
       if (!r.ok) throw new Error('HTTP ' + r.status);
       invLogRows = await r.json();
     } catch (e) {
-      body.innerHTML = '<tr><td colspan="13" class="loading" style="color:#d6504a">Failed to load: ' + e.message + '</td></tr>';
+      body.innerHTML = '';
+      document.getElementById('inv-cards')?.replaceChildren();
+      setInvStatus({ error: 'Failed to load: ' + e.message });
       _rendering = false;
       return;
     }
+    window._INV_CACHE_OK = true;
+    _rendering = false;
+    paintInventory(invLogRows);
+  }
+
+  // Builds the table + cards from log rows already in hand (no network).
+  function paintInventory(invLogRows) {
+    if (!body) return;
     window._INV_LOG_ROWS = invLogRows;
     const onHand  = computeOnHand(invLogRows);
     const itemMap = window._INV_ITEM_MAP || {};
     const allKeys = [...new Set([...Object.keys(itemMap), ...Object.keys(onHand)])].sort();
 
     if (!allKeys.length) {
-      body.innerHTML = '<tr><td colspan="13" class="loading">No items found — click Refresh or open the board to load.</td></tr>';
-      _rendering = false;
+      body.innerHTML = '';
+      document.getElementById('inv-cards')?.replaceChildren();
+      setInvStatus({ message: 'No items found — open the board to load.' });
       return;
     }
 
+    setInvStatus(null);
     body.innerHTML = '';
-    _rendering = false;
     const cardsEl = document.getElementById('inv-cards');
     if (cardsEl) cardsEl.innerHTML = '';
 
@@ -10347,11 +10440,12 @@
       // Optimistic in-place update — no stutter
       refreshRow(key, newCaps, today, itemMap);
       try {
-        await fetch('/api/inventory', {
+        const r = await fetch('/api/inventory', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ item: itemName, amount: newCaps, type: 'Reset', logged_on: today }),
         });
+        if (r.ok) cacheLogRow({ item: itemName, amount: newCaps, type: 'Reset', logged_on: today });
       } catch (e) {
         console.error('Inventory save failed:', e);
         renderInventory(); // full reload on error to restore true state
@@ -10402,13 +10496,15 @@
       // When dose changes, snapshot current on-hand as a new Reset dated today so the
       // new dose only applies going forward — not retroactively from the last Reset date.
       if (doseChanged) {
-        await fetch('/api/inventory', {
+        const r = await fetch('/api/inventory', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ item: meta.name || key, amount: currentCaps, type: 'Reset', logged_on: isoToday() }),
-        }).catch((e) => console.error('Reset snapshot failed:', e));
+        }).catch((e) => { console.error('Reset snapshot failed:', e); return null; });
+        if (r && r.ok) cacheLogRow({ item: meta.name || key, amount: currentCaps, type: 'Reset', logged_on: isoToday() });
       }
 
+      window._INV_DIRTY = true; // see closeInventory
       // Update local map immediately so refreshRow uses new values
       if (field === 'bottle_size') meta.bottleSize = parsed;
       else                          meta.dose       = parsed;
@@ -10480,6 +10576,7 @@
       if (committed) return; committed = true;
       const val = inp.value.trim();
       meta[metaKey] = val;
+      window._INV_DIRTY = true; // see closeInventory
       cell.textContent = val || '—';
       try {
         await fetch('/api/inventory-items?id=' + meta._id, {
@@ -10731,7 +10828,11 @@
       await fetch('/api/inventory?' + new URLSearchParams({ item: name }), { method: 'DELETE' });
       if (itemId) await fetch('/api/inventory-items?id=' + itemId, { method: 'DELETE' });
       const key = name.trim().toLowerCase();
+      window._INV_DIRTY = true; // see closeInventory
       if (window._INV_ITEM_MAP) delete window._INV_ITEM_MAP[key];
+      // ...and its rows from the session cache, or the next open (painted from
+      // it) would bring the item back.
+      if (window._INV_LOG_ROWS) window._INV_LOG_ROWS = window._INV_LOG_ROWS.filter((r) => (r.item || '').trim().toLowerCase() !== key);
       document.getElementById('inv-body')?.querySelector('tr[data-key="' + CSS.escape(key) + '"]')?.remove();
       document.getElementById('inv-cards')?.querySelector('[data-key="' + CSS.escape(key) + '"]')?.remove();
     } catch (err) {
@@ -10809,16 +10910,47 @@
     await deleteInventoryItem(name, itemId, delBtn);
   });
 
-  // Render when the Inventory tab is activated (click or programmatic restore)
-  document.addEventListener('inventoryActivated', () => renderInventory());
-
-  // Re-render after boardReady finishes run() so _INV_ITEM_MAP is populated.
-  // (Inventory is a modal now, not a tab — "active" was the pre-modal check and
-  // never matched post-refactor, so this silently stopped firing; check .open.)
-  document.addEventListener('inventoryDataReady', () => {
-    if (document.getElementById('inv-modal-ov')?.classList.contains('open')) {
-      renderInventory();
+  // What opening the popover shows. The overlay is already up by the time
+  // this runs (see openInventory), so everything here is about getting the
+  // list in without a network wait:
+  //  - the data is read once, at page load, and kept in window._INV_LOG_ROWS /
+  //    _INV_ITEM_MAP for the session (edits made here keep it current, and
+  //    the refresh on close re-syncs it) -- so a normal open just paints from
+  //    that cache. No fetch.
+  //  - if that first load is still in flight (opened within the first moments
+  //    of the page), show the spinner; inventoryDataReady paints it the
+  //    moment it lands.
+  //  - only if nothing is loaded and nothing is coming (the page-load read
+  //    failed) does it fall back to fetching now.
+  const invIsOpen = () => !!document.getElementById('inv-modal-ov')?.classList.contains('open');
+  function showInventory() {
+    if (!window._INV_CACHE_OK && !window._INV_LOADING) { renderInventory(); return; }
+    if (!hasInvRows()) setInvStatus({ loading: true }); // first open: the popover is up, show it's working
+    if (!window._INV_CACHE_OK) {
+      // Still loading -- inventoryDataReady will paint. Bounded, in case the
+      // board never finishes starting (nothing would ever consume the prefetch).
+      setTimeout(() => { if (invIsOpen() && !window._INV_CACHE_OK && !_rendering) renderInventory(); }, 6000);
+      return;
     }
+    // Yield first so the popover paints before the (synchronous) row build --
+    // a long list on a phone takes a moment, and building it inside the tap
+    // would hold the popover back until it finished. Rows from a previous
+    // open stay on screen meanwhile; this just refreshes them (Next Order,
+    // run-out dates and so on drift as the board changes).
+    requestAnimationFrame(() => setTimeout(() => {
+      if (invIsOpen() && window._INV_CACHE_OK) paintInventory(window._INV_LOG_ROWS);
+    }, 0));
+  }
+  document.addEventListener('inventoryActivated', showInventory);
+
+  // A (re)load finished -- paint it if the popover is up. From the cache it
+  // just filled: no second read. (Inventory is a modal now, not a tab --
+  // "active" was the pre-modal check and never matched post-refactor, so
+  // check .open.)
+  document.addEventListener('inventoryDataReady', () => {
+    if (!invIsOpen()) return;
+    if (window._INV_CACHE_OK) paintInventory(window._INV_LOG_ROWS);
+    else if (!_rendering) renderInventory(); // the load failed -- try once more, with the error shown if it fails again
   });
 
   // Filled in by the scanner IIFE below — opens the "Add New Item" dialog with
@@ -11145,11 +11277,12 @@
       const newCaps = oldCaps + bs;
       const today = isoToday();
       try {
-        await fetch('/api/inventory', {
+        const r = await fetch('/api/inventory', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ item: name, amount: bs, type: 'Received', logged_on: today }),
         });
+        if (r.ok) cacheLogRow({ item: name, amount: bs, type: 'Received', logged_on: today });
         showToast(name, oldCaps + ' → ' + newCaps + ' caps (+' + bs + ')');
         await renderInventory();
         highlightItem(key);
