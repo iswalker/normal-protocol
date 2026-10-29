@@ -898,6 +898,18 @@ try {
   await page.waitForSelector('#inv-body tr[data-key="runner"]');
   const lasts = () => page.locator('#inv-body tr[data-key="runner"] .inv-dpb').textContent();
   check('Lasts For starts as a day count', /^\d+(\.\d)?d$/.test((await lasts()).trim()), await lasts());
+  const visRows = () => page.evaluate(() => [...document.querySelectorAll('#inv-body tr[data-key]')].filter((tr) => tr.style.display !== 'none').map((tr) => ({ key: tr.dataset.key, name: tr.querySelector('.inv-name').textContent.trim(), ro: tr.querySelectorAll('td')[1].textContent })));
+  const visCards = () => page.evaluate(() => [...document.querySelectorAll('#inv-cards .inv-card[data-key]')].filter((c) => c.style.display !== 'none').map((c) => ({ name: c.querySelector('.inv-card-name').textContent.trim(), ro: c.querySelector('.inv-card-runout').textContent })));
+  const roDays = (txt) => { const m = /\((\d+)d\)/.exec(txt); return m ? Number(m[1]) : (/EMPTY/.test(txt) ? -1 : 1e9); };
+  await page.locator('#inv-soon-btn').click();
+  const soonRows = await visRows(), soonCards = await visCards();
+  const inOrder = (rows) => rows.every((r, i) => i === 0 || roDays(rows[i - 1].ro) <= roDays(r.ro));
+  const soonNames = (rows) => rows.map((r) => r.name);
+  check('"Soon" lists items by run-out date (soonest first), not alphabetically', soonRows.length >= 4 && inOrder(soonRows) && soonNames(soonRows).indexOf('Runner') >= 0 && soonNames(soonRows).indexOf('Runner') < soonNames(soonRows).indexOf('Next Runner'), JSON.stringify(soonRows.map((r) => [r.name, roDays(r.ro)])));
+  check('…and so do the mobile cards', soonCards.length === soonRows.length && inOrder(soonCards) && soonNames(soonCards).join() === soonNames(soonRows).join(), JSON.stringify(soonNames(soonCards)));
+  await page.locator('#inv-soon-btn').click();
+  const allKeys = (await visRows()).map((r) => r.key);
+  check('switching "Soon" off restores the alphabetical list', allKeys.length > soonRows.length && allKeys.every((k, i) => i === 0 || allKeys[i - 1] <= k), allKeys.join());
   await page.locator('#inv-body tr[data-key="runner"] .inv-onhand').click();
   await page.locator('#inv-body tr[data-key="runner"] input').fill('30');
   await page.keyboard.press('Enter');
@@ -908,18 +920,36 @@ try {
   await page.locator('#inv-modal-close').click();
   await page.waitForTimeout(200);
 
-  // ── Settings > "Show Scan Button": off by default, remembered once turned on ──
-  const scanShown = (p) => p.evaluate(() => getComputedStyle(document.getElementById('inv-scan-btn')).display !== 'none');
-  check('Scan button: hidden by default on desktop', !(await scanShown(page)));
-  check('Settings lists "Show Scan Button" just above "Show cents", off', await page.evaluate(() => { const a = document.getElementById('show-scan-toggle'), b = document.getElementById('show-cents-toggle'); return !!a && a.textContent.trim() === 'Show Scan Button' && a.getAttribute('aria-pressed') === 'false' && a.nextElementSibling === b; }));
-  await page.locator('#settings-btn').click();
-  await page.locator('#show-scan-toggle').click();
-  check('Scan button: turning the setting on shows it', (await scanShown(page)) && (await page.locator('#show-scan-toggle').getAttribute('aria-pressed')) === 'true');
-  await page.reload({ waitUntil: 'load' });
-  await page.waitForSelector('#tab-board #board .month', { state: 'attached', timeout: 15000 });
-  check('Scan button: stays on after a reload (remembered)', (await scanShown(page)) && (await page.locator('#show-scan-toggle').getAttribute('aria-pressed')) === 'true');
-  await page.evaluate(() => document.getElementById('show-scan-toggle').click());
-  check('Scan button: turning it back off hides it again', !(await scanShown(page)));
+  // ── Inventory is a round button bottom-right; Scan lives in the Inventory window; one "clear all filters" button ──
+  check('the Inventory button is no longer in the header', await page.evaluate(() => !document.querySelector('header #inv-search-link, header .inv-search-link, header #inv-scan-btn')));
+  const fab = await page.evaluate(() => { const b = document.getElementById('inv-search-link'), r = b.getBoundingClientRect(), cs = getComputedStyle(b); return { pos: getComputedStyle(b.parentElement).position, radius: cs.borderRadius, w: Math.round(r.width), h: Math.round(r.height), right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom) }; });
+  check('Inventory is a round teal button fixed at the bottom-right (same as the old mobile Scan one)', fab.pos === 'fixed' && fab.radius === '50%' && fab.w === 52 && fab.h === 52 && fab.right === 16 && fab.bottom === 24, JSON.stringify(fab));
+  check('there is no "Show Scan Button" setting any more', (await page.locator('#show-scan-toggle').count()) === 0);
+  await page.locator('#inv-search-link').click();
+  await page.waitForSelector('#inv-modal-ov.open');
+  const head = await page.evaluate(() => { const sc = document.getElementById('inv-scan-btn'), cl = document.getElementById('inv-modal-close'), a = sc.getBoundingClientRect(), b = cl.getBoundingClientRect(); return { inHead: !!sc.closest('.inv-modal-head'), nextIsClose: sc.nextElementSibling === cl, gap: Math.round(b.left - a.right), sameRow: Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) < 2, visible: getComputedStyle(sc).display !== 'none' }; });
+  check("Scan is in the Inventory window's top-right, just left of the close button, always shown", head.inHead && head.nextIsClose && head.visible && head.sameRow && head.gap >= 0 && head.gap <= 16, JSON.stringify(head));
+  await page.locator('#inv-scan-btn').click();
+  await page.waitForTimeout(300);
+  check('…and it opens the scanner over the Inventory window', await page.evaluate(() => document.getElementById('scan-overlay')?.style.display === 'flex'));
+  await page.evaluate(() => document.getElementById('scan-close-btn')?.click());
+  await page.waitForTimeout(200);
+  const sizes = await page.evaluate(() => { const q = (s) => { const e = document.querySelector(s), r = e.getBoundingClientRect(), cs = getComputedStyle(e); return [Math.round(r.height * 10) / 10, cs.borderRadius, cs.borderTopWidth]; }; return { autoship: q('#inv-autoship-btn'), search: q('.global-search-box'), clear: q('#global-search-clear'), noorder: q('#inv-noorder-btn'), soon: q('#inv-soon-btn'), scan: q('#inv-scan-btn') }; });
+  check("Inventory's No Order / Soon / Scan match the board's top-row controls (30px tall, 7px radius, same border)", Object.values(sizes).every((v) => v[0] === 30 && v[1] === '7px' && v[2] === sizes.search[2]), JSON.stringify(sizes));
+  await page.locator('#inv-modal-close').click();
+  await page.waitForTimeout(200);
+  const clr = await page.evaluate(() => { const c = document.getElementById('global-search-clear'), box = document.querySelector('.global-search-box'); return { outside: !box.contains(c), right: c.getBoundingClientRect().left >= box.getBoundingClientRect().right, disabled: c.disabled, tiny: !!document.querySelector('.global-search-clear') }; });
+  check('the × is its own button right of the Search bar (none inside it), disabled with no filters', clr.outside && clr.right && clr.disabled && !clr.tiny, JSON.stringify(clr));
+  await page.locator('#global-search-input').fill('zzz');
+  check('…enabled once a search is typed', !(await page.locator('#global-search-clear').isDisabled()));
+  await page.locator('#global-search-clear').click();
+  await page.waitForTimeout(300);
+  check('…and clicking it clears the search and disables it again', (await page.locator('#global-search-input').inputValue()) === '' && (await page.locator('#global-search-clear').isDisabled()));
+  await page.locator('#inv-autoship-btn').click();
+  check('…enabled for the Autoship filter too', !(await page.locator('#global-search-clear').isDisabled()));
+  await page.locator('#global-search-clear').click();
+  await page.waitForTimeout(300);
+  check('…which it clears', !(await page.locator('#inv-autoship-btn').evaluate((e) => e.classList.contains('active'))) && (await page.locator('#global-search-clear').isDisabled()));
   check('search box: flex is "0 1 90px"', await page.evaluate(() => { const c = getComputedStyle(document.querySelector('.global-search-box')); return c.flexGrow === '0' && c.flexShrink === '1' && c.flexBasis === '90px'; }));
 
   // ── layout: header and board padding, and the text logo only from 1250px wide ──
@@ -933,7 +963,8 @@ try {
   check('…and is back on a wide screen', await h1Shown());
 
   // ── desktop: a month strip that does not fit scrolls sideways, with a scrollbar only while the pointer is over it ──
-  await page.setViewportSize({ width: 800, height: 900 });
+  await page.setViewportSize({ width: 700, height: 900 });
+  await page.mouse.move(600, 600);
   await page.waitForTimeout(300);
   const stripInfo = () => page.evaluate(() => { const s = document.getElementById('month-strip'); const cs = getComputedStyle(s); return { ox: cs.overflowX, over: s.scrollWidth - s.clientWidth, left: Math.round(s.scrollLeft), hot: s.classList.contains('strip-hot'), thumb: getComputedStyle(s, '::-webkit-scrollbar-thumb').backgroundColor }; });
   const s0 = await stripInfo();
@@ -1124,7 +1155,73 @@ try {
     await sp.locator('#shorthand-overlay .sh-del').click();
     await sp.waitForTimeout(400);
     check('removing a pair clears it everywhere', shPosts.some((p) => p.action === 'shorthand-clear' && p.name === 'Blue Sky Vitamin') && (await probe()).short === undefined && (await sp.locator('#shorthand-overlay .sh-row').count()) === 0);
+    await sp.keyboard.press('Escape'); // close the shorthand modal
+    // the pinned-merchant chip matches the other header controls, and the × clears its filter too
+    const chipBox = await sp.evaluate(() => { const c = document.querySelector('#pinned-merchants-desktop .pin-chip'), r = c.getBoundingClientRect(), cs = getComputedStyle(c); return [Math.round(r.height * 10) / 10, cs.borderRadius, cs.borderTopWidth]; });
+    check('a pinned-merchant chip is also 30px tall with a 7px radius', chipBox[0] === 30 && chipBox[1] === '7px' && chipBox[2] === '1px', JSON.stringify(chipBox));
+    check('the × starts disabled', await sp.locator('#global-search-clear').isDisabled());
+    await sp.locator('#pinned-merchants-desktop .pin-chip').click();
+    await sp.waitForTimeout(300);
+    check('a pinned merchant filter enables the ×', !(await sp.locator('#global-search-clear').isDisabled()) && (await sp.locator('#pinned-merchants-desktop .pin-chip').evaluate((e) => e.classList.contains('active'))));
+    await sp.locator('#global-search-clear').click();
+    await sp.waitForTimeout(300);
+    check('…and clicking the × clears it (chip deselected, × disabled again)', !(await sp.locator('#pinned-merchants-desktop .pin-chip').evaluate((e) => e.classList.contains('active'))) && (await sp.locator('#global-search-clear').isDisabled()));
     await sc.close();
+  }
+
+  // ── a big board (~1,000 cards): filter buttons stay snappy, and jumping to a deep order still lands right ──
+  {
+    const bc = await browser.newContext({ viewport: { width: 1700, height: 1000 } });
+    const bp = await bc.newPage();
+    const bMonths = [], bOrders = [], bItems = [], bInv = [], bLog = [];
+    let bn = 0;
+    for (let mi = 0; mi < 12; mi++) {
+      const m = monthAt(mi);
+      bMonths.push({ month: m.month, year: m.year, position: mi + 1 });
+      for (let k = 0; k < 14; k++) {
+        const oid = 'bo_' + mi + '_' + k;
+        bOrders.push({ order_id: oid, month: m.month, year: m.year, merchant: 'Merchant ' + k, position: k + 1, status: 'Staged', notes: null });
+        for (let j = 0; j < 6; j++) {
+          bn++;
+          bItems.push(card('bi_' + bn, oid, m, k + 1, j + 1, 'Item ' + ((k * 6 + j) % 70), j % 2 ? { autoship_next_date: iso(plusDays(mi * 30 + j * 3)), autoship_link: 'https://x.test/' + bn } : {}));
+        }
+      }
+    }
+    for (let q = 0; q < 70; q++) {
+      bInv.push({ id: 100 + q, name: 'Item ' + q, bottle_size: 60, daily_dose: 1 });
+      bLog.push({ id: 100 + q, item: 'Item ' + q, type: 'Reset', amount: 20 + q * 5, logged_on: iso(now), order_id: null });
+    }
+    const jr = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    await bp.route('**/api/orders', (r) => (r.request().method() === 'GET' ? jr(r, { months: bMonths, orders: bOrders, items: bItems }) : jr(r, { ok: true })));
+    await bp.route('**/api/inventory-items', (r) => jr(r, bInv));
+    await bp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jr(r, r.request().method() === 'GET' ? bLog : { ok: true }));
+    await bp.goto(base, { waitUntil: 'load' });
+    await bp.waitForSelector('#tab-board #board .shipment', { state: 'attached', timeout: 20000 });
+    await bp.waitForTimeout(2000);
+    check('big board: off-screen shipments are not laid out (content-visibility)', await bp.evaluate(() => getComputedStyle(document.querySelector('#board .shipment')).contentVisibility === 'auto'));
+    const paintMs = () => bp.evaluate(async () => { const el = document.getElementById('inv-autoship-btn'); const t0 = performance.now(); el.click(); await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res))); return performance.now() - t0; });
+    await paintMs(); await paintMs(); // warm up
+    const onMs = await paintMs(), offMs = await paintMs();
+    check('big board: a filter button click paints in well under a second', Math.max(onMs, offMs) < 600, `on ${Math.round(onMs)}ms / off ${Math.round(offMs)}ms`);
+    // jump (Inventory > Next Order) to a card well down its month: it must end up centred on screen
+    await bp.locator('#inv-search-link').click();
+    await bp.waitForSelector('#inv-body .inv-next-order.inv-clickable', { timeout: 10000 });
+    const deepId = await bp.evaluate(() => {
+      const found = [];
+      document.querySelectorAll('#inv-body .inv-next-order.inv-clickable[data-card-id]').forEach((td) => {
+        const c = document.querySelector('.card[data-id="' + td.dataset.cardId + '"]');
+        if (!c) return;
+        const mo = c.closest('.month');
+        found.push({ id: td.dataset.cardId, rel: (c.getBoundingClientRect().top - mo.getBoundingClientRect().top) / mo.getBoundingClientRect().height });
+      });
+      found.sort((a, b) => Math.abs(a.rel - 0.6) - Math.abs(b.rel - 0.6));
+      return found[0] && found[0].id;
+    });
+    await bp.evaluate((id) => document.querySelector('#inv-body .inv-next-order[data-card-id="' + id + '"]').click(), deepId);
+    await bp.waitForTimeout(1600);
+    const deepJump = await bp.evaluate((id) => { const c = document.querySelector('.card[data-id="' + id + '"]').getBoundingClientRect(), s = document.getElementById('tab-board').getBoundingClientRect(); return { off: Math.round((c.top + c.height / 2) - (s.top + s.height / 2)), h: Math.round(s.height) }; }, deepId);
+    check('big board: jumping to a deep order (Inventory > Next Order) centres it on screen', Math.abs(deepJump.off) < 90, JSON.stringify({ deepId, deepJump }));
+    await bc.close();
   }
 
   // ── mobile: panel renders and Approve is tappable ──
@@ -1135,7 +1232,7 @@ try {
   const restW = await boxW();
   await m.page.locator('#global-search-input').focus();
   await m.page.waitForTimeout(200);
-  check('mobile: focusing search gives it the room (header buttons step aside)', (await boxW()) > Math.max(restW + 100, 180), `${restW} -> ${await boxW()}`);
+  check('mobile: focusing search gives it the room (the Autoship button steps aside)', (await boxW()) > restW + 60, `${restW} -> ${await boxW()}`);
   await m.page.locator('#global-search-input').blur();
   if (process.env.SHOT_DIR) await m.page.locator(`.month[data-id="${M1.month}_${M1.year}"]`).screenshot({ path: join(process.env.SHOT_DIR, 'preempt-mobile.png') });
   // mobile: ignore one, tap the chip -> the completed list fits the screen and Restore works
@@ -1165,10 +1262,17 @@ try {
     const rows = [...box.querySelectorAll('.warn-row, .warn-btn')];
     return box.scrollWidth <= box.clientWidth + 1 && rows.every((e) => e.getBoundingClientRect().right <= col.right + 1);
   }, M0.month + '_' + M0.year));
-  const fabShown = () => m.page.evaluate(() => getComputedStyle(document.getElementById('mob-inv-fab')).display !== 'none');
-  check('Scan button: the floating mobile one is hidden by default', !(await fabShown()));
-  await m.page.evaluate(() => document.getElementById('show-scan-toggle').click());
-  check('Scan button: …and appears when the setting is turned on', await fabShown());
+  const mfab = await m.page.evaluate(() => { const b = document.getElementById('inv-search-link'), r = b.getBoundingClientRect(); return { radius: getComputedStyle(b).borderRadius, right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom), w: Math.round(r.width) }; });
+  check('mobile: the round Inventory button sits bottom-right', mfab.radius === '50%' && mfab.w === 52 && mfab.right === 16 && mfab.bottom === 24, JSON.stringify(mfab));
+  await m.page.locator('#inv-search-link').click();
+  await m.page.waitForSelector('#inv-modal-ov.open');
+  await m.page.waitForSelector('#inv-cards .inv-card', { timeout: 10000 });
+  const mhead = await m.page.evaluate(() => { const sc = document.getElementById('inv-scan-btn'), cl = document.getElementById('inv-modal-close'), a = sc.getBoundingClientRect(), b = cl.getBoundingClientRect(); return { visible: a.width > 0, nextIsClose: sc.nextElementSibling === cl, gap: Math.round(b.left - a.right), sameRow: Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) < 2, rightEdge: Math.round(innerWidth - b.right) }; });
+  check('mobile: Scan sits in the Inventory window header, left of the close button', mhead.visible && mhead.nextIsClose && mhead.sameRow && mhead.gap >= 0 && mhead.gap <= 16 && mhead.rightEdge < 24, JSON.stringify(mhead));
+  const msx = await m.page.evaluate(() => { const body = document.querySelector('.inv-modal-body'), modal = document.getElementById('tab-inventory'); body.scrollLeft = 120; const cs = getComputedStyle(body); return { ox: cs.overflowX, ta: cs.touchAction, modalTa: getComputedStyle(modal).touchAction, left: body.scrollLeft, over: body.scrollWidth - body.clientWidth, docOver: document.documentElement.scrollWidth - document.documentElement.clientWidth }; });
+  check('mobile: the Inventory window only scrolls vertically (no sideways scroll or pan)', msx.ox === 'hidden' && /pan-y/.test(msx.ta) && /pan-y/.test(msx.modalTa) && msx.left === 0 && msx.over <= 0, JSON.stringify(msx));
+  await m.page.locator('#inv-modal-close').click();
+  await m.page.waitForTimeout(200);
   await m.ctx.close();
 
   // ── a lapsed Cloudflare Access sign-in must not look like "server down" ──

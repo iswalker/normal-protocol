@@ -188,18 +188,6 @@
 
     .error { color: #c0392b; }
 
-    /* ── "Search Inventory" — opens the inventory as a modal ── */
-    .inv-search-link {
-      appearance: none; background: transparent; border: 1.5px solid var(--ink-12);
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 4px 9px 4px 5px; border-radius: 7px; cursor: pointer;
-      /* Matches .inv-scan-btn's font styling exactly (12px, normal weight). */
-      font-family: inherit; font-size: 12px; font-weight: normal;
-      color: var(--ink-60); white-space: nowrap;
-      transition: color 0.15s, border-color 0.15s, background 0.15s;
-    }
-    .inv-search-link:hover { color: var(--teal); border-color: var(--teal); background: rgba(121,189,177,0.10); }
-    .inv-search-link svg { width: 20px; height: 20px; display: block; }
 
     /* ── Per-month Planned totals across the middle of the top bar ── */
     .month-strip {
@@ -281,17 +269,21 @@
     }
     .inv-modal-close {
       appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
-      cursor: pointer; width: 28px; height: 28px; border-radius: 7px;
+      cursor: pointer; width: 30px; height: 30px; border-radius: 7px;
       font-size: 18px; line-height: 1; color: var(--ink-60);
       display: flex; align-items: center; justify-content: center;
       transition: color 0.15s, border-color 0.15s;
+      flex: none;
       /* Search/Soon sit left-aligned right after the count now (the
          margin-right:auto used to live on .inv-count-badge above, pushing
          search+Soon+close all the way to the right as a group) -- only the
          close button itself floats to the far right now. */
-      margin-left: auto;
+      margin-left: 0;
     }
     .inv-modal-close:hover { color: var(--teal); border-color: var(--teal); }
+    /* Scan: top-right of the Inventory window, just left of the close button
+       (it's what floats to the far right; close then follows it). */
+    .inv-modal-head #inv-scan-btn { margin-left: auto; flex: none; }
     .inv-modal-body { overflow: auto; flex: 1 1 auto; }
     /* Loading / error / empty state for the list -- a block of its own, not a
        row inside the table: the table is display:none on mobile (the cards
@@ -349,7 +341,7 @@
     .board-controls { display: flex; align-items: center; gap: 10px; padding-left: 7px; }
     .inv-controls { display: none; align-items: center; gap: 10px; }
     .inv-controls.show { display: flex; }
-    .inv-soon-btn { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid #e08a3c; color: #e08a3c; background: transparent; cursor: pointer; white-space: nowrap; flex: none; }
+    .inv-soon-btn { font-family: inherit; font-size: 12px; height: 30px; padding: 0 10px; border-radius: 7px; border: 1.5px solid #e08a3c; color: #e08a3c; background: transparent; cursor: pointer; white-space: nowrap; flex: none; display: inline-flex; align-items: center; transition: color 0.15s, border-color 0.15s, background 0.15s; }
     .inv-soon-btn.active { background: #e08a3c; color: #fff; }
     /* Independent of Soon -- own neutral color so the two read as separate,
        stackable filters rather than variants of the same "warning" idea. */
@@ -554,7 +546,8 @@
     /* ── Barcode scanner ── */
     .inv-scan-btn {
       appearance: none; border: 1.5px solid var(--ink-12); background: transparent;
-      cursor: pointer; padding: 5px 10px; border-radius: 7px; font-family: inherit;
+      cursor: pointer; padding: 0 10px; height: 30px; border-radius: 7px; font-family: inherit;
+      display: inline-flex; align-items: center;
       font-size: 12px; color: var(--ink-60); white-space: nowrap;
       transition: color 0.15s, border-color 0.15s, background 0.15s;
     }
@@ -583,11 +576,11 @@
       flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
       font-family: inherit; font-size: 13px; color: var(--ink); outline: none;
     }
-    .global-search-clear {
-      flex: none; width: 16px; height: 16px; border: none; background: transparent;
-      color: var(--ink-60); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
-    }
-    .global-search-clear:hover { color: var(--ink); background: var(--accent-tint, rgba(121,189,177,0.15)); }
+    /* "Clear all filters" -- sits right of the search box (text search, Autoship
+       and a pinned merchant all clear together); greyed out while nothing is filtered. */
+    .global-clear-btn { width: 30px; padding: 0; justify-content: center; font-size: 17px; line-height: 1; flex: none; }
+    .global-clear-btn:disabled { opacity: .4; cursor: default; }
+    .global-clear-btn:disabled:hover { color: var(--ink-60); border-color: var(--ink-12); }
 
     /* "Pin Merchant" (shipment context menu) chips -- a persistent one-click
        shortcut for "Shipment name = X", stacking (AND) with the text search
@@ -894,10 +887,9 @@
          the search box is the one flexible item absorbing whatever's left
          before .header-right's own fixed-size Scan/gear. */
       .brand { flex: 1 1 0; order: 1; min-width: 0; }
-      .brand img, .brand .inv-search-link, .brand #inv-autoship-btn { flex: none; }
-      /* While the search box is focused on a phone, the header buttons
-         step aside so it gets the whole row (it's squeezed to a stub otherwise) */
-      .brand:has(.global-search-box:focus-within) .inv-search-link,
+      .brand img, .brand #inv-autoship-btn, .brand .global-clear-btn { flex: none; }
+      /* While the search box is focused on a phone, the Autoship button
+         steps aside so it gets the whole row (it's squeezed to a stub otherwise) */
       .brand:has(.global-search-box:focus-within) #inv-autoship-btn { display: none; }
       .header-right { flex: 0 0 auto; order: 2; }
 
@@ -955,11 +947,6 @@
          which toggles body.cents-off. */
       .cents-off .month-strip-amt { font-size: 14px; }
       .cents-off .month-strip-cell { padding: 2px 8px; }
-      /* Keep the "Search Inventory" label on mobile too -- an icon-only button
-         here was a tiny tap target, and the title next to it is already
-         hidden at this width so there's room. */
-      .inv-search-link { padding: 4px 9px 4px 5px; font-size: 13px; }
-
       /* Hide action buttons from header — they move to the mobile FAB */
       .inv-controls { display: none !important; }
       .board-controls { display: flex !important; min-width: 0; }
@@ -970,8 +957,6 @@
          than that gap and overflowing past it. */
       .global-search-box { flex: 1 1 0; min-width: 0; }
       .board-controls .refresh-inv-btn { display: none; }
-      /* Replaced by the always-on-screen circular FAB (see .mob-inv-fab). */
-      #inv-scan-btn { display: none; }
       .inv-modal-ov { padding: 0; }
       /* #tab-inventory carries both the "#tab-inventory" id (a leftover from
          when Inventory rendered as a normal in-flow tab, height:calc(100vh -
@@ -987,31 +972,22 @@
       .inv-modal { border-radius: 0; height: 100%; }
     }
 
-    /* Settings > "Show Scan Button" (default off): hides the header's Scan
-       button on desktop and the floating one on mobile, reclaiming the space. */
-    body.scan-hidden #inv-scan-btn, body.scan-hidden .mob-inv-fab { display: none !important; }
-
-    /* ── Mobile Scan floating action button -- always on-screen (board and
-       Inventory both), replaces the header's own Scan button on mobile
-       (see #inv-scan-btn's own max-width:680px rule further down). ── */
+    /* ── Inventory floating action button -- a round button always on screen,
+       bottom-right, on every screen size. (Scan now lives in the Inventory
+       window's own header.) ── */
     .mob-inv-fab {
-      display: none; /* hidden on desktop */
+      position: fixed; bottom: 24px; right: 16px;
+      display: flex; z-index: 100;
     }
-    @media (max-width: 680px) {
-      .mob-inv-fab {
-        position: fixed; bottom: 24px; right: 16px;
-        display: flex; z-index: 100;
-      }
-      .mob-fab-primary {
-        appearance: none; border: none; cursor: pointer; font-family: inherit;
-        background: var(--teal); color: #fff;
-        width: 52px; height: 52px; border-radius: 50%; flex: none;
-        display: flex; align-items: center; justify-content: center;
-        box-shadow: 0 4px 18px rgba(23,26,28,0.22);
-      }
-      .mob-fab-primary svg { width: 22px; height: 22px; margin: 0; }
-      .mob-fab-primary:active { filter: brightness(0.9); }
+    .mob-fab-primary {
+      appearance: none; border: none; cursor: pointer; font-family: inherit;
+      background: var(--teal); color: #fff;
+      width: 52px; height: 52px; border-radius: 50%; flex: none;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 18px rgba(23,26,28,0.22);
     }
+    .mob-fab-primary svg { width: 22px; height: 22px; margin: 0; }
+    .mob-fab-primary:active { filter: brightness(0.9); }
   </style>
 
   <!-- ── Next Orders styles (compact layout, scoped to #tab-board) ── -->
@@ -1570,6 +1546,16 @@
     #tab-board .month-list.sb-over, #tab-board .ship-body.sb-over { outline: 2px dashed var(--accent); outline-offset: -3px; border-radius: 10px; }
     /* allow drag clone to escape overflow:hidden on .shipment */
     .sb-dragging #tab-board .shipment { overflow: visible; }
+    /* Performance: only shipments near the screen are laid out and painted. A
+       board holds hundreds of cards, and every filter / search / Autoship click
+       re-shows or hides most of them -- rendering all of that was most of the
+       lag. content-visibility:auto skips the off-screen ones (the browser
+       remembers each one's real height once it has been drawn; 200px is the
+       guess until then). It is switched off where exact geometry matters: while
+       dragging, inside the Preemptive previews, and (via .no-cv) in a month the
+       board is jumping into. */
+    #tab-board .shipment { content-visibility: auto; contain-intrinsic-size: auto 200px; }
+    .sb-dragging #tab-board .shipment, #tab-board.pre-root .shipment, #tab-board .month.no-cv .shipment { content-visibility: visible; }
     /* closed-hand cursor while dragging */
     .sb-dragging, .sb-dragging * { cursor: grabbing !important; }
 
@@ -2340,7 +2326,10 @@
          reach it. Wrap onto a second row instead, same fix as the board's
          month-head/ship-head above. */
       .inv-modal-head { flex-wrap: wrap; row-gap: 8px; }
-      .inv-modal-close { order: 2; }
+      .inv-modal-close, .inv-modal-head #inv-scan-btn { order: 2; }
+      /* The Inventory window never scrolls sideways on a phone -- vertical only. */
+      .inv-modal-ov, .inv-modal, .inv-modal-body { overflow-x: hidden; max-width: 100%; touch-action: pan-y pinch-zoom; }
+      .inv-modal-body { overflow-y: auto; overscroll-behavior-x: none; }
       /* Forces the line break itself (flex-basis:100%, zero height) -- row 1
          ends at Close, row 2 starts here with search + the two filter
          buttons sharing it, rather than search claiming its own full-width
@@ -2500,23 +2489,18 @@
   <div class="brand">
     <img src="Logos/logo.png" alt="Normal Protocol" />
     <h1>Normal Protocol</h1>
-    <button class="inv-search-link" id="inv-search-link" title="Search inventory">
-      <svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg>
-      <span class="inv-search-label">Inventory</span>
-    </button>
     <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin:0px 2px 2px -1px"><path d="m1087.2 506.4c-12-12-31.199-12-43.199 0l-144 146.4c0-16.801 2.3984-31.199 2.3984-45.602 0-225.6-182.4-408-408-408-225.6 0-408 182.4-408 408 0 225.6 182.4 408 408 408 108 0 211.2-43.199 288-120 12-12 12-31.199 0-43.199s-31.199-12-43.199 0c-64.801 64.801-153.6 100.8-244.8 100.8-192 0-348-156-348-348s156-348 348-348 348 156 348 348c0 16.801-2.3984 38.398-2.3984 60l-163.2-160.8c-12-12-31.199-12-43.199 0s-12 31.199 0 43.199l208.8 208.8c2.3984 0 2.3984 2.3984 4.8008 2.3984 2.3984 0 4.8008 2.3984 4.8008 2.3984h4.8008 2.3984 2.3984 4.8008 4.8008c2.3984 0 4.8008-2.3984 4.8008-2.3984 2.3984 0 2.3984-2.3984 4.8008-2.3984h2.3984l204-204c12-14.395 12-33.598 0-45.598z"/></svg> Autoship</button>
     <div class="global-search-box" data-act="focus-global-search" title="Search every month">
       <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
       <input type="text" id="global-search-input" class="global-search-input" placeholder="Search…" autocomplete="off" />
-      <button class="global-search-clear" id="global-search-clear" title="Clear search" style="display:none">×</button>
     </div>
+    <button type="button" class="inv-scan-btn global-clear-btn" id="global-search-clear" title="Clear all filters" aria-label="Clear all filters" disabled>&times;</button>
     <div class="pinned-merchants is-empty" id="pinned-merchants-desktop"></div>
   </div>
   <div class="month-strip" id="month-strip"></div>
   <div class="pinned-merchants pinned-merchants-mobile is-empty" id="pinned-merchants-mobile"></div>
   <div class="header-right">
     <span class="board-controls" id="board-controls">
-      <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
       <div class="settings-wrap">
         <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
           <svg viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden="true"><path d="m516.16 267.49c-1.8828 0.12891-3.7266 0.60938-5.4297 1.418l-83.129 37.785c-3.1484 1.3828-5.7266 3.8008-7.3164 6.8477-1.5859 3.0469-2.0898 6.5469-1.4219 9.918l16.766 79.824c-11.789 9.8555-22.73 20.793-32.59 32.59l-79.586-16.77c-3.3711-0.66406-6.8711-0.16406-9.918 1.4258-3.0469 1.5859-5.4648 4.168-6.8477 7.3125l-37.785 83.129c-1.418 3.1719-1.6992 6.7383-0.79688 10.09 0.90625 3.3555 2.9375 6.2969 5.7539 8.332l70.375 49.594c-0.57422 6.9805-1.1797 13.859-1.1797 21.016 0 7.1953 0.60156 14.18 1.1797 21.258l-70.375 49.594c-2.8164 2.0312-4.8477 4.9727-5.7539 8.3281-0.90234 3.3555-0.62109 6.918 0.79688 10.09l37.785 83.129c1.3828 3.1445 3.8008 5.7266 6.8477 7.3164 3.0469 1.5859 6.5469 2.0898 9.918 1.4219l79.586-16.766c9.8594 11.797 20.797 22.73 32.59 32.59l-16.766 79.82c-0.66797 3.3711-0.16406 6.8711 1.4219 9.918 1.5898 3.0508 4.168 5.4648 7.3164 6.8516l83.129 37.785c3.1719 1.4141 6.7344 1.6953 10.09 0.79297s6.2969-2.9336 8.3281-5.7539l49.832-70.609c6.9961 0.56641 13.902 1.1797 21.016 1.1797 7.1172 0 14.02-0.61328 21.02-1.1797l49.832 70.609c2.0312 2.8203 4.9727 4.8516 8.3281 5.7539 3.3555 0.90234 6.918 0.62109 10.09-0.79297l83.129-37.785c3.1445-1.3867 5.7266-3.8008 7.3164-6.8516 1.5859-3.0469 2.0898-6.5469 1.4219-9.918l-17.711-83.363c-0.55469-4.1641-2.8164-7.9062-6.2422-10.336-3.4258-2.4297-7.707-3.3242-11.82-2.4688s-7.6836 3.3828-9.8555 6.9766c-2.1719 3.5938-2.7539 7.9297-1.6016 11.969l15.113 71.793-60.695 27.395-47.465-67.309c-1.5469-2.207-3.6523-3.9609-6.1016-5.082-2.4492-1.1211-5.1523-1.5664-7.832-1.293-8.7617 1.0312-17.844 1.6523-26.926 1.6523s-18.16-0.61719-26.922-1.6523c-2.6797-0.27344-5.3828 0.17188-7.832 1.293-2.4492 1.1211-4.5586 2.875-6.1016 5.082l-47.469 67.309-60.691-27.395 16.297-76.754c0.57812-2.7969 0.35547-5.7031-0.64844-8.375-1.0039-2.6758-2.7461-5.0117-5.0195-6.7383-15.445-11.922-29.184-25.652-41.094-41.094-1.7266-2.2734-4.0625-4.0156-6.7383-5.0195s-5.5781-1.2266-8.375-0.64844l-76.516 16.297-27.395-60.695 67.066-47.465c2.2109-1.5469 3.9648-3.6523 5.0859-6.1016 1.1211-2.4492 1.5664-5.1523 1.293-7.832-1.0312-8.7578-1.6523-17.848-1.6523-26.926 0-9.043 0.625-17.922 1.6523-26.684 0.27344-2.6797-0.17188-5.3867-1.293-7.8359-1.1211-2.4492-2.875-4.5547-5.0859-6.0977l-67.066-47.469 27.395-60.695 76.516 16.297c2.7969 0.57812 5.6992 0.35547 8.375-0.64844 2.6758-1.0039 5.0117-2.7422 6.7383-5.0195 11.898-15.422 25.664-29.18 41.094-41.094 2.2734-1.7227 4.0156-4.0586 5.0195-6.7344 1.0039-2.6758 1.2266-5.582 0.64844-8.3789l-16.297-76.75 60.691-27.395 47.469 67.305c1.543 2.207 3.6523 3.9648 6.1016 5.0859 2.4492 1.1211 5.1523 1.5664 7.832 1.2891 9.0078-1.0586 18.09-1.8867 26.922-1.8867 8.8359 0 17.914 0.82813 26.926 1.8867 2.6797 0.27734 5.3828-0.16797 7.832-1.2891 2.4492-1.1211 4.5547-2.8789 6.1016-5.0859l47.465-67.305 60.695 27.395-16.297 76.75c-0.57812 2.7969-0.35547 5.7031 0.64844 8.3789s2.7461 5.0117 5.0195 6.7344c15.43 11.914 29.195 25.672 41.094 41.094 1.7266 2.2773 4.0625 4.0156 6.7383 5.0195 2.6719 1.0039 5.5781 1.2266 8.375 0.64844l76.516-16.297 27.395 60.695-67.07 47.469c-2.207 1.543-3.9609 3.6484-5.082 6.0977-1.1211 2.4492-1.5664 5.1562-1.293 7.8359 1.0273 8.7617 1.6523 17.641 1.6523 26.684 0 9.0781-0.62109 18.168-1.6523 26.926-0.27344 2.6797 0.17188 5.3828 1.293 7.832 1.1211 2.4492 2.875 4.5547 5.082 6.1016l67.07 47.465-27.395 60.695-71.555-15.113c-4.0391-1.1523-8.375-0.57031-11.969 1.6016-3.5938 2.1719-6.1211 5.7422-6.9766 9.8555s0.039063 8.3945 2.4688 11.82c2.4297 3.4258 6.1719 5.6875 10.336 6.2422l83.129 17.711c3.3711 0.66797 6.8711 0.16406 9.918-1.4219 3.0469-1.5898 5.4648-4.1719 6.8477-7.3164l37.785-83.129c1.418-3.1719 1.6992-6.7344 0.79297-10.09-0.90234-3.3555-2.9336-6.2969-5.75-8.3281l-70.375-49.594c0.57812-7.0781 1.1797-14.062 1.1797-21.258 0-7.1562-0.60547-14.035-1.1797-21.016l70.375-49.594c2.8164-2.0352 4.8477-4.9766 5.75-8.332 0.90625-3.3516 0.625-6.918-0.79297-10.09l-37.785-83.129c-1.3828-3.1445-3.8008-5.7266-6.8477-7.3125-3.0469-1.5898-6.5469-2.0898-9.918-1.4258l-79.586 16.77c-9.8594-11.797-20.801-22.734-32.59-32.59l16.766-79.824c0.66797-3.3711 0.16406-6.8711-1.4219-9.918-1.5898-3.0469-4.1719-5.4648-7.3164-6.8477l-83.129-37.785c-3.1719-1.418-6.7344-1.6992-10.09-0.79688-3.3555 0.90625-6.2969 2.9375-8.3281 5.7539l-49.594 70.613c-7.0078-0.64844-13.887-1.418-21.258-1.418s-14.246 0.76953-21.254 1.418l-49.594-70.613c-2.9648-4.1953-7.8555-6.5938-12.988-6.375zm83.836 189.16c-79.121 0-143.59 64.227-143.59 143.35 0 79.125 64.465 143.59 143.59 143.59s143.59-64.461 143.59-143.59c0-79.121-64.465-143.35-143.59-143.35zm0 29.992c62.785 0 113.36 50.574 113.36 113.36 0 62.785-50.574 113.59-113.36 113.59-62.781 0-113.36-50.809-113.36-113.59 0-62.781 50.574-113.36 113.36-113.36z"/></svg>
@@ -2525,10 +2509,6 @@
           <div class="settings-panel-title">Settings</div>
           <button class="settings-action-btn" id="update-ynab">Update YNAB API Key</button>
           <button class="settings-action-btn" id="config-shorthand">Configure Merchants Shorthand</button>
-          <button class="settings-toggle-row" id="show-scan-toggle" type="button" aria-pressed="false">
-            <span>Show Scan Button</span>
-            <span class="settings-toggle"><i></i></span>
-          </button>
           <button class="settings-toggle-row" id="show-cents-toggle" type="button" aria-pressed="false">
             <span>Show cents</span>
             <span class="settings-toggle"><i></i></span>
@@ -2547,6 +2527,11 @@
     </span>
   </div>
 </header>
+
+<!-- Inventory FAB — always on screen, bottom-right -->
+<div class="mob-inv-fab" id="mob-inv-fab">
+  <button class="mob-fab-primary" id="inv-search-link" title="Open Inventory" aria-label="Open Inventory"><svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg></button>
+</div>
 
 <section id="tab-board" class="tab-panel active">
   <div id="ynab-warning" class="ynab-warning" style="display:none">
@@ -2573,6 +2558,7 @@
     </div>
     <button class="inv-soon-btn inv-noorder-btn" id="inv-noorder-btn" title="Show only items with no upcoming order">No Order</button>
     <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
+    <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
     <button class="inv-modal-close" id="inv-modal-close" title="Close" aria-label="Close">&times;</button>
     <div class="inv-head-break"></div>
   </div>
@@ -2623,6 +2609,16 @@
 <script>
 
   // ── Board is the page; Inventory opens over it as a modal ──
+  // Off-screen shipments are only size placeholders (content-visibility:auto, see
+  // the board CSS), so anything that scrolls to something inside a month first
+  // renders that one month in full -- the position it works out is then exact --
+  // and lets it go back to lazy rendering once the move is over.
+  function holdMonthRendered(monthEl) {
+    if (!monthEl || !monthEl.classList.contains('month')) return;
+    monthEl.classList.add('no-cv');
+    clearTimeout(monthEl._cvTimer);
+    monthEl._cvTimer = setTimeout(() => monthEl.classList.remove('no-cv'), 2500);
+  }
   let boardInitialized = false;
   function initBoardOnce() {
     if (boardInitialized) return;
@@ -2769,18 +2765,6 @@
     window.__syncBanner = { checkStale, getBaseline: () => baseline, getWriteLog: () => writeLog.slice() };
   })();
 
-  // Mobile FAB — proxy to the real header button (Soon and the search/count
-  // are shared header controls now, used directly by both platforms, so
-  // only Scan still needs a mobile-only proxy)
-  // Must run after DOMContentLoaded because mob-inv-fab is defined after all scripts in the HTML
-  document.addEventListener('DOMContentLoaded', function () {
-    const proxy = (mobId, headId) => {
-      const m = document.getElementById(mobId), h = document.getElementById(headId);
-      if (m && h) m.addEventListener('click', () => h.click());
-    };
-    proxy('mob-scan-btn', 'inv-scan-btn');
-  });
-
   // start the board once all scripts (incl. the board itself) have parsed
   document.addEventListener("DOMContentLoaded", initBoardOnce);
 
@@ -2914,26 +2898,6 @@
     calc, fmtDate, fmtDateShort, fmtDateSlashYear, fmtMoney, fmtMoney0, fmtUnits, tier,
     getShowCents, setShowCents,
   };
-
-  // Settings > "Show Scan Button", defaulted OFF and remembered once turned on.
-  // Only toggles body.scan-hidden (see its CSS) -- the buttons stay in the DOM,
-  // so the mobile FAB's proxy click and any programmatic use keep working.
-  (function initShowScanToggle() {
-    const KEY = 'np_show_scan';
-    let show = false;
-    try { show = localStorage.getItem(KEY) === '1'; } catch {}
-    const apply = () => document.body.classList.toggle('scan-hidden', !show);
-    apply();
-    const toggle = document.getElementById('show-scan-toggle');
-    if (!toggle) return;
-    toggle.setAttribute('aria-pressed', String(show));
-    toggle.addEventListener('click', () => {
-      show = !show;
-      try { localStorage.setItem(KEY, show ? '1' : '0'); } catch {}
-      apply();
-      toggle.setAttribute('aria-pressed', String(show));
-    });
-  })();
 
   // "Show cents" Settings toggle -- lives in <header>, outside the board
   // module, but only needs SB.fmtMoney's own state plus a re-render of
@@ -5346,7 +5310,18 @@
 
   // Mirror each visible month's Planned total into the top bar. Reads the rendered
   // values rather than recomputing so the strip can never disagree with the board.
+  // Rebuilding the strip measures layout (see updateStripOverflow /
+  // updateCurrentMonthFromScroll), so doing it once per month while a filter
+  // walks every month meant a forced layout per month -- most of a filter
+  // click's cost. holdMonthStrip runs fn with strip updates deferred and does
+  // ONE update at the end.
+  let stripHold = 0, stripDirty = false;
+  function holdMonthStrip(fn) {
+    stripHold++;
+    try { fn(); } finally { if (--stripHold === 0 && stripDirty) { stripDirty = false; updateMonthStrip(); } }
+  }
   function updateMonthStrip() {
+    if (stripHold) { stripDirty = true; return; }
     const strip = document.getElementById('month-strip');
     if (!strip) return;
     // Today's real-world month is only the bootstrap default, for the very
@@ -5480,6 +5455,7 @@
   function scrollElementIntoBoardView(targetEl, instant) {
     const scroller = document.getElementById('tab-board');
     if (!scroller || !targetEl) return;
+    if (targetEl.closest('.month') !== targetEl) holdMonthRendered(targetEl.closest('.month')); // see holdMonthRendered
     const gap = parseFloat(getComputedStyle(board).columnGap) || 16;
     const scrollerRect = scroller.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
@@ -6622,6 +6598,7 @@
         item.textContent = formatOrderSummary(shipEl);
         item.addEventListener('click', () => {
           closeCtxMenu();
+          holdMonthRendered(shipEl.closest('.month'));
           shipEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
         menu.appendChild(item);
@@ -7601,13 +7578,14 @@
     // was just looking at.
     let anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
     renderWarnings(); // the Needs Attention rows follow the same filter (before months decide whether they have content)
-    board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery));
+    holdMonthStrip(() => board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery)));
     renderMonthSections();
     // A pinned merchant alone no longer shows the × -- tapping the active
     // chip again already clears it, so a second affordance for the exact
     // same action was redundant. The × still shows for text/Autoship,
     // since those have no other "tap to clear" control of their own.
-    if (clearBtn) clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly) ? 'block' : 'none';
+    // Enabled whenever ANY filter is on: text search, Autoship, or a pinned merchant
+    if (clearBtn) clearBtn.disabled = !(globalSearchQuery || globalAutoshipOnly || globalPinnedMerchant);
     autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
     renderPinnedMerchants();
     const firstShown = [...board.querySelectorAll('.month')].find((m) => m.style.display !== 'none' && !m.classList.contains('search-hide'));
@@ -7856,10 +7834,7 @@
       // Clearing a filter returns to the root of the board (first month)
       refresh(!q.trim() && wasFiltered);
     }
-    box.addEventListener('click', (e) => {
-      if (e.target.closest('.global-search-clear')) return;
-      input.focus();
-    });
+    box.addEventListener('click', () => input.focus());
     input.addEventListener('input', () => applyToAllMonths(input.value));
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { input.value = ''; applyToAllMonths(''); input.blur(); }
@@ -10137,6 +10112,7 @@
     const cardEl = document.querySelector(`#board .card[data-id="${cardId}"]`);
     if (!cardEl) return;
     document.getElementById('inv-modal-close')?.click();
+    holdMonthRendered(cardEl.closest('.month'));
     cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     cardEl.classList.remove('inv-highlight');
     void cardEl.offsetWidth; // restart the animation if it's already mid-pulse
@@ -10239,6 +10215,7 @@
     const cardsEl = document.getElementById('inv-cards');
     if (cardsEl) cardsEl.innerHTML = '';
 
+    let ordIdx = 0; // the list's own (alphabetical) position, to restore it when "Soon" is switched off
     allKeys.forEach((key) => {
       const meta   = itemMap[key] || {};
       const amt    = onHand[key]  || {};
@@ -10262,6 +10239,7 @@
       // Table row (desktop)
       const tr = document.createElement('tr');
       tr.dataset.key = key;
+      tr.dataset.ord = String(ordIdx++);
       if (meta._id) tr.dataset.id = meta._id;
       tr.innerHTML =
         '<td class="inv-name inv-name-edit" data-key="' + key + '" title="Click to rename">' + escHtml(name) + '</td>' +
@@ -10287,6 +10265,7 @@
         const card = document.createElement('div');
         card.className = 'inv-card';
         card.dataset.key = key;
+        card.dataset.ord = tr.dataset.ord;
         // Mirrors the desktop table's own searchable columns (see
         // SEARCH_COL_IDXS/matchesInvSearch) as individual fields, not just
         // the joined display string below -- keeps card search exactly as
@@ -10728,6 +10707,14 @@
     applyFilters();
   });
 
+  // Days until an item runs out, read off its run-out cell ("11/29 (37d)"); EMPTY
+  // counts as already out, and anything with no data sorts last.
+  function runoutDays(text) {
+    const m = /\((\d+)d\)/.exec(text || '');
+    if (m) return Number(m[1]);
+    return /EMPTY/.test(text || '') ? -1 : 1e9;
+  }
+
   function applyFilters() {
     // Drop any previous "+ Add [query]" affordance before filtering, so it isn't
     // caught by the row/card loops below (re-added at the end if still wanted).
@@ -10747,6 +10734,17 @@
       tr.style.display = show ? '' : 'none';
       if (show) visibleCount++;
     });
+
+    // Items running out soonest first while "Soon" is on (EMPTY ones lead);
+    // otherwise back to the list's normal alphabetical order.
+    const orderRows = (container, selector, runoutOf) => {
+      if (!container) return;
+      const items = [...container.querySelectorAll(selector)];
+      const keyOf = (el) => [soonOnly ? runoutDays(runoutOf(el)) : 0, Number(el.dataset.ord) || 0];
+      items.sort((a, b) => { const ka = keyOf(a), kb = keyOf(b); return ka[0] - kb[0] || ka[1] - kb[1]; });
+      items.forEach((el) => container.appendChild(el));
+    };
+    orderRows(body, 'tr[data-key]', (tr) => tr.querySelectorAll('td')[1]?.textContent);
 
     // "+ Add [query]" when the Item filter doesn't exactly match an existing
     // item — the same affordance as the "+ Item" and scan search pickers, so a
@@ -10770,6 +10768,7 @@
     // unconditionally regardless of which view is actually visible, CSS
     // decides that per viewport.
     const cardQ = (document.getElementById('inv-filter-item')?.value || '').trim().toLowerCase();
+    orderRows(document.getElementById('inv-cards'), '.inv-card[data-key]', (card) => card.querySelector('.inv-card-runout')?.textContent);
     let visibleCardCount = 0;
     document.getElementById('inv-cards')?.querySelectorAll('.inv-card').forEach((card) => {
       const name = card.querySelector('.inv-card-name')?.textContent || '';
@@ -11412,11 +11411,6 @@
   })();
 })();
 </script>
-
-<!-- Mobile scan FAB — always on-screen on mobile, bottom-right -->
-<div class="mob-inv-fab" id="mob-inv-fab">
-  <button class="mob-fab-primary" id="mob-scan-btn" title="Scan a barcode" aria-label="Scan a barcode"><svg width="18" height="18" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg></button>
-</div>
 
 </body>
 </html>
