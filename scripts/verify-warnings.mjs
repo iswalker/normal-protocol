@@ -957,6 +957,53 @@ try {
     await rc.close();
   }
 
+  // ── placing an order (Ordered/Entered) in a FUTURE month flags it Preemptive ──
+  {
+    const pc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const pp = await pc.newPage();
+    const pPuts = [];
+    const pBody = {
+      months: [{ month: M0.month, year: M0.year, position: 1 }, { month: M1.month, year: M1.year, position: 2 }],
+      orders: [
+        { order_id: 'o_now', month: M0.month, year: M0.year, merchant: 'Now Co', position: 1, status: 'Staged', notes: null },
+        { order_id: 'o_f1', month: M1.month, year: M1.year, merchant: 'Future One', position: 1, status: 'Staged', notes: null },
+        { order_id: 'o_f2', month: M1.month, year: M1.year, merchant: 'Future Two', position: 2, status: 'Staged', notes: null },
+        { order_id: 'o_f3', month: M1.month, year: M1.year, merchant: 'Future Three', position: 3, status: 'Staged', notes: null },
+        { order_id: 'o_f4', month: M1.month, year: M1.year, merchant: 'Future Four', position: 4, status: 'Staged', notes: null, preemptive: 0 },
+      ],
+      items: ['o_now', 'o_f1', 'o_f2', 'o_f3', 'o_f4'].map((o, i) => card('pi_' + o, o, o === 'o_now' ? M0 : M1, i + 1, 1, 'Thing ' + o, {})),
+    };
+    await pp.route('**/api/orders', (r) => {
+      if (r.request().method() === 'PUT') { pPuts.push(JSON.parse(r.request().postData() || '{}')); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); }
+      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pBody) });
+    });
+    await pp.route('**/api/inventory-items', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+    await pp.route((u) => new URL(u).pathname === '/api/inventory', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: r.request().method() === 'GET' ? '[]' : '{"ok":true}' }));
+    await pp.goto(base, { waitUntil: 'load' });
+    await pp.waitForSelector('.shipment[data-id="o_f1"]', { state: 'attached', timeout: 15000 });
+    const stageIt = (id, st) => pp.evaluate(({ id, st }) => document.querySelector('.shipment[data-id="' + id + '"] [data-act="set-stage"][data-stage="' + st + '"]').click(), { id, st });
+    const isOn = (id) => pp.evaluate((i) => document.querySelector('.shipment[data-id="' + i + '"] .ship-preempt').classList.contains('is-on'), id);
+    check('future-month orders start out not Preemptive', !(await isOn('o_f1')) && !(await isOn('o_f2')) && !(await isOn('o_f4')));
+    await stageIt('o_now', 'ordered');
+    await stageIt('o_f1', 'ordered');
+    await stageIt('o_f2', 'entered');
+    await pp.waitForTimeout(900);
+    check('Ordered in a future month turns Preemptive on', await isOn('o_f1'));
+    check('Entered in a future month turns Preemptive on', await isOn('o_f2'));
+    check('Ordered in the CURRENT month does not', !(await isOn('o_now')));
+    check('an order that is merely Staged in a future month is left alone', !(await isOn('o_f3')));
+    const saved = pPuts[pPuts.length - 1]?.orders || [];
+    const sv = (id) => saved.find((o) => o.order_id === id)?.preemptive;
+    check('…and the flag is saved with the order', sv('o_f1') === 1 && sv('o_f2') === 1 && sv('o_now') == null && sv('o_f3') == null, JSON.stringify(saved.map((o) => [o.order_id, o.preemptive])));
+    await stageIt('o_f4', 'ordered'); // manually forced OFF before: placing it in a future month still flags it
+    await pp.waitForTimeout(600);
+    check('…even over an earlier manual "off"', await isOn('o_f4'));
+    await stageIt('o_f1', 'ordered'); // clear the stage again
+    await pp.waitForTimeout(600);
+    check('clearing the stage afterwards leaves it Preemptive', await isOn('o_f1'));
+    await pc.close();
+  }
+
   // ── mobile: panel renders and Approve is tappable ──
   const m = await openBoard({ width: 390, height: 800 });
   if (process.env.SHOT_DIR) await m.page.screenshot({ path: join(process.env.SHOT_DIR, 'warn-mobile.png') });

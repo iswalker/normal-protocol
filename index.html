@@ -7009,6 +7009,15 @@
       // it behind a confirmation instead of skipping straight to it.
       function commitStageChange() {
         if (newStage == null) delete sd.stage; else sd.stage = newStage;
+        // An order placed (Ordered/Entered) while sitting in a FUTURE month was
+        // necessarily placed early, so it is flagged Launch Preemptively -- even
+        // if nothing about its dates said so. Sticks (it's the manual override)
+        // if the stage is later cleared.
+        if (newStage === 'ordered' || newStage === 'entered') {
+          const start = monthStartOf(monthEl);
+          const t = SB.today();
+          if (start && start > new Date(t.getFullYear(), t.getMonth(), 1) && !isShipPreemptive(shipEl)) sd.preemptive = true;
+        }
 
         if (newStage != null) {
           const list = monthEl.querySelector('.month-list');
