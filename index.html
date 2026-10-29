@@ -244,6 +244,22 @@
       padding: 40px 24px;
     }
     .inv-modal-ov.open { display: flex; }
+    /* Ease-in for the popovers: the backdrop fades up while the window itself
+       rises and settles. They appear whenever display flips from none, so this
+       replays on every open. Closing stays instant. */
+    @keyframes np-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes np-pop-in { from { opacity: 0; transform: translateY(14px) scale(.975); } to { opacity: 1; transform: none; } }
+    @keyframes np-drop-in { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+    .inv-modal-ov.open { animation: np-backdrop-in .2s ease-out; }
+    .inv-modal-ov.open .inv-modal { animation: np-pop-in .26s cubic-bezier(.2, .8, .2, 1); }
+    .scan-overlay { animation: np-backdrop-in .18s ease-out; }
+    .scan-overlay > .scan-modal { animation: np-pop-in .24s cubic-bezier(.2, .8, .2, 1); }
+    .settings-panel.open { animation: np-drop-in .16s ease-out; transform-origin: top right; }
+    /* opacity only: the menu is measured the moment it is created to place it on screen, and a transform would skew that */
+    .ship-ctx-menu { animation: np-backdrop-in .12s ease-out; }
+    @media (prefers-reduced-motion: reduce) {
+      .inv-modal-ov.open, .inv-modal-ov.open .inv-modal, .scan-overlay, .scan-overlay > .scan-modal, .settings-panel.open, .ship-ctx-menu { animation: none; }
+    }
     .inv-modal {
       background: var(--paper, #fff); border-radius: 12px;
       box-shadow: 0 12px 40px rgba(23,26,28,0.22);
@@ -986,7 +1002,7 @@
       display: flex; align-items: center; justify-content: center;
       box-shadow: 0 4px 18px rgba(23,26,28,0.22);
     }
-    .mob-fab-primary svg { width: 22px; height: 22px; margin: 0; }
+    .mob-fab-primary svg { width: 40px; height: 40px; margin: 0; }
     .mob-fab-primary:active { filter: brightness(0.9); }
   </style>
 
@@ -1555,6 +1571,12 @@
        dragging, inside the Preemptive previews, and (via .no-cv) in a month the
        board is jumping into. */
     #tab-board .shipment { content-visibility: auto; contain-intrinsic-size: auto 200px; }
+    /* Orders / items a filter just brought back fade in instead of popping in
+       (see playBoardTransition); the month columns themselves glide to their
+       new places. */
+    @keyframes sb-fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    #tab-board .sb-fresh { animation: sb-fade-in .24s ease-out; }
+    @media (prefers-reduced-motion: reduce) { #tab-board .sb-fresh { animation: none; } }
     .sb-dragging #tab-board .shipment, #tab-board.pre-root .shipment, #tab-board .month.no-cv .shipment { content-visibility: visible; }
     /* closed-hand cursor while dragging */
     .sb-dragging, .sb-dragging * { cursor: grabbing !important; }
@@ -4135,9 +4157,23 @@
       return (gMi >= 0 && rMi >= 0 && gMi > rMi ? addMonthsToDate(base, gMi - rMi) : base) < start;
     });
   }
+  // The automatic answer is a walk over the order's items, and a refresh asks
+  // it for every order several times over -- so within one withPreemptMemo run
+  // (a recalc, or a filter change; nothing it depends on changes mid-run) each
+  // order is worked out once.
+  let preemptMemo = null;
+  function withPreemptMemo(fn) {
+    if (preemptMemo) return fn();
+    preemptMemo = new Map();
+    try { return fn(); } finally { preemptMemo = null; }
+  }
   function isShipPreemptive(shipEl) {
     const s = STATE.shipmentData[shipEl.dataset.id];
-    return s && typeof s.preemptive === 'boolean' ? s.preemptive : shipAutoPreemptive(shipEl);
+    if (s && typeof s.preemptive === 'boolean') return s.preemptive;
+    if (!preemptMemo) return shipAutoPreemptive(shipEl);
+    let v = preemptMemo.get(shipEl);
+    if (v === undefined) { v = shipAutoPreemptive(shipEl); preemptMemo.set(shipEl, v); }
+    return v;
   }
   // ── "Approved" status ──────────────────────────────────────────────────────
   // Sits before Ordered: an order whose every item (the ones actually being
@@ -4229,7 +4265,12 @@
     persist();
   }
 
-  function recalcAll() {
+  // Bumped by every recalc: the Needs Attention rows are a pure function of the
+  // board's data (the filter only chooses which to show), so renderWarnings can
+  // reuse its last computation until this moves (see renderWarnings(reuse)).
+  let warnRev = 0, warnCache = null;
+  function recalcAll() { warnRev++; return withPreemptMemo(recalcAllImpl); }
+  function recalcAllImpl() {
     applyShortNames();
     applyEffectiveMap();
     board.querySelectorAll('.month').forEach((monthEl) => {
@@ -4551,10 +4592,17 @@
     return true;
   }
 
-  function renderWarnings() {
+  function renderWarnings(reuse) {
     const monthEls = [...board.querySelectorAll('.month')];
-    const wins = warnMonthWindows(monthEls);
-    const per = computeWarnings(monthEls, wins);
+    let wins, per;
+    if (reuse === true && warnCache && warnCache.rev === warnRev && warnCache.n === monthEls.length) {
+      wins = warnCache.wins;
+      per = warnCache.per.map((p) => p && { ...p }); // the filtering below replaces these arrays, so copy the shells
+    } else {
+      wins = warnMonthWindows(monthEls);
+      per = computeWarnings(monthEls, wins);
+      warnCache = { rev: warnRev, n: monthEls.length, wins, per: per.map((p) => p && { ...p }) };
+    }
     per.forEach((p) => {
       if (!p) return;
       p.autoship = p.autoship.filter((r) => warnRowVisible(r.kind, r.name, r.where, r.link, r.preemptive));
@@ -7606,7 +7654,50 @@
   // header controls' own on/off appearance to match.
   // toStart: clearing a search sends the board back to its first month
   // instead of holding whichever (possibly far-future) month was in view.
+  // ── Filter transitions ────────────────────────────────────────────────────
+  // A filter hides/shows months and orders in one go, which reads as a jump.
+  // Month columns are measured before and after and glide from where they were
+  // to where they now are (FLIP -- a jump bigger than the screen fades instead);
+  // orders and items a filter brings back are collected in freshList by
+  // applyMonthSearch and fade in. Skipped for reduced-motion users.
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const EASE = 'cubic-bezier(.2, .8, .2, 1)';
+  let freshList = null;
+  const monthShown = (m) => !m.classList.contains('search-hide') && m.style.display !== 'none';
+  function captureMonthRects() {
+    if (reduceMotion.matches) return null;
+    const m = new Map();
+    board.querySelectorAll(':scope > .month').forEach((el) => {
+      if (!monthShown(el)) return;
+      const r = el.getBoundingClientRect();
+      m.set(el, { l: r.left, t: r.top });
+    });
+    return m;
+  }
+  function playBoardTransition(before, fresh) {
+    if (!before) return;
+    const newMonths = new Set();
+    board.querySelectorAll(':scope > .month').forEach((el) => {
+      if (!monthShown(el)) return;
+      const r = el.getBoundingClientRect(), was = before.get(el);
+      if (!was) { newMonths.add(el); el.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE }); return; }
+      const dx = was.l - r.left, dy = was.t - r.top;
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+      if (Math.abs(dx) > window.innerWidth || Math.abs(dy) > window.innerHeight) { el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 240, easing: EASE }); return; }
+      el.animate([{ transform: 'translate(' + dx + 'px,' + dy + 'px)' }, { transform: 'none' }], { duration: 260, easing: EASE });
+    });
+    if (!fresh || !fresh.length || fresh.length > 400) return;
+    const els = fresh.filter((e) => !newMonths.has(e.closest('.month')));
+    els.forEach((e) => e.classList.add('sb-fresh'));
+    setTimeout(() => els.forEach((e) => e.classList.remove('sb-fresh')), 340);
+  }
   function refreshBoardFilters(toStart) {
+    const before = captureMonthRects();
+    freshList = [];
+    try { withPreemptMemo(() => refreshBoardFiltersImpl(toStart)); }
+    finally { const fresh = freshList; freshList = null; playBoardTransition(before, fresh); }
+  }
+  function refreshBoardFiltersImpl(toStart) {
     const clearBtn = document.getElementById('global-search-clear');
     const autoshipBtn = document.getElementById('inv-autoship-btn');
     // Whichever month is anchored at the scroller's leading edge right now
@@ -7619,7 +7710,7 @@
     // viewport silently lands on a different month than the one the user
     // was just looking at.
     let anchorId = document.querySelector('.month-strip-cell.is-current')?.dataset.monthId;
-    renderWarnings(); // the Needs Attention rows follow the same filter (before months decide whether they have content)
+    renderWarnings(true); // the Needs Attention rows follow the same filter (before months decide whether they have content)
     holdMonthStrip(() => board.querySelectorAll('.month').forEach((monthEl) => applyMonthSearch(monthEl, globalSearchQuery)));
     renderMonthSections();
     // A pinned merchant alone no longer shows the × -- tapping the active
@@ -7783,6 +7874,13 @@
     const filterActive = globalAutoshipOnly || !!lq || merchantActive;
     const list = monthEl.querySelector('.month-list');
     if (!list) return;
+    // search-hide on/off, noting what was hidden and is now shown (for the fade-in)
+    const setHide = (el, hide) => {
+      const was = el.classList.contains('search-hide');
+      if (was === hide) return;
+      el.classList.toggle('search-hide', hide);
+      if (was && freshList) freshList.push(el);
+    };
     [...list.children].forEach((node) => {
       if (node.classList.contains('shipment')) {
         const shipName = (node.querySelector('.ship-name')?.textContent || '').toLowerCase();
@@ -7802,13 +7900,13 @@
           const itemName = cardEl.querySelector('.card-name')?.textContent || '';
           const itemMatches = !filterActive || shipMatches
             || (globalAutoshipOnly ? cardMatchesAutoshipFilter(cardEl) : itemName.toLowerCase().includes(lq));
-          cardEl.classList.toggle('search-hide', !itemMatches);
+          setHide(cardEl, !itemMatches);
           if (itemMatches) anyItemMatches = true;
         });
-        node.classList.toggle('search-hide', filterActive && !shipMatches && !anyItemMatches);
+        setHide(node, filterActive && !shipMatches && !anyItemMatches);
       } else if (node.classList.contains('card')) {
         if (node.classList.contains('card--divider')) {
-          node.classList.toggle('search-hide', filterActive);
+          setHide(node, filterActive);
           return;
         }
         // A loose card belongs to no merchant, so it can never satisfy a
@@ -7817,7 +7915,7 @@
         const itemName = node.querySelector('.card-name')?.textContent || '';
         const itemMatches = !filterActive
           || (globalAutoshipOnly ? cardMatchesAutoshipFilter(node) : itemName.toLowerCase().includes(lq));
-        node.classList.toggle('search-hide', !itemMatches);
+        setHide(node, !itemMatches);
       }
     });
     // Hide the whole month column once a search/filter is active and none
@@ -10130,6 +10228,29 @@
   // too (not just the month name) so a click can jump straight to it --
   // see wireNextOrderClick.
   const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // nextOrderMonth for every item at once: one walk over the board's cards
+  // instead of one per item (70 items x every month x every card name was most
+  // of what building the list cost on a big board).
+  function buildNextOrderMap() {
+    const today = new Date(isoToday() + 'T00:00:00');
+    const curMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const map = new Map();
+    for (const m of document.querySelectorAll('#board .month')) {
+      const head = m.querySelector('.month-head');
+      const mname = head?.querySelector('.mname')?.textContent.trim();
+      const year = parseInt(head?.querySelector('.msub')?.textContent.trim(), 10);
+      const mIdx = mname ? MONTH_ABBR.indexOf(mname) : -1;
+      if (mIdx < 0 || !year) continue;
+      if (new Date(year, mIdx, 1) < curMonthStart) continue;
+      m.querySelectorAll('.card-name').forEach((el) => {
+        const k = el.textContent.trim().toLowerCase();
+        if (map.has(k)) return;
+        const cardEl = el.closest('.card[data-id]');
+        if (cardEl) map.set(k, { month: mname, cardId: cardEl.dataset.id });
+      });
+    }
+    return map;
+  }
   function nextOrderMonth(key) {
     const today = new Date(isoToday() + 'T00:00:00');
     const curMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -10235,6 +10356,8 @@
     window._INV_CACHE_OK = true;
     _rendering = false;
     paintInventory(invLogRows);
+    // Keep the board's run-out display in sync with what was just read
+    window.InventoryWriter?.syncBoard(invLogRows);
   }
 
   // Builds the table + cards from log rows already in hand (no network).
@@ -10257,6 +10380,7 @@
     const cardsEl = document.getElementById('inv-cards');
     if (cardsEl) cardsEl.innerHTML = '';
 
+    const nextOrders = buildNextOrderMap();
     let ordIdx = 0; // the list's own (alphabetical) position, to restore it when "Soon" is switched off
     allKeys.forEach((key) => {
       const meta   = itemMap[key] || {};
@@ -10276,7 +10400,7 @@
       const roMonths = ro && ro.date ? countCoveredMonths(ro.date) : 0;
       const roBars = ro ? barsHtml(roMonths, 0) : '';
       const name   = meta.name || amt.name || key;
-      const nextOrder = nextOrderMonth(key);
+      const nextOrder = nextOrders.get(key) || null;
 
       // Table row (desktop)
       const tr = document.createElement('tr');
@@ -10346,8 +10470,6 @@
 
     attachEditHandlers(itemMap);
     applyFilters();
-    // Keep the board's run-out display in sync with any inventory changes
-    window.InventoryWriter?.syncBoard(invLogRows);
   }
 
   function attachEditHandlers(itemMap) {
@@ -10966,13 +11088,19 @@
   const invIsOpen = () => !!document.getElementById('inv-modal-ov')?.classList.contains('open');
   function showInventory() {
     if (!window._INV_CACHE_OK && !window._INV_LOADING) { renderInventory(); return; }
-    if (!hasInvRows()) setInvStatus({ loading: true }); // first open: the popover is up, show it's working
     if (!window._INV_CACHE_OK) {
-      // Still loading -- inventoryDataReady will paint. Bounded, in case the
-      // board never finishes starting (nothing would ever consume the prefetch).
+      // Still loading (opened within the first moments of the page): the
+      // popover is up, show it's working -- inventoryDataReady paints it the
+      // moment it lands. Bounded, in case the board never finishes starting
+      // (nothing would ever consume the prefetch).
+      if (!hasInvRows()) setInvStatus({ loading: true });
       setTimeout(() => { if (invIsOpen() && !window._INV_CACHE_OK && !_rendering) renderInventory(); }, 6000);
       return;
     }
+    // Data is in. The list was built in the background when it landed (see
+    // inventoryDataReady), so normally it is simply there; only if that hasn't
+    // happened yet is it built now -- never a spinner for data we already have.
+    if (!hasInvRows()) { setInvStatus(null); paintInventory(window._INV_LOG_ROWS); return; }
     // Yield first so the popover paints before the (synchronous) row build --
     // a long list on a phone takes a moment, and building it inside the tap
     // would hold the popover back until it finished. Rows from a previous
@@ -10989,7 +11117,15 @@
   // "active" was the pre-modal check and never matched post-refactor, so
   // check .open.)
   document.addEventListener('inventoryDataReady', () => {
-    if (!invIsOpen()) return;
+    if (!invIsOpen()) {
+      // Not open: build the list now anyway, in an idle moment, so the first
+      // open (and every later one) finds it ready instead of building it
+      // under a spinner.
+      if (!window._INV_CACHE_OK) return;
+      const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 50));
+      idle(() => { if (!invIsOpen() && window._INV_CACHE_OK) paintInventory(window._INV_LOG_ROWS); }, { timeout: 2000 });
+      return;
+    }
     if (window._INV_CACHE_OK) paintInventory(window._INV_LOG_ROWS);
     else if (!_rendering) renderInventory(); // the load failed -- try once more, with the error shown if it fails again
   });

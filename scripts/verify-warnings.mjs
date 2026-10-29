@@ -800,6 +800,24 @@ try {
   check('clearing the search brings every item back', (await page.evaluate(() => [...document.querySelectorAll('#board .card')].filter((c) => c.offsetParent !== null).length)) > 3);
 
   // ── filtering must not confuse which month is "current", and the board scrolls sideways on a held middle button ──
+  await page.evaluate(() => { const i = document.getElementById('global-search-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(500);
+  const glide = await page.evaluate(() => {
+    const i = document.getElementById('global-search-input');
+    i.value = 'Later Placement'; i.dispatchEvent(new Event('input', { bubbles: true }));
+    const n = document.getAnimations().filter((a) => a.effect && a.effect.target && a.effect.target.classList && a.effect.target.classList.contains('month')).length;
+    return n;
+  });
+  check('filtering animates the month columns into their new places (a glide, not a jump)', glide >= 1, String(glide));
+  await page.waitForTimeout(500);
+  const unfilter = await page.evaluate(() => {
+    document.getElementById('global-search-clear').click();
+    return { fresh: document.querySelectorAll('#board .sb-fresh').length, monthAnims: document.getAnimations().filter((a) => a.effect && a.effect.target && a.effect.target.classList && a.effect.target.classList.contains('month')).length };
+  });
+  check('clearing the filter fades the months and orders it brings back', unfilter.monthAnims >= 1 && unfilter.fresh >= 1, JSON.stringify(unfilter));
+  await page.waitForTimeout(700);
+  const settled = await page.evaluate(() => ({ fresh: document.querySelectorAll('#board .sb-fresh').length, transforms: [...document.querySelectorAll('#board > .month')].filter((m) => m.offsetParent).every((m) => getComputedStyle(m).transform === 'none'), running: document.getAnimations().filter((a) => a.playState === 'running' && a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('#board')).length }));
+  check('…and everything settles: no leftover fade class, no stuck transform', settled.fresh === 0 && settled.transforms && settled.running === 0, JSON.stringify(settled));
   await page.locator('#global-search-input').fill('Later Placement');
   await page.waitForTimeout(500);
   const curWhileFiltered = await page.evaluate(() => ({ cur: document.querySelector('.month-strip-cell.is-current')?.dataset.monthId, shown: [...document.querySelectorAll('#board > .month')].filter((m) => m.offsetParent).map((m) => m.dataset.id) }));
@@ -922,11 +940,14 @@ try {
 
   // ── Inventory is a round button bottom-right; Scan lives in the Inventory window; one "clear all filters" button ──
   check('the Inventory button is no longer in the header', await page.evaluate(() => !document.querySelector('header #inv-search-link, header .inv-search-link, header #inv-scan-btn')));
-  const fab = await page.evaluate(() => { const b = document.getElementById('inv-search-link'), r = b.getBoundingClientRect(), cs = getComputedStyle(b); return { pos: getComputedStyle(b.parentElement).position, radius: cs.borderRadius, w: Math.round(r.width), h: Math.round(r.height), right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom) }; });
+  const fab = await page.evaluate(() => { const b = document.getElementById('inv-search-link'), r = b.getBoundingClientRect(), cs = getComputedStyle(b); const sv = b.querySelector('svg').getBoundingClientRect(); return { pos: getComputedStyle(b.parentElement).position, radius: cs.borderRadius, w: Math.round(r.width), h: Math.round(r.height), right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom), svg: [Math.round(sv.width), Math.round(sv.height)] }; });
   check('Inventory is a round teal button fixed at the bottom-right (same as the old mobile Scan one)', fab.pos === 'fixed' && fab.radius === '50%' && fab.w === 52 && fab.h === 52 && fab.right === 16 && fab.bottom === 24, JSON.stringify(fab));
+  check('…with a 40x40 icon inside it', fab.svg[0] === 40 && fab.svg[1] === 40, JSON.stringify(fab.svg));
   check('there is no "Show Scan Button" setting any more', (await page.locator('#show-scan-toggle').count()) === 0);
   await page.locator('#inv-search-link').click();
   await page.waitForSelector('#inv-modal-ov.open');
+  check('popovers ease in: the Inventory window fades/rises into place', await page.evaluate(() => getComputedStyle(document.getElementById('inv-modal-ov')).animationName === 'np-backdrop-in' && getComputedStyle(document.getElementById('tab-inventory')).animationName === 'np-pop-in'));
+  await page.waitForTimeout(350); // let the entrance finish before measuring anything
   const head = await page.evaluate(() => { const sc = document.getElementById('inv-scan-btn'), cl = document.getElementById('inv-modal-close'), a = sc.getBoundingClientRect(), b = cl.getBoundingClientRect(); return { inHead: !!sc.closest('.inv-modal-head'), nextIsClose: sc.nextElementSibling === cl, gap: Math.round(b.left - a.right), sameRow: Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) < 2, visible: getComputedStyle(sc).display !== 'none' }; });
   check("Scan is in the Inventory window's top-right, just left of the close button, always shown", head.inHead && head.nextIsClose && head.visible && head.sameRow && head.gap >= 0 && head.gap <= 16, JSON.stringify(head));
   await page.locator('#inv-scan-btn').click();
@@ -1111,6 +1132,13 @@ try {
     await sp.locator('#settings-btn').click();
     await sp.locator('#config-shorthand').click();
     await sp.waitForSelector('#shorthand-overlay', { state: 'visible' });
+    const anim = () => sp.evaluate(() => ({ ov: getComputedStyle(document.getElementById('shorthand-overlay')).animationName, modal: getComputedStyle(document.querySelector('#shorthand-overlay .scan-modal')).animationName }));
+    const animOn = await anim();
+    check('popovers ease in: the Merchants Shorthand backdrop fades up and its window rises', animOn.ov === 'np-backdrop-in' && animOn.modal === 'np-pop-in', JSON.stringify(animOn));
+    await sp.emulateMedia({ reducedMotion: 'reduce' });
+    const animRm = await anim();
+    check('…and not for people who ask for reduced motion', animRm.ov === 'none' && animRm.modal === 'none', JSON.stringify(animRm));
+    await sp.emulateMedia({ reducedMotion: 'no-preference' });
     check('…it opens a modal, with the board\'s merchants suggested', await sp.evaluate(() => /No shorthand yet/.test(document.querySelector('#shorthand-overlay .sh-list').textContent) && [...document.querySelectorAll('#shorthand-names option')].some((o) => o.value === 'Blue Sky Vitamin')));
     await sp.locator('#shorthand-name').fill('Blue Sky Vitamin');
     await sp.locator('#shorthand-short').fill('BSV');
@@ -1199,6 +1227,16 @@ try {
     await bp.waitForSelector('#tab-board #board .shipment', { state: 'attached', timeout: 20000 });
     await bp.waitForTimeout(2000);
     check('big board: off-screen shipments are not laid out (content-visibility)', await bp.evaluate(() => getComputedStyle(document.querySelector('#board .shipment')).contentVisibility === 'auto'));
+    const firstOpen = await bp.evaluate(async () => {
+      document.getElementById('inv-search-link').click();
+      const sp = document.querySelector('.inv-spinner');
+      const out = { rows: document.querySelectorAll('#inv-body tr[data-key]').length, spinner: !!sp && sp.offsetParent !== null };
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return out;
+    });
+    check('big board: the FIRST Inventory open (a couple of seconds after load) shows the full list at once -- no spinner', firstOpen.rows >= 70 && !firstOpen.spinner, JSON.stringify(firstOpen));
+    await bp.locator('#inv-modal-close').click();
+    await bp.waitForTimeout(250);
     const paintMs = () => bp.evaluate(async () => { const el = document.getElementById('inv-autoship-btn'); const t0 = performance.now(); el.click(); await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res))); return performance.now() - t0; });
     await paintMs(); await paintMs(); // warm up
     const onMs = await paintMs(), offMs = await paintMs();
