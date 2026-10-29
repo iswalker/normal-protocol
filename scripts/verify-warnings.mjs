@@ -798,6 +798,47 @@ try {
   const atRoot = await page.evaluate(() => { const s = document.getElementById('tab-board').getBoundingClientRect(); const fe = [...document.querySelectorAll('#board .month')].find((m) => m.offsetParent !== null); const f = fe.getBoundingClientRect(); return { first: fe.dataset.id, dx: Math.round(f.left - s.left), dy: Math.round(f.top - s.top) }; });
   check('clearing a search jumps back to the first month (not wherever the board was scrolled)', farAway === monthIdOfM2 && atRoot.first !== farAway && Math.abs(atRoot.dx) < 40 && Math.abs(atRoot.dy) < 40, JSON.stringify({ farAway, atRoot }));
   check('clearing the search brings every item back', (await page.evaluate(() => [...document.querySelectorAll('#board .card')].filter((c) => c.offsetParent !== null).length)) > 3);
+
+  // ── filtering must not confuse which month is "current", and the board scrolls sideways on a held middle button ──
+  await page.locator('#global-search-input').fill('Later Placement');
+  await page.waitForTimeout(500);
+  const curWhileFiltered = await page.evaluate(() => ({ cur: document.querySelector('.month-strip-cell.is-current')?.dataset.monthId, shown: [...document.querySelectorAll('#board > .month')].filter((m) => m.offsetParent).map((m) => m.dataset.id) }));
+  check('while filtered, the "current" month is one that is actually shown', curWhileFiltered.shown.length > 0 && curWhileFiltered.shown.includes(curWhileFiltered.cur), JSON.stringify(curWhileFiltered));
+  await page.locator('#global-search-clear').click();
+  await page.waitForTimeout(400);
+  const tbLeft = () => page.evaluate(() => Math.round(document.getElementById('tab-board').scrollLeft));
+  await page.evaluate(() => document.getElementById('tab-board').scrollTo(0, 0));
+  await page.mouse.move(700, 600);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(1000, 600, { steps: 6 });
+  await page.waitForTimeout(500);
+  const heldRight = await tbLeft();
+  const ownScroll = await page.evaluate(() => document.body.classList.contains('mid-scrolling'));
+  await page.mouse.up({ button: 'middle' });
+  await page.waitForTimeout(150);
+  const afterRelease = await tbLeft();
+  await page.waitForTimeout(300);
+  check("holding the middle button and moving right scrolls the board sideways (by the board's own autoscroll)", heldRight > 200 && ownScroll, JSON.stringify({ heldRight, ownScroll }));
+  check('…and releasing it stops', (await tbLeft()) === afterRelease && afterRelease - heldRight < 400, JSON.stringify({ heldRight, afterRelease, later: await tbLeft() }));
+  await page.mouse.move(700, 600);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(400, 600, { steps: 6 });
+  await page.waitForTimeout(500);
+  await page.mouse.up({ button: 'middle' });
+  check('…and moving left scrolls back', (await tbLeft()) < afterRelease - 100, JSON.stringify({ afterRelease, now: await tbLeft() }));
+  await page.mouse.move(700, 600);
+  await page.mouse.down({ button: 'middle' }); await page.mouse.up({ button: 'middle' }); // a plain click: keeps going
+  await page.mouse.move(1000, 600, { steps: 6 });
+  const click0 = await tbLeft();
+  await page.waitForTimeout(500);
+  const click1 = await tbLeft();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const click2 = await tbLeft();
+  await page.waitForTimeout(300);
+  check('a plain middle click starts autoscroll that runs until Escape', click1 > click0 + 100 && (await tbLeft()) === click2, JSON.stringify({ click0, click1, click2, later: await tbLeft() }));
+  check('…and the board shows no stuck autoscroll cursor afterwards', !(await page.evaluate(() => document.body.classList.contains('mid-scrolling'))));
+  await page.evaluate(() => document.getElementById('tab-board').scrollTo(0, 0));
   await page.locator(covered).evaluate((e) => e.scrollIntoView({ block: 'center', inline: 'center' }));
   await page.locator(covered + ' .proj .pv').click();
   await page.waitForSelector('#inv-filter-item', { state: 'visible' });

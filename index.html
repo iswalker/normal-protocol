@@ -587,6 +587,8 @@
        real (editable) text -- it is only hidden and swapped for its data-short via
        ::after, and the full name comes back while it is being edited. */
     .pin-chip .pc-short { display: none; }
+    /* while the board's own middle-button autoscroll is running */
+    body.mid-scrolling, body.mid-scrolling * { cursor: all-scroll !important; user-select: none !important; }
     @media (max-width: 1249px) {
       .pin-chip.has-short .pc-full { display: none; }
       .pin-chip.has-short .pc-short { display: inline; }
@@ -5379,6 +5381,58 @@
       strip.scrollLeft += e.deltaY;
     }, { passive: false });
   })();
+  // Middle-button ("scroll wheel held down") autoscroll for the board on desktop.
+  // The browser's own autoscroll is picky about what it will start over and which
+  // axis it pans (a filter leaves a short, narrow board and it often just doesn't
+  // move sideways), so the board does it itself: hold the middle button and move
+  // the pointer away from where it went down -- the further, the faster, in both
+  // directions; release to stop. A plain click (no hold) leaves it running until
+  // the next click or Escape, like the native one. Links keep their native middle-click.
+  (function initMiddleAutoscroll() {
+    const tb = document.getElementById('tab-board');
+    if (!tb || !window.matchMedia('(pointer: fine)').matches) return;
+    const DEAD = 10, SPEED = 6, HOLD_MS = 350; // px dead zone, px/s per px of distance, hold vs click
+    let on = false, ox = 0, oy = 0, mx = 0, my = 0, raf = 0, last = 0, accX = 0, accY = 0, downAt = 0, moved = false;
+    const vel = (d) => (Math.abs(d) <= DEAD ? 0 : (d - Math.sign(d) * DEAD) * SPEED);
+    function frame(now) {
+      if (!on) return;
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      accX += vel(mx - ox) * dt; accY += vel(my - oy) * dt;
+      const ix = Math.trunc(accX), iy = Math.trunc(accY);
+      if (ix) { tb.scrollLeft += ix; accX -= ix; }
+      if (iy) { tb.scrollTop += iy; accY -= iy; }
+      raf = requestAnimationFrame(frame);
+    }
+    function start(e) {
+      on = true; ox = mx = e.clientX; oy = my = e.clientY; accX = accY = 0; moved = false; downAt = performance.now();
+      document.body.classList.add('mid-scrolling');
+      last = performance.now(); raf = requestAnimationFrame(frame);
+    }
+    function stop() {
+      if (!on) return;
+      on = false; cancelAnimationFrame(raf);
+      document.body.classList.remove('mid-scrolling');
+    }
+    tb.addEventListener('mousedown', (e) => {
+      if (e.button !== 1) { stop(); return; }
+      if (e.target.closest && e.target.closest('a[href]')) return;
+      e.preventDefault(); // also keeps the native autoscroll from starting on top of this one
+      if (on) { stop(); return; }
+      start(e);
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!on) return;
+      mx = e.clientX; my = e.clientY;
+      if (Math.abs(mx - ox) > DEAD || Math.abs(my - oy) > DEAD) moved = true;
+    }, { passive: true });
+    document.addEventListener('mouseup', (e) => {
+      if (!on || e.button !== 1) return;
+      if (moved || performance.now() - downAt > HOLD_MS) stop(); // held (and/or dragged): release ends it
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') stop(); });
+    window.addEventListener('blur', stop);
+    tb.addEventListener('auxclick', (e) => { if (e.button === 1 && !(e.target.closest && e.target.closest('a[href]'))) e.preventDefault(); });
+  })();
   // Scrolls #tab-board so targetEl's leading edge sits flush against the
   // scroller's edge, with the same gap the board already uses between
   // months -- scrollIntoView pins flush with no breathing room, so the
@@ -5442,7 +5496,10 @@
     if (!tb) return;
     const vertical = getComputedStyle(board).flexDirection === 'column';
     const tbRect = tb.getBoundingClientRect();
-    const months = [...board.querySelectorAll('.month')].filter((m) => m.style.display !== 'none');
+    // Months hidden by a search/filter (.search-hide, display:none) have no
+    // position at all -- they used to count as having reached the edge, so the
+    // "current" month while filtering was often one that wasn't even on screen.
+    const months = [...board.querySelectorAll('.month')].filter((m) => m.style.display !== 'none' && !m.classList.contains('search-hide'));
     if (!months.length) return;
     // The last month whose leading edge has reached near the top/left of the
     // viewport is "current" -- same idea as a scroll-spy nav highlight.
@@ -7520,12 +7577,12 @@
     if (clearBtn) clearBtn.style.display = (globalSearchQuery || globalAutoshipOnly) ? 'block' : 'none';
     autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
     renderPinnedMerchants();
-    if (toStart === true) {
-      const first = [...board.querySelectorAll('.month')].find((m) => m.style.display !== 'none' && !m.classList.contains('search-hide'));
-      if (first) anchorId = first.dataset.id;
-    }
+    const firstShown = [...board.querySelectorAll('.month')].find((m) => m.style.display !== 'none' && !m.classList.contains('search-hide'));
+    if (toStart === true && firstShown) anchorId = firstShown.dataset.id;
     if (anchorId) {
-      const anchorEl = board.querySelector(`.month[data-id="${anchorId}"]`);
+      let anchorEl = board.querySelector(`.month[data-id="${anchorId}"]`);
+      // The filter may have hidden the very month that was anchored: land on the first one still shown
+      if (anchorEl && anchorEl.classList.contains('search-hide')) anchorEl = firstShown || null;
       if (anchorEl && anchorEl.style.display !== 'none') scrollElementIntoBoardView(anchorEl, true);
     }
   }
