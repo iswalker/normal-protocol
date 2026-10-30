@@ -138,7 +138,7 @@
       transition: color 0.15s;
     }
 
-    thead th:hover { color: var(--ink); }
+    @media (hover: hover) { thead th:hover { color: var(--ink); } }
     thead th.sorted { color: var(--teal); }
 
     thead th .sort-icon {
@@ -156,7 +156,7 @@
     }
 
     tbody tr:last-child { border-bottom: none; }
-    tbody tr:hover { background: var(--cream); }
+    @media (hover: hover) { tbody tr:hover { background: var(--cream); } }
 
     tbody td {
       padding: 5px 16px;
@@ -217,7 +217,7 @@
       padding: 0px 8px; line-height: 1.15; white-space: nowrap;
       cursor: pointer; border-radius: 6px; transition: background .12s;
     }
-    .month-strip-cell:hover { background: rgba(121,189,177,0.12); }
+    @media (hover: hover) { .month-strip-cell:hover { background: rgba(121,189,177,0.12); } }
     /* A straight ::before line rather than border-left -- border-left follows
        the box's own border-radius, which clips it into a curved nub at the
        top/bottom on desktop (the rounded corners exist for the hover
@@ -250,15 +250,28 @@
     @keyframes np-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
     @keyframes np-pop-in { from { opacity: 0; transform: translateY(14px) scale(.975); } to { opacity: 1; transform: none; } }
     @keyframes np-drop-in { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+    @keyframes np-backdrop-out { to { opacity: 0; } }
+    @keyframes np-pop-out { to { opacity: 0; transform: translateY(10px) scale(.985); } }
+    @keyframes np-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+    @keyframes np-sheet-out { from { transform: none; } to { transform: translateY(100%); } }
     .inv-modal-ov.open { animation: np-backdrop-in .2s ease-out; }
     .inv-modal-ov.open .inv-modal { animation: np-pop-in .26s cubic-bezier(.2, .8, .2, 1); }
+    /* Closing (closeInventory adds .closing, then removes .open once this has played) */
+    .inv-modal-ov.open.closing { animation: np-backdrop-out .18s ease-in forwards; }
+    .inv-modal-ov.open.closing .inv-modal { animation: np-pop-out .18s ease-in forwards; }
+    /* On a phone the window is the whole screen, so it rides up from the bottom like a sheet and drops back down */
+    @media (max-width: 680px) {
+      .inv-modal-ov.open .inv-modal { animation: np-sheet-in .36s cubic-bezier(.22, .9, .28, 1); }
+      .inv-modal-ov.open.closing { animation: np-backdrop-out .26s ease-in forwards; }
+      .inv-modal-ov.open.closing .inv-modal { animation: np-sheet-out .26s cubic-bezier(.5, 0, .9, .5) forwards; }
+    }
     .scan-overlay { animation: np-backdrop-in .18s ease-out; }
     .scan-overlay > .scan-modal { animation: np-pop-in .24s cubic-bezier(.2, .8, .2, 1); }
     .settings-panel.open { animation: np-drop-in .16s ease-out; transform-origin: top right; }
     /* opacity only: the menu is measured the moment it is created to place it on screen, and a transform would skew that */
     .ship-ctx-menu { animation: np-backdrop-in .12s ease-out; }
     @media (prefers-reduced-motion: reduce) {
-      .inv-modal-ov.open, .inv-modal-ov.open .inv-modal, .scan-overlay, .scan-overlay > .scan-modal, .settings-panel.open, .ship-ctx-menu { animation: none; }
+      .inv-modal-ov.open, .inv-modal-ov.open .inv-modal, .inv-modal-ov.open.closing, .inv-modal-ov.open.closing .inv-modal, .scan-overlay, .scan-overlay > .scan-modal, .settings-panel.open, .ship-ctx-menu { animation: none; }
     }
     .inv-modal {
       background: var(--paper, #fff); border-radius: 12px;
@@ -296,7 +309,7 @@
          close button itself floats to the far right now. */
       margin-left: 0;
     }
-    .inv-modal-close:hover { color: var(--teal); border-color: var(--teal); }
+    @media (hover: hover) { .inv-modal-close:hover { color: var(--teal); border-color: var(--teal); } }
     /* Scan: top-right of the Inventory window, just left of the close button
        (it's what floats to the far right; close then follows it). */
     .inv-modal-head #inv-scan-btn { margin-left: auto; flex: none; }
@@ -329,7 +342,7 @@
       padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: transparent;
       cursor: text; transition: border-color .12s, background .12s;
     }
-    .inv-modal-search:hover { border-color: var(--teal); background: rgba(121,189,177,0.10); }
+    @media (hover: hover) { .inv-modal-search:hover { border-color: var(--teal); background: rgba(121,189,177,0.10); } }
     .inv-modal-search:focus-within { border-color: var(--teal); background: rgba(121,189,177,0.10); }
     .inv-modal-search svg { width: 13px; height: 13px; display: block; flex: none; color: var(--ink-60); }
     .inv-modal-search input {
@@ -340,7 +353,7 @@
       flex: none; width: 16px; height: 16px; border: none; background: transparent;
       color: var(--ink-60); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
     }
-    .inv-search-clear:hover { color: var(--ink); background: var(--accent-tint, rgba(121,189,177,0.15)); }
+    @media (hover: hover) { .inv-search-clear:hover { color: var(--ink); background: var(--accent-tint, rgba(121,189,177,0.15)); } }
 
     /* right side of the top bar — board-only Inventory controls */
     /* flex:0 (not 1 1 0) -- its content (Scan/settings) is fixed-size and
@@ -371,7 +384,7 @@
       display: flex; align-items: center; justify-content: center;
       color: var(--ink-60); transition: color 0.15s, border-color 0.15s;
     }
-    .settings-btn:hover { color: var(--teal); border-color: var(--teal); }
+    @media (hover: hover) { .settings-btn:hover { color: var(--teal); border-color: var(--teal); } }
     .settings-btn svg { width: 20px; height: 20px; display: block; fill: currentColor; }
     .settings-panel {
       display: none; flex-direction: column; gap: 6px;
@@ -408,14 +421,14 @@
       border: 1px solid var(--ink-12); border-bottom-width: 2px; border-radius: 4px;
       background: #f7f9f9; padding: 1px 6px; color: var(--ink);
     }
-    .settings-action-btn:hover { border-color: var(--teal); background: rgba(121,189,177,0.06); color: #3f8f87; }
+    @media (hover: hover) { .settings-action-btn:hover { border-color: var(--teal); background: rgba(121,189,177,0.06); color: #3f8f87; } }
     .settings-toggle-row {
       appearance: none; border: 0; background: transparent; padding: 4px;
       font-family: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer;
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
       border-radius: 7px; transition: background 0.15s;
     }
-    .settings-toggle-row:hover { background: rgba(121,189,177,0.06); }
+    @media (hover: hover) { .settings-toggle-row:hover { background: rgba(121,189,177,0.06); } }
     .settings-toggle {
       flex: none; width: 30px; height: 17px; border-radius: 20px; background: #d2d9da;
       position: relative; transition: background .15s;
@@ -435,7 +448,7 @@
       font-size: 12px; color: var(--ink-60); white-space: nowrap;
       transition: color 0.15s, border-color 0.15s;
     }
-    .refresh-inv-btn:hover { color: var(--teal); border-color: var(--teal); }
+    @media (hover: hover) { .refresh-inv-btn:hover { color: var(--teal); border-color: var(--teal); } }
 
     /* card/shipment context menu, opened via the grip button */
     .ship-ctx-menu {
@@ -450,9 +463,9 @@
       padding: 7px 11px; border-radius: 6px; cursor: pointer;
       color: var(--ink); transition: background 0.1s, color 0.1s;
     }
-    .ship-ctx-item:hover { background: var(--cream); color: #3f8f87; }
+    @media (hover: hover) { .ship-ctx-item:hover { background: var(--cream); color: #3f8f87; } }
     /* Delete -- the one destructive item, red instead of the usual teal. */
-    .ship-ctx-item.ctx-danger:hover { background: #fbecea; color: #d6504a; }
+    @media (hover: hover) { .ship-ctx-item.ctx-danger:hover { background: #fbecea; color: #d6504a; } }
     .ship-ctx-item.ctx-disabled { color: var(--ink-60); cursor: default; pointer-events: none; }
     /* Current selection in the mobile Status menu (see openStageMenu). */
     .ship-ctx-item.ctx-active { color: #3f8f87; font-weight: 600; }
@@ -462,7 +475,7 @@
       display: flex; align-items: center; gap: 8px;
       padding: 5px 11px; border-radius: 6px; color: var(--ink);
     }
-    .ship-ctx-pick:hover { background: var(--cream); }
+    @media (hover: hover) { .ship-ctx-pick:hover { background: var(--cream); } }
     .ship-ctx-pick.ctx-disabled { color: var(--ink-60); pointer-events: none; opacity: 0.55; }
     .ship-ctx-pick > span { white-space: nowrap; }
     .ship-ctx-pick select {
@@ -473,7 +486,7 @@
       padding: 3px 21px 3px 8px; font-family: inherit; font-size: 12px;
       color: var(--ink); cursor: pointer; min-width: 74px;
     }
-    .ship-ctx-pick select:hover { border-color: var(--teal); }
+    @media (hover: hover) { .ship-ctx-pick select:hover { border-color: var(--teal); } }
     .ship-ctx-pick select:focus { outline: none; border-color: var(--teal); }
 
     .tab-panel { display: none; }
@@ -509,23 +522,23 @@
     #inv-table th { white-space: normal; }
     #inv-table .inv-name { font-weight: 500; }
     #inv-table td.inv-name-edit { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
-    #inv-table td.inv-name-edit:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    @media (hover: hover) { #inv-table td.inv-name-edit:hover { background: rgba(112,196,187,0.12); color: #3f8f87; } }
     #inv-table .inv-onhand {
       font-variant-numeric: tabular-nums; cursor: pointer;
       border-radius: 4px; transition: background 0.12s;
     }
-    #inv-table .inv-onhand:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    @media (hover: hover) { #inv-table .inv-onhand:hover { background: rgba(112,196,187,0.12); color: #3f8f87; } }
     #inv-table td.inv-bs, #inv-table td.inv-dose { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
-    #inv-table td.inv-bs:hover, #inv-table td.inv-dose:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    @media (hover: hover) { #inv-table td.inv-bs:hover, #inv-table td.inv-dose:hover { background: rgba(112,196,187,0.12); color: #3f8f87; } }
     #inv-table td.inv-supplier-edit { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
-    #inv-table td.inv-supplier-edit:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    @media (hover: hover) { #inv-table td.inv-supplier-edit:hover { background: rgba(112,196,187,0.12); color: #3f8f87; } }
     #inv-table .inv-bottles { font-variant-numeric: tabular-nums; color: var(--ink-60); cursor: pointer; border-radius: 4px; transition: background 0.12s; }
-    #inv-table .inv-bottles:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    @media (hover: hover) { #inv-table .inv-bottles:hover { background: rgba(112,196,187,0.12); color: #3f8f87; } }
     #inv-table .inv-num { font-variant-numeric: tabular-nums; color: var(--ink-60); }
     #inv-table .inv-runout { font-size: 12px; }
     #inv-table .inv-next-order { font-size: 12px; cursor: default; border-radius: 4px; transition: background 0.12s; text-align: center; }
     #inv-table .inv-next-order.inv-clickable { cursor: pointer; }
-    #inv-table .inv-next-order.inv-clickable:hover { background: rgba(112,196,187,0.12); color: #3f8f87; }
+    @media (hover: hover) { #inv-table .inv-next-order.inv-clickable:hover { background: rgba(112,196,187,0.12); color: #3f8f87; } }
     .inv-bars { display: inline-flex; gap: 1px; align-items: center; vertical-align: middle; margin-left: 4px; }
     .inv-bar { display: block; flex-shrink: 0; width: 10px; height: 5px; border-radius: 1px; background: #3f8f87; opacity: 0.5; }
     @keyframes inv-pulse {
@@ -539,15 +552,17 @@
     #inv-table .inv-no-data { color: var(--ink-60); }
     #inv-table .inv-supplier { font-size: 12px; color: var(--ink-60); }
     #inv-table .inv-del-btn { background: none; border: none; cursor: pointer; color: var(--ink-60); font-size: 14px; padding: 2px 4px; border-radius: 4px; opacity: 0; transition: opacity 0.1s, color 0.1s; line-height: 1; }
-    #inv-table tr:hover .inv-del-btn { opacity: 1; }
-    #inv-table .inv-del-btn:hover { color: #d6504a; }
+    @media (hover: hover) { #inv-table tr:hover .inv-del-btn { opacity: 1; } }
+    /* No hover on a touch screen, so the row's delete button is simply always faintly there */
+    @media (hover: none) { #inv-table .inv-del-btn { opacity: .55; } }
+    @media (hover: hover) { #inv-table .inv-del-btn:hover { color: #d6504a; } }
     /* "+ Add [item]" affordance appended while filtering the Item column, mirroring
        the "+ Add" option in the board's "+ Item" and scan search pickers. */
     #inv-table .inv-add-cell {
       cursor: pointer; color: #3f8f87; font-style: italic; padding: 8px 16px;
       white-space: nowrap; overflow: visible; max-width: none;
     }
-    #inv-table tr.inv-add-row:hover .inv-add-cell { background: var(--cream); }
+    @media (hover: hover) { #inv-table tr.inv-add-row:hover .inv-add-cell { background: var(--cream); } }
     .inv-card.inv-add-card {
       cursor: pointer; color: #3f8f87; font-style: italic;
       display: flex; align-items: center; padding: 12px 14px;
@@ -567,12 +582,12 @@
       font-size: 12px; color: var(--ink-60); white-space: nowrap;
       transition: color 0.15s, border-color 0.15s, background 0.15s;
     }
-    .inv-scan-btn:hover { color: var(--teal); border-color: var(--teal); }
+    @media (hover: hover) { .inv-scan-btn:hover { color: var(--teal); border-color: var(--teal); } }
     /* Header "Autoship" filter button while its board-wide filter is on --
        same on/active treatment as .inv-soon-btn.active, teal instead of
        orange since it's a board filter, not an Inventory run-out warning. */
     .inv-scan-btn.active { background: var(--teal); border-color: var(--teal); color: #fff; }
-    .inv-scan-btn.active:hover { color: #fff; }
+    @media (hover: hover) { .inv-scan-btn.active:hover { color: #fff; } }
 
     /* Filters every month at once (see the 'global-search-input' input
        handler) -- lives right after the Inventory button, left-aligned,
@@ -585,7 +600,7 @@
       padding: 0 9px; border: 1.5px solid var(--ink-12); border-radius: 7px; background: transparent;
       cursor: text; transition: border-color .12s, background .12s;
     }
-    .global-search-box:hover { border-color: var(--teal); background: rgba(121,189,177,0.10); }
+    @media (hover: hover) { .global-search-box:hover { border-color: var(--teal); background: rgba(121,189,177,0.10); } }
     .global-search-box:focus-within { border-color: var(--teal); background: rgba(121,189,177,0.10); }
     .global-search-box svg { width: 13px; height: 13px; display: block; flex: none; color: var(--ink-60); }
     .global-search-input {
@@ -596,7 +611,7 @@
        and a pinned merchant all clear together); greyed out while nothing is filtered. */
     .global-clear-btn { width: 30px; padding: 0; justify-content: center; font-size: 17px; line-height: 1; flex: none; }
     .global-clear-btn:disabled { opacity: .4; cursor: default; }
-    .global-clear-btn:disabled:hover { color: var(--ink-60); border-color: var(--ink-12); }
+    @media (hover: hover) { .global-clear-btn:disabled:hover { color: var(--ink-60); border-color: var(--ink-12); } }
 
     /* "Pin Merchant" (shipment context menu) chips -- a persistent one-click
        shortcut for "Shipment name = X", stacking (AND) with the text search
@@ -647,7 +662,7 @@
     }
     .sh-row input:focus, .sh-add input:focus { border-color: var(--teal); }
     .sh-del { background: none; border: none; cursor: pointer; color: var(--ink-60); font-size: 18px; line-height: 1; padding: 0; border-radius: 4px; }
-    .sh-del:hover { color: #d6504a; }
+    @media (hover: hover) { .sh-del:hover { color: #d6504a; } }
     .sh-add { border-top: 1px solid var(--ink-12); padding-top: 12px; grid-template-columns: minmax(0, 1fr) 96px auto; }
     .scan-overlay {
       position: fixed; inset: 0; background: rgba(23,26,28,0.55); z-index: 300;
@@ -666,7 +681,7 @@
       background: none; border: none; cursor: pointer; font-size: 20px; line-height: 1;
       color: var(--ink-60); padding: 0 2px; border-radius: 4px;
     }
-    .scan-modal-head .scan-close-btn:hover { color: var(--ink); }
+    @media (hover: hover) { .scan-modal-head .scan-close-btn:hover { color: var(--ink); } }
     .scan-video {
       width: 100%; border-radius: 8px; background: #111;
       aspect-ratio: 4/3; object-fit: cover; display: block; margin-bottom: 12px;
@@ -676,7 +691,7 @@
       color: #fff; border-radius: 7px; padding: 8px 14px; font-size: 13px;
       font-family: inherit; cursor: pointer; font-weight: 500; white-space: nowrap;
     }
-    .snm-confirm:hover { filter: brightness(0.93); }
+    @media (hover: hover) { .snm-confirm:hover { filter: brightness(0.93); } }
     .snm-confirm:disabled { opacity: 0.45; cursor: default; filter: none; }
     .scan-status-msg { font-size: 12px; color: var(--ink-60); margin-top: 8px; min-height: 16px; }
     /* Item-name search that replaced the old barcode text field — reuses the
@@ -720,7 +735,7 @@
       color: var(--ink-60); border-radius: 7px; padding: 8px 14px; font-size: 13px;
       font-family: inherit; cursor: pointer;
     }
-    .recv-confirm-cancel:hover { border-color: var(--ink-60); color: var(--ink); }
+    @media (hover: hover) { .recv-confirm-cancel:hover { border-color: var(--ink-60); color: var(--ink); } }
 
     /* No-match modal extras */
     .snm-code {
@@ -757,7 +772,7 @@
       color: var(--ink-60); border-radius: 7px; padding: 7px 14px; font-size: 13px;
       font-family: inherit; cursor: pointer; transition: color .15s, border-color .15s;
     }
-    .snm-cancel:hover { color: var(--ink); border-color: var(--ink-60); }
+    @media (hover: hover) { .snm-cancel:hover { color: var(--ink); border-color: var(--ink-60); } }
     /* Destructive confirm (mobile inventory-card delete) -- same shape as
        .snm-confirm, red instead of teal so it reads as irreversible. */
     .snm-danger {
@@ -765,7 +780,7 @@
       color: #fff; border-radius: 7px; padding: 8px 14px; font-size: 13px;
       font-family: inherit; cursor: pointer; font-weight: 500; white-space: nowrap;
     }
-    .snm-danger:hover { filter: brightness(0.93); }
+    @media (hover: hover) { .snm-danger:hover { filter: brightness(0.93); } }
     .snm-danger:disabled { opacity: 0.45; cursor: default; filter: none; }
     /* Bottom-left "Clear Link" in the Autoship modal footer -- margin-right:
        auto pushes it flush left while Cancel/Save (no special margin) still
@@ -776,7 +791,7 @@
       color: #d6504a; border-radius: 7px; padding: 7px 10px; font-size: 13px;
       font-family: inherit; cursor: pointer; transition: background .15s;
     }
-    .autoship-clear-btn:hover { background: rgba(214,80,74,0.08); }
+    @media (hover: hover) { .autoship-clear-btn:hover { background: rgba(214,80,74,0.08); } }
     .autoship-clear-btn:disabled { opacity: 0.5; cursor: default; }
 
     .autoship-approve-row {
@@ -797,7 +812,8 @@
       font-size: 13px; font-family: inherit; background: #fff; color: var(--ink);
       cursor: pointer; text-align: left; transition: border-color .12s;
     }
-    .autoship-date-input:hover, .autoship-date-input:focus { border-color: var(--teal); outline: none; }
+    .autoship-date-input:focus { border-color: var(--teal); outline: none; }
+    @media (hover: hover) { .autoship-date-input:hover { border-color: var(--teal); outline: none; } }
     .autoship-date-text.is-placeholder { color: var(--ink-60); }
     .autoship-date-cal-icon { width: 14px; height: 14px; color: var(--ink-60); flex: none; }
 
@@ -825,7 +841,7 @@
       display: flex; align-items: center; justify-content: center;
       transition: background .1s, color .1s;
     }
-    .autoship-cal-nav:hover { background: var(--cream); color: #3f8f87; }
+    @media (hover: hover) { .autoship-cal-nav:hover { background: var(--cream); color: #3f8f87; } }
     .autoship-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
     .autoship-cal-dow {
       font-size: 10px; font-weight: 600; color: var(--ink-60);
@@ -837,11 +853,12 @@
       font-family: inherit; font-size: 12.5px;
       color: var(--ink); transition: background .1s, color .1s;
     }
-    .autoship-cal-day:hover { background: var(--cream); color: #3f8f87; }
+    @media (hover: hover) { .autoship-cal-day:hover { background: var(--cream); color: #3f8f87; } }
     .autoship-cal-day.is-muted { color: var(--ink-12); cursor: default; }
-    .autoship-cal-day.is-muted:hover { background: transparent; color: var(--ink-12); }
+    @media (hover: hover) { .autoship-cal-day.is-muted:hover { background: transparent; color: var(--ink-12); } }
     .autoship-cal-day.is-today { font-weight: 700; }
-    .autoship-cal-day.is-selected, .autoship-cal-day.is-selected:hover { background: var(--teal); color: #fff; }
+    .autoship-cal-day.is-selected { background: var(--teal); color: #fff; }
+    @media (hover: hover) { .autoship-cal-day.is-selected:hover { background: var(--teal); color: #fff; } }
     .autoship-cal-footer {
       display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding-top: 6px; margin-top: 4px;
       border-top: 1px solid var(--ink-12);
@@ -858,19 +875,19 @@
       border: 1.5px solid #3f8f87; background: #fff; color: #3f8f87;
       transition: background .12s, color .12s;
     }
-    .autoship-cal-approve-btn:hover { background: rgba(121,189,177,0.14); }
+    @media (hover: hover) { .autoship-cal-approve-btn:hover { background: rgba(121,189,177,0.14); } }
     .autoship-cal-approve-btn.is-approved { background: #3f8f87; color: #fff; }
-    .autoship-cal-approve-btn.is-approved:hover { background: #357a73; }
+    @media (hover: hover) { .autoship-cal-approve-btn.is-approved:hover { background: #357a73; } }
     .autoship-cal-today-btn, .autoship-cal-clear-btn {
       appearance: none; border: 0; background: transparent; cursor: pointer;
       font-family: inherit; font-size: 12px; padding: 4px 8px; border-radius: 6px;
     }
     .autoship-cal-today-btn { color: #3f8f87; }
-    .autoship-cal-today-btn:hover { background: rgba(121,189,177,0.12); }
+    @media (hover: hover) { .autoship-cal-today-btn:hover { background: rgba(121,189,177,0.12); } }
     /* Destructive -- same red as .ctx-danger's hover treatment elsewhere,
        since this wipes the whole saved link+date, not just today's pick. */
     .autoship-cal-clear-btn { color: var(--ink-3); }
-    .autoship-cal-clear-btn:hover { background: #fbecea; color: #d6504a; }
+    @media (hover: hover) { .autoship-cal-clear-btn:hover { background: #fbecea; color: #d6504a; } }
 
     /* Scan success / error toast */
     .scan-toast {
@@ -1152,7 +1169,7 @@
       min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     #tab-board .warn-name[data-act] { cursor: pointer; }
-    #tab-board .warn-name[data-act]:hover { text-decoration: underline; }
+    @media (hover: hover) { #tab-board .warn-name[data-act]:hover { text-decoration: underline; } }
     /* "<item> autoships <date> · …" -- plain prefix text, no label chrome */
     #tab-board .warn-detail { font-size: 12px; color: var(--ink-3); min-width: 0; }
     #tab-board .warn-overdue { color: var(--out); }
@@ -1160,24 +1177,25 @@
     #tab-board .warn-ro.is-gap { color: var(--out); }
     /* order month -> jumps to that order; the item name above opens Inventory */
     #tab-board .warn-month { color: var(--accent-deep); font-weight: 500; cursor: pointer; }
-    #tab-board .warn-month:hover { text-decoration: underline; }
+    @media (hover: hover) { #tab-board .warn-month:hover { text-decoration: underline; } }
     /* Clickable ship date (opens the Autoship link, same as the date on the card) -- orange like the card's own pending date */
     #tab-board .warn-date { color: var(--soon); font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-    #tab-board .warn-date.has-link:hover { text-decoration: underline; }
+    @media (hover: hover) { #tab-board .warn-date.has-link:hover { text-decoration: underline; } }
     #tab-board .warn-btn {
       flex: none; height: 22px; padding: 0 9px; border: 1px solid #c4cdd0; border-radius: 8px;
       background: #fff; font: 500 11.5px/1 var(--font-ui); color: var(--ink-2); cursor: pointer;
     }
-    #tab-board .warn-btn:hover { border-color: var(--accent); color: var(--accent-deep); }
+    @media (hover: hover) { #tab-board .warn-btn:hover { border-color: var(--accent); color: var(--accent-deep); } }
     #tab-board .warn-btn.is-approve { border-color: var(--accent); background: #fff; color: var(--accent-deep); }
-    #tab-board .warn-btn.is-approve:hover { background: var(--accent); color: #fff; }
+    @media (hover: hover) { #tab-board .warn-btn.is-approve:hover { background: var(--accent); color: #fff; } }
     /* "n completed" chip, top-right of the panel's header (approved autoships + ignored run-outs): hover (or tap) lists them with restore buttons */
     #tab-board .warn-ign {
       order: 2; flex: none; border: none; border-radius: 20px;
       background: rgba(255, 255, 255, .7); padding: 1px 9px 2px 9px; font: 500 11px/1.5 var(--font-ui);
       letter-spacing: 0; text-transform: none; color: var(--ink-3); cursor: pointer;
     }
-    #tab-board .warn-ign:hover, #tab-board .warn-ign.is-open { color: var(--accent-deep); background: #fff; }
+    #tab-board .warn-ign.is-open { color: var(--accent-deep); background: #fff; }
+    @media (hover: hover) { #tab-board .warn-ign:hover { color: var(--accent-deep); background: #fff; } }
     /* Ignored-items popover (lives on <body>, so no #tab-board variables here) */
     .warn-ign-pop {
       position: fixed; z-index: 9000; display: none; box-sizing: border-box;
@@ -1198,7 +1216,7 @@
       flex: none; height: 22px; padding: 0 9px; border: 1px solid #3f8f87; border-radius: 8px;
       background: #fff; color: #3f8f87; font: 500 11.5px/1 inherit; font-family: inherit; cursor: pointer;
     }
-    .wip-btn:hover { background: #3f8f87; color: #fff; }
+    @media (hover: hover) { .wip-btn:hover { background: #3f8f87; color: #fff; } }
     /* ── Preemptive mirrors: a next-month order flagged Launch Preemptively,
        shown (fully expanded, standard colours, fully editable -- edits apply
        to the real order) at the bottom of THIS month's open orders. A block
@@ -1239,12 +1257,12 @@
       cursor: pointer; white-space: nowrap;
     }
     #tab-board .ship-preempt svg { width: 11px; height: 11px; flex: none; }
-    #tab-board .ship-preempt:hover { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
+    @media (hover: hover) { #tab-board .ship-preempt:hover { border-color: var(--accent); color: var(--accent-deep); background: #fff; } }
     #tab-board .ship-preempt.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
-    #tab-board .ship-preempt.is-on:hover { background: var(--accent-deep); border-color: var(--accent-deep); color: #fff; }
-    #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
+    @media (hover: hover) { #tab-board .ship-preempt.is-on:hover { background: var(--accent-deep); border-color: var(--accent-deep); color: #fff; } }
+    @media (hover: hover) { #tab-board .month-head .add-btn:hover, #tab-board .ship-head .add-btn:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
-    }
+    } }
     /* Desktop keeps the original placement -- a plain-text field (same
        treatment as item/shipment notes, no box/border of its own) sitting
        right after "+ Order", taking the room a per-month search box used to
@@ -1340,7 +1358,7 @@
       transition: background .12s, color .12s, border-color .12s;
     }
     #tab-board .card-grip svg, #tab-board .ship-grip svg { width: 11px; height: 11px; display: block; margin-top: -1px; }
-    #tab-board .card-grip:hover, #tab-board .ship-grip:hover { background: var(--accent-tint); color: var(--accent-deep); border-color: var(--accent); }
+    @media (hover: hover) { #tab-board .card-grip:hover, #tab-board .ship-grip:hover { background: var(--accent-tint); color: var(--accent-deep); border-color: var(--accent); } }
     #tab-board .grip:active, #tab-board .card-grip:active, #tab-board .ship-grip:active { cursor: grabbing; }
     #tab-board .card-name {
       flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600;
@@ -1396,7 +1414,7 @@
     #tab-board .autoship-date, #tab-board .autoship-date-badge, #tab-board .ship-autoship-date {
       -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     }
-    #tab-board .proj .autoship-date.has-link:hover { text-decoration: underline; }
+    @media (hover: hover) { #tab-board .proj .autoship-date.has-link:hover { text-decoration: underline; } }
     /* Approved ship date -- shifts from the pending orange to the same teal
        the "+4m" duration note uses (--accent-deep). Higher specificity than
        each base rule above/below so it wins regardless of source order. */
@@ -1412,7 +1430,7 @@
       color: var(--soon); font-weight: 700; font-size: 11px; white-space: nowrap; flex: none;
       cursor: pointer; padding-right: 21px;
     }
-    #tab-board .card-top .autoship-date-badge.has-link:hover { text-decoration: underline; }
+    @media (hover: hover) { #tab-board .card-top .autoship-date-badge.has-link:hover { text-decoration: underline; } }
     #tab-board .proj .nxt { opacity: 0; width: 0; overflow: hidden; color: var(--accent-deep); }
     #tab-board .proj .nxt .dl { font-size: 19px; line-height: 1; letter-spacing: -.02em; color: var(--accent-deep); }
     #tab-board .proj .nxt .dl .u { font-size: 11px; color: var(--accent); }
@@ -1443,9 +1461,9 @@
       transition: background .12s, color .12s, border-color .12s;
     }
     #tab-board .price-sign-toggle svg { width: 9px; height: 9px; display: block; }
-    #tab-board .price-sign-toggle:hover { border-color: var(--accent); color: var(--accent-deep); }
+    @media (hover: hover) { #tab-board .price-sign-toggle:hover { border-color: var(--accent); color: var(--accent-deep); } }
     #tab-board .price-sign-toggle.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
-    #tab-board .price-sign-toggle.is-active:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+    @media (hover: hover) { #tab-board .price-sign-toggle.is-active:hover { background: var(--accent-deep); border-color: var(--accent-deep); } }
     #tab-board .price-sign-toggle:disabled { opacity: .45; cursor: default; }
     #tab-board .field-row .input-wrap { flex: 1 1 auto; min-width: 0; }
     #tab-board .input-wrap {
@@ -1485,9 +1503,9 @@
       border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2);
       transition: transform .15s;
     }
-    #tab-board .incl-toggle:hover .sw { background: #c3ccce; }
+    @media (hover: hover) { #tab-board .incl-toggle:hover .sw { background: #c3ccce; } }
     #tab-board .card.counted .incl-toggle .sw { background: var(--accent); }
-    #tab-board .card.counted .incl-toggle:hover .sw { background: var(--accent-deep); }
+    @media (hover: hover) { #tab-board .card.counted .incl-toggle:hover .sw { background: var(--accent-deep); } }
     #tab-board .card.counted .incl-toggle .sw i { transform: translateX(13px); }
     #tab-board .month-list > .card .badge.loose-tag { display: inline-block; }
     #tab-board .badge.loose-tag { display: none; background: #eef2f2; color: var(--ink-3); }
@@ -1502,7 +1520,7 @@
       background: transparent; color: var(--ink-2); font-family: var(--font-ui);
       font-size: 12px; font-weight: 500; cursor: pointer; transition: all .12s;
     }
-    #tab-board .add-btn:hover { border-color: var(--accent); color: var(--accent-deep); background: #fff; }
+    @media (hover: hover) { #tab-board .add-btn:hover { border-color: var(--accent); color: var(--accent-deep); background: #fff; } }
     #tab-board .add-btn svg { width: 12px; height: 12px; }
 
     /* ── Inventory item picker dropdown ── */
@@ -1533,7 +1551,8 @@
       border-radius: 6px; margin: 0 4px;
       display: grid; grid-template-columns: 145px 95px 1fr; align-items: center; gap: 8px;
     }
-    .inv-picker-opt:hover, .inv-picker-opt:focus { background: #f0f2f3; color: #3f8f87; }
+    .inv-picker-opt:focus { background: #f0f2f3; color: #3f8f87; }
+    @media (hover: hover) { .inv-picker-opt:hover { background: #f0f2f3; color: #3f8f87; } }
     .inv-picker-opt .ipm-left { min-width: 0; display: flex; align-items: baseline; gap: 5px; overflow: hidden; }
     .inv-picker-opt .ipm-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .inv-picker-opt .ipm-inlist { flex: none; font-size: 11px; color: #8a979e; white-space: nowrap; font-style: italic; }
@@ -1547,11 +1566,15 @@
     .inv-picker-opt.is-out     .ipm-meta { color: var(--ip-out); }
     .inv-picker-opt.is-reorder { background: var(--ip-reorder-tint); }
     .inv-picker-opt.is-reorder .ipm-meta { color: var(--ip-reorder); }
-    .inv-picker-opt.is-soon:hover,    .inv-picker-opt.is-soon:focus    { background: #fdecd8; }
-    .inv-picker-opt.is-out:hover,     .inv-picker-opt.is-out:focus     { background: #f8dcda; }
-    .inv-picker-opt.is-reorder:hover, .inv-picker-opt.is-reorder:focus { background: #d4f0ed; }
+    .inv-picker-opt.is-soon:focus { background: #fdecd8; }
+    @media (hover: hover) { .inv-picker-opt.is-soon:hover { background: #fdecd8; } }
+    .inv-picker-opt.is-out:focus { background: #f8dcda; }
+    @media (hover: hover) { .inv-picker-opt.is-out:hover { background: #f8dcda; } }
+    .inv-picker-opt.is-reorder:focus { background: #d4f0ed; }
+    @media (hover: hover) { .inv-picker-opt.is-reorder:hover { background: #d4f0ed; } }
     .inv-picker-opt.is-inlist { opacity: 0.45; }
-    .inv-picker-opt.is-inlist:hover, .inv-picker-opt.is-inlist:focus { opacity: 1; }
+    .inv-picker-opt.is-inlist:focus { opacity: 1; }
+    @media (hover: hover) { .inv-picker-opt.is-inlist:hover { opacity: 1; } }
     .inv-picker-free { color: #3f8f87; font-style: italic; }
     .inv-picker-empty { padding: 7px 13px; font-size: 12px; color: #8a979e; font-style: italic; }
 
@@ -1771,9 +1794,9 @@
     /* Linked-to-Inventory names send the item to the Search bar; the run-out
        metrics (Supply: "12x → 37d, 11/29") open it in Inventory. */
     #tab-board .card-name[data-act="search-item"] { cursor: pointer; }
-    #tab-board .card-name[data-act="search-item"]:hover { text-decoration: underline; text-underline-offset: 2px; }
+    @media (hover: hover) { #tab-board .card-name[data-act="search-item"]:hover { text-decoration: underline; text-underline-offset: 2px; } }
     #tab-board .proj .pv[data-act="open-inv-item"] { cursor: pointer; }
-    #tab-board .proj .pv[data-act="open-inv-item"]:hover :is(.dose-tag, .dose-arrow, .cur, .nxt) { text-decoration: underline; text-underline-offset: 2px; }
+    @media (hover: hover) { #tab-board .proj .pv[data-act="open-inv-item"]:hover :is(.dose-tag, .dose-arrow, .cur, .nxt) { text-decoration: underline; text-underline-offset: 2px; } }
 
     /* ── COMPACT layout — one dense grid row per card ── */
     #tab-board .board.layout-compact .month-list { gap: 5px; }
@@ -1923,9 +1946,9 @@
          the fallback cap for browsers that don't support the property. */
       field-sizing: content;
     }
-    #tab-board .ship-stage-select:hover {
+    @media (hover: hover) { #tab-board .ship-stage-select:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
-    }
+    } }
     #tab-board .ship-stage-select::after {
       content: '▾'; font-size: 17px; color: var(--ink-3); margin: 0px -3px -2px -4px;
     }
@@ -1938,7 +1961,7 @@
       color: var(--soon); font-weight: 700; font-size: 11px; white-space: nowrap;
       flex: none; cursor: pointer;
     }
-    #tab-board .ship-autoship-date.has-link:hover { text-decoration: underline; }
+    @media (hover: hover) { #tab-board .ship-autoship-date.has-link:hover { text-decoration: underline; } }
     #tab-board .stage-btn {
       font: 500 10.5px/1 var(--font-ui); padding: 4px 8px;
       background: var(--paper); color: var(--ink-3);
@@ -1946,7 +1969,7 @@
       cursor: pointer; transition: background .1s, color .1s; white-space: nowrap;
     }
     #tab-board .stage-btn:first-child { border-left: none; }
-    #tab-board .stage-btn:hover:not(.active) { background: var(--accent-tint); color: var(--ink-2); }
+    @media (hover: hover) { #tab-board .stage-btn:hover:not(.active) { background: var(--accent-tint); color: var(--ink-2); } }
     #tab-board .stage-btn.active { background: var(--b-ink); color: #fff; }
 
     /* ── locked shipment (any non-null stage) ── */
@@ -2029,7 +2052,7 @@
       color: #7a5700; font-size: 13px; font-weight: 600;
       text-decoration: underline; cursor: pointer;
     }
-    .ynab-warning-link:hover { color: #5a3f00; }
+    @media (hover: hover) { .ynab-warning-link:hover { color: #5a3f00; } }
 
     /* Cross-device "data changed elsewhere" notice — fixed so it stays on top
        of the Inventory modal (z-index 300) instead of being covered by it. */
@@ -2047,12 +2070,12 @@
       padding: 6px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 600;
       font-family: inherit; cursor: pointer; white-space: nowrap;
     }
-    .sync-banner-refresh:hover { background: #24597e; }
+    @media (hover: hover) { .sync-banner-refresh:hover { background: #24597e; } }
     .sync-banner-dismiss {
       appearance: none; border: none; background: none; color: #1f5f85;
       font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; flex: none;
     }
-    .sync-banner-dismiss:hover { color: #0f3350; }
+    @media (hover: hover) { .sync-banner-dismiss:hover { color: #0f3350; } }
 
     /* ── Mobile layout (≤ 680px) ── */
     @media (max-width: 680px) {
@@ -2351,6 +2374,7 @@
       .inv-modal-close, .inv-modal-head #inv-scan-btn { order: 2; }
       /* The Inventory window never scrolls sideways on a phone -- vertical only. */
       .inv-modal-ov, .inv-modal, .inv-modal-body { overflow-x: hidden; max-width: 100%; touch-action: pan-y pinch-zoom; }
+      .inv-modal-ov { overflow: hidden; }
       .inv-modal-body { overflow-y: auto; overscroll-behavior-x: none; }
       /* Forces the line break itself (flex-basis:100%, zero height) -- row 1
          ends at Close, row 2 starts here with search + the two filter
@@ -2630,6 +2654,20 @@
 
 <script>
 
+  // ── Touch screens ──
+  // Every :hover style in the stylesheet is wrapped in @media (hover: hover), so a
+  // tap no longer leaves a button looking hovered (the teal outline that used to
+  // stick until you tapped somewhere else). The tapped button also gives up focus,
+  // as a click on a desktop does once the pointer moves on.
+  (function () {
+    const touch = window.matchMedia('(hover: none)');
+    document.addEventListener('click', (e) => {
+      if (!touch.matches) return;
+      const b = e.target.closest && e.target.closest('button');
+      if (b) setTimeout(() => { if (document.activeElement === b) b.blur(); }, 0); // not if the tap moved focus on (e.g. into a field)
+    }, true);
+  })();
+
   // ── Board is the page; Inventory opens over it as a modal ──
   // Off-screen shipments are only size placeholders (content-visibility:auto, see
   // the board CSS), so anything that scrolls to something inside a month first
@@ -2653,8 +2691,10 @@
   }
 
   const invOv = document.getElementById('inv-modal-ov');
+  let invClosing = false, invCloseTimer = 0;
   function openInventory() {
     if (!invOv) return;
+    if (invClosing) { clearTimeout(invCloseTimer); invClosing = false; invOv.classList.remove('closing'); } // reopened mid-close
     invOv.classList.add('open');
     // Land the cursor in the Item filter so you can type straight away.
     // Focus() itself always "succeeds" (the border/background react to
@@ -2672,15 +2712,30 @@
     // The table only renders its rows on this event.
     document.dispatchEvent(new CustomEvent('inventoryActivated'));
   }
-  function closeInventory() {
-    if (!invOv) return;
-    invOv.classList.remove('open');
+  // The window plays its closing animation first (.closing), then goes away and
+  // does the housekeeping -- so the work below can't hold up the first frame of it.
+  function finishCloseInventory() {
+    clearTimeout(invCloseTimer);
+    invClosing = false;
+    invOv.classList.remove('open', 'closing');
     // Inventory edits feed the board's projections, so push the (cache, kept
     // current by every edit) to the board on the way out -- and, only if
     // something was edited, re-read from Turso to pick up the server's own
     // copy. A look-around with no edits costs no network.
     if (window._INV_LOG_ROWS) window.InventoryWriter?.syncBoard(window._INV_LOG_ROWS);
     if (window._INV_DIRTY) window.InventoryWriter?.run().catch(() => {});
+  }
+  function closeInventory() {
+    if (!invOv || invClosing || !invOv.classList.contains('open')) return;
+    // Drop the keyboard / focus ring now rather than when the window finally vanishes
+    if (document.activeElement && invOv.contains(document.activeElement)) document.activeElement.blur();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finishCloseInventory(); return; }
+    invClosing = true;
+    invOv.classList.add('closing');
+    const modal = document.getElementById('tab-inventory');
+    const onEnd = (e) => { if (e.target !== modal) return; modal.removeEventListener('animationend', onEnd); if (invClosing) finishCloseInventory(); };
+    modal?.addEventListener('animationend', onEnd);
+    invCloseTimer = setTimeout(() => { modal?.removeEventListener('animationend', onEnd); if (invClosing) finishCloseInventory(); }, 400); // never stuck open
   }
   document.getElementById('inv-search-link')?.addEventListener('click', openInventory);
   document.getElementById('inv-modal-close')?.addEventListener('click', closeInventory);

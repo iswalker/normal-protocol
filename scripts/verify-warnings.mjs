@@ -1262,6 +1262,84 @@ try {
     await bc.close();
   }
 
+  // ── touch screens: taps leave nothing "hot"; Inventory rides up as a sheet and eases back down ──
+  {
+    const openTouch = async (viewport, extra = {}) => {
+      const c = await browser.newContext({ viewport, hasTouch: true, ...extra });
+      const p = await c.newPage();
+      p.on('pageerror', (e) => errors.push(String(e)));
+      await p.goto(base, { waitUntil: 'load' });
+      await p.waitForSelector('#tab-board #board .month', { state: 'attached', timeout: 15000 });
+      await p.waitForTimeout(1500);
+      return { c, p };
+    };
+    const { c: tc, p: tp } = await openTouch({ width: 390, height: 800 }, { isMobile: true });
+    const hot = (sel) => tp.evaluate((q) => ({ border: getComputedStyle(document.querySelector(q)).borderTopColor, focused: document.activeElement === document.querySelector(q) }), sel);
+    check('(touch emulation is on: the device reports no hover)', await tp.evaluate(() => matchMedia('(hover: none)').matches));
+    const gearBase = await hot('#settings-btn');
+    await tp.tap('#settings-btn');
+    await tp.waitForTimeout(150);
+    const gearAfter = await hot('#settings-btn');
+    check('tapping Settings opens it, and the gear does not stay teal or focused', (await tp.evaluate(() => document.getElementById('settings-panel').classList.contains('open'))) && gearAfter.border === gearBase.border && !gearAfter.focused, JSON.stringify({ gearBase, gearAfter }));
+    await tp.tap('#settings-btn'); // close it again
+    const autoBase = await hot('#inv-autoship-btn');
+    await tp.tap('#inv-autoship-btn');
+    await tp.waitForTimeout(250);
+    const autoOn = await hot('#inv-autoship-btn');
+    check('tapping Autoship filters, and the button does not stay focused', (await tp.evaluate(() => document.getElementById('inv-autoship-btn').classList.contains('active'))) && !autoOn.focused, JSON.stringify(autoOn));
+    await tp.tap('#inv-autoship-btn');
+    await tp.waitForTimeout(250);
+    const autoOff = await hot('#inv-autoship-btn');
+    check('…and once it is switched off it is back to its normal outline (no sticky hover teal)', autoOff.border === autoBase.border && !autoOff.focused, JSON.stringify({ autoBase, autoOff }));
+    // Inventory: a sheet that rides up from the bottom...
+    await tp.tap('#inv-search-link');
+    const sheetIn = await tp.evaluate(() => getComputedStyle(document.getElementById('tab-inventory')).animationName);
+    await tp.waitForTimeout(700);
+    const sheetRest = await tp.evaluate(() => { const r = document.getElementById('tab-inventory').getBoundingClientRect(); return { top: Math.round(r.top), transform: getComputedStyle(document.getElementById('tab-inventory')).transform }; });
+    check('on a phone the Inventory window eases up from the bottom as it opens, then rests flush', sheetIn === 'np-sheet-in' && sheetRest.top === 0 && sheetRest.transform === 'none', JSON.stringify({ sheetIn, sheetRest }));
+    // ...and eases back down when closed
+    await tp.tap('#inv-modal-close');
+    await tp.waitForTimeout(60);
+    const closing = await tp.evaluate(() => ({ cls: document.getElementById('inv-modal-ov').className, anim: getComputedStyle(document.getElementById('tab-inventory')).animationName, shown: getComputedStyle(document.getElementById('inv-modal-ov')).display }));
+    check('closing it plays an ease-out first (the window is still up while it slides away)', /closing/.test(closing.cls) && closing.anim === 'np-sheet-out' && closing.shown === 'flex', JSON.stringify(closing));
+    await tp.waitForTimeout(600);
+    const closed = await tp.evaluate(() => ({ cls: document.getElementById('inv-modal-ov').className, shown: getComputedStyle(document.getElementById('inv-modal-ov')).display }));
+    check('…and then it is gone', !/open|closing/.test(closed.cls) && closed.shown === 'none', JSON.stringify(closed));
+    await tp.tap('#inv-search-link'); // reopening works after a close
+    await tp.waitForTimeout(500);
+    check('…and it reopens normally afterwards', await tp.evaluate(() => document.getElementById('inv-modal-ov').classList.contains('open') && !document.getElementById('inv-modal-ov').classList.contains('closing')));
+    await tc.close();
+
+    // touch tablet: no hover to reveal the row delete buttons, so they are simply there
+    const { c: ic, p: ip } = await openTouch({ width: 1024, height: 768 });
+    await ip.evaluate(() => document.getElementById('inv-search-link').click());
+    await ip.waitForSelector('#inv-body .inv-del-btn', { state: 'attached', timeout: 10000 });
+    check('on a touch tablet the Inventory row delete buttons are visible without hovering', (await ip.evaluate(() => Number(getComputedStyle(document.querySelector('#inv-body .inv-del-btn')).opacity))) >= 0.5);
+    await ic.close();
+
+    // desktop: hovering still lights things up, and closing eases out too
+    const dc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const dp = await dc.newPage();
+    await dp.goto(base, { waitUntil: 'load' });
+    await dp.waitForSelector('#tab-board #board .month', { state: 'attached', timeout: 15000 });
+    await dp.waitForTimeout(1200);
+    const dBase = await dp.evaluate(() => getComputedStyle(document.getElementById('settings-btn')).borderTopColor);
+    await dp.hover('#settings-btn');
+    await dp.waitForTimeout(300);
+    const dHover = await dp.evaluate(() => getComputedStyle(document.getElementById('settings-btn')).borderTopColor);
+    check('on a desktop, hovering the gear still turns its outline teal', dHover !== dBase, JSON.stringify({ dBase, dHover }));
+    await dp.mouse.move(5, 500);
+    await dp.click('#inv-search-link');
+    await dp.waitForTimeout(450);
+    await dp.click('#inv-modal-close');
+    await dp.waitForTimeout(50);
+    const dClosing = await dp.evaluate(() => ({ cls: document.getElementById('inv-modal-ov').className, anim: getComputedStyle(document.getElementById('tab-inventory')).animationName }));
+    check('on a desktop the Inventory window also eases out when closed', /closing/.test(dClosing.cls) && dClosing.anim === 'np-pop-out', JSON.stringify(dClosing));
+    await dp.waitForTimeout(500);
+    check('…then it is gone', await dp.evaluate(() => !document.getElementById('inv-modal-ov').classList.contains('open')));
+    await dc.close();
+  }
+
   // ── mobile: panel renders and Approve is tappable ──
   const m = await openBoard({ width: 390, height: 800 });
   if (process.env.SHOT_DIR) await m.page.screenshot({ path: join(process.env.SHOT_DIR, 'warn-mobile.png') });
