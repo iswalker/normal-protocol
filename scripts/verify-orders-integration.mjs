@@ -10,7 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { onRequestGet, onRequestPut } from '../functions/api/orders.js';
+import { onRequestGet, onRequestPut, onRequestPatch } from '../functions/api/orders.js';
 
 const ROOT = normalize(join(fileURLToPath(import.meta.url), '..', '..'));
 const env = {};
@@ -28,10 +28,10 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname === '/api/orders') {
       let r;
-      if (req.method === 'PUT') {
+      if (req.method === 'PUT' || req.method === 'PATCH') {
         const chunks = []; for await (const c of req) chunks.push(c);
         const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        r = await onRequestPut({ request: { json: async () => body }, env });
+        r = await (req.method === 'PATCH' ? onRequestPatch : onRequestPut)({ request: { json: async () => body }, env });
       } else {
         r = await onRequestGet({ env });
       }

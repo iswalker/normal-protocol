@@ -39,18 +39,28 @@ export async function onRequestGet({ env }) {
 // Called by the other write endpoints right after a successful mutation.
 // Best-effort: a failure here should never fail the write it's reporting.
 export async function touchSyncMeta(env) {
+  return (await touchSyncMetaDetailed(env)).updated_at;
+}
+
+// Same touch, but also reports what the timestamp was just BEFORE it moved.
+// A tab that wrote can compare that against the last value it knew: if it's
+// newer, somebody else changed the data in between (a plain "did my own write
+// move it" can't tell -- the answer is always yes).
+export async function touchSyncMetaDetailed(env) {
   try {
     const iso = new Date().toISOString();
-    await pipeline(env, [
+    const data = await pipeline(env, [
       CREATE,
+      { type: 'execute', stmt: { sql: 'SELECT updated_at FROM sync_meta WHERE id = 1' } },
       { type: 'execute', stmt: {
         sql: 'INSERT INTO sync_meta (id, updated_at) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at',
         args: [T(iso)],
       } },
     ]);
-    return iso;
+    const cell = data.results[1]?.response?.result?.rows?.[0]?.[0];
+    return { updated_at: iso, prev: cell && cell.type !== 'null' ? cell.value : null };
   } catch (e) {
     console.error('touchSyncMeta failed:', e.message);
-    return null;
+    return { updated_at: null, prev: null };
   }
 }

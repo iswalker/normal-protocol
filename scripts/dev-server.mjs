@@ -26,7 +26,7 @@ const TYPES = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.
 
 // route table: path -> { METHOD: handlerExport }
 const ROUTES = {
-  '/api/orders':          { GET: orders.onRequestGet, PUT: orders.onRequestPut },
+  '/api/orders':          { GET: orders.onRequestGet, PUT: orders.onRequestPut, PATCH: orders.onRequestPatch },
   '/api/inventory':       { GET: inventory.onRequestGet, POST: inventory.onRequestPost, PATCH: inventory.onRequestPatch, DELETE: inventory.onRequestDelete },
   '/api/inventory-items': { GET: inventoryItems.onRequestGet, POST: inventoryItems.onRequestPost, PATCH: inventoryItems.onRequestPatch, DELETE: inventoryItems.onRequestDelete },
   '/api/meta':            { GET: meta.onRequestGet },

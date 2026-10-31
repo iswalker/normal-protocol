@@ -2,12 +2,17 @@
    Backed by Turso (order_months, orders, order_items). Mirrors the HTTP
    pipeline pattern used by functions/api/intakes.js.
 
-   GET  -> { months:[...], orders:[...], items:[...] }  (numeric fields coerced)
-   PUT  -> body { months, orders, items }; replaces all three tables atomically.
-           This matches the board's existing serialize()-and-save model: the
-           client sends the whole board, the server rewrites it in one txn. */
+   GET   -> { months:[...], orders:[...], items:[...] }  (numeric fields coerced)
+   PATCH -> body { months, orders, items }, each { add:[rows], set:[{key, cols}],
+            del:[keys] }: ONLY what the sending tab changed. A row it didn't touch
+            is never read or written, so a tab holding an old copy of the board
+            can't overwrite what another device did to other rows. Applied in one
+            transaction. This is what the board uses to save.
+   PUT   -> body { months, orders, items }; replaces all three tables atomically.
+            Whole-board overwrite: kept for restore/admin scripts, not used by
+            the board any more. */
 
-import { touchSyncMeta } from "./meta.js";
+import { touchSyncMeta, touchSyncMetaDetailed } from "./meta.js";
 
 function httpUrl(env) {
   // the pipeline endpoint is https://, even when TURSO_URL is given as libsql://
@@ -27,11 +32,30 @@ async function pipeline(env, requests) {
   const data = await res.json();
   for (const r of data.results) {
     if (r.type !== "ok") throw new Error("Statement failed: " + JSON.stringify(r.error || r));
+    // a batch reports each step's failure inside an otherwise "ok" result
+    const errs = r.response && r.response.type === "batch" ? r.response.result.step_errors || [] : [];
+    const bad = errs.find((e) => e);
+    if (bad) throw new Error("Statement failed: " + JSON.stringify(bad));
   }
   return data.results;
 }
 
 const exec = (sql, args) => ({ type: "execute", stmt: args ? { sql, args } : { sql } });
+
+// All-or-nothing. A plain pipeline keeps running after a statement fails, so a
+// BEGIN ... COMMIT sent that way COMMITS whatever succeeded and only then
+// reports the error -- half a save, and (since the caller bails out on the
+// error) no change notice either. A conditional batch runs each step only if
+// the one before it worked, so one failure skips the rest, including COMMIT,
+// and the ROLLBACK step (which runs whenever COMMIT didn't) undoes the lot.
+function tx(stmts) {
+  const steps = [{ stmt: { sql: "BEGIN" } }];
+  for (const s of stmts) steps.push({ stmt: s, condition: { type: "ok", step: steps.length - 1 } });
+  const last = steps.length - 1;
+  steps.push({ stmt: { sql: "COMMIT" }, condition: { type: "ok", step: last } });
+  steps.push({ stmt: { sql: "ROLLBACK" }, condition: { type: "not", cond: { type: "ok", step: last + 1 } } });
+  return { type: "batch", batch: { steps } };
+}
 const T = (v) => (v == null ? { type: "null" } : { type: "text", value: String(v) });
 const I = (v) => (v == null || v === "" ? { type: "null" } : { type: "integer", value: String(Math.trunc(Number(v))) });
 const F = (v) => (v == null || v === "" ? { type: "null" } : { type: "float", value: Number(v) });
@@ -91,7 +115,27 @@ async function ensureSchema(env) {
   ]) {
     try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
   }
+  await fixMonthsKey(env);
   schemaEnsured = true;
+}
+
+// order_months was created with "month TEXT PRIMARY KEY" -- the month NAME alone
+// -- back when the board only ever held one calendar year. Now that it holds
+// "Jun 2026" and "Jun 2027" together, the second "Jun" could never be inserted,
+// so every save of the board failed on it. Rebuild the table keyed by
+// (month, year) instead (a handful of rows).
+async function fixMonthsKey(env) {
+  const res = await pipeline(env, [exec("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'order_months'")]);
+  const ddl = (rowsFrom(res[0])[0] || {}).sql || "";
+  if (!/month\s+TEXT\s+PRIMARY\s+KEY/i.test(ddl)) return; // already rebuilt
+  await pipeline(env, [tx([
+    { sql: "DROP TABLE IF EXISTS order_months_new" },
+    { sql: "CREATE TABLE order_months_new (month TEXT NOT NULL, year INTEGER, position INTEGER, notes TEXT)" },
+    { sql: "INSERT INTO order_months_new (month, year, position, notes) SELECT month, year, position, notes FROM order_months" },
+    { sql: "DROP TABLE order_months" },
+    { sql: "ALTER TABLE order_months_new RENAME TO order_months" },
+    { sql: "CREATE UNIQUE INDEX IF NOT EXISTS order_months_month_year ON order_months (month, year)" },
+  ])]);
 }
 
 export async function onRequestGet({ env }) {
@@ -150,7 +194,6 @@ export async function onRequestPut({ request, env }) {
   await ensureSchema(env);
 
   const reqs = [
-    exec("BEGIN"),
     exec("DELETE FROM order_items"),
     exec("DELETE FROM orders"),
     exec("DELETE FROM order_months"),
@@ -181,14 +224,82 @@ export async function onRequestPut({ request, env }) {
        T(it.autoship_link), T(it.autoship_next_date), T(it.autoship_approved)]
     ));
   }
-  reqs.push(exec("COMMIT"));
 
   try {
-    await pipeline(env, reqs);
+    await pipeline(env, [tx(reqs.map((r) => r.stmt))]);
     const updated_at = await touchSyncMeta(env);
     return Response.json({ ok: true, updated_at });
   } catch (e) {
-    try { await pipeline(env, [exec("ROLLBACK")]); } catch {}
+    return Response.json({ error: String(e && e.message || e) }, { status: 502 });
+  }
+}
+
+// ── PATCH: write only what changed ──────────────────────────────────────────
+// Column lists are fixed here (the client's names are only ever looked up in
+// them, never put into SQL). T text, I integer, F real.
+const TABLES = {
+  months: { table: "order_months", key: { month: T, year: I }, cols: { position: I, notes: T } },
+  orders: {
+    table: "orders", key: { order_id: T },
+    cols: { month: T, year: I, merchant: T, position: I, status: T, notes: T, autoship_link: T, autoship_next_date: T, autoship_approved: T, preemptive: I },
+  },
+  items: {
+    table: "order_items", key: { order_item_id: T },
+    cols: {
+      order_id: T, month: T, year: I, block_position: I, item_position: I, supplement: T,
+      price_per_bottle: F, order_qty_bottles: F, include_in_total: I, notes: T, untracked: I,
+      recur: I, recur_source: T, autoship_link: T, autoship_next_date: T, autoship_approved: T,
+    },
+  },
+};
+
+// "WHERE <key> = ?" -- a NULL year (an old row) has to be matched with IS
+const keyWhere = (spec) => Object.keys(spec.key).map((k) => (k === "year" ? "year IS ?" : k + " = ?")).join(" AND ");
+const keyArgs = (spec, key) => Object.entries(spec.key).map(([k, enc]) => enc(key && key[k]));
+
+function patchStatements(body) {
+  const out = [];
+  for (const [name, spec] of Object.entries(TABLES)) {
+    const part = body && body[name];
+    if (!part || typeof part !== "object") continue;
+    const keyCols = Object.keys(spec.key);
+    const colNames = Object.keys(spec.cols);
+    for (const key of Array.isArray(part.del) ? part.del : []) {
+      out.push({ sql: `DELETE FROM ${spec.table} WHERE ${keyWhere(spec)}`, args: keyArgs(spec, key) });
+    }
+    for (const row of Array.isArray(part.add) ? part.add : []) {
+      // a brand-new row; if the id is somehow already there (the same ghost
+      // created from two devices) it is replaced rather than failing the save
+      const names = [...keyCols, ...colNames];
+      const conflict = name === "months" ? "month, year" : keyCols[0];
+      out.push({
+        sql: `INSERT INTO ${spec.table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")}) ON CONFLICT(${conflict}) DO UPDATE SET ${colNames.map((c) => `${c} = excluded.${c}`).join(", ")}`,
+        args: [...keyArgs(spec, row), ...colNames.map((c) => spec.cols[c](row && row[c]))],
+      });
+    }
+    for (const e of Array.isArray(part.set) ? part.set : []) {
+      const cols = Object.keys((e && e.cols) || {}).filter((c) => Object.prototype.hasOwnProperty.call(spec.cols, c));
+      if (!cols.length) continue;
+      out.push({
+        sql: `UPDATE ${spec.table} SET ${cols.map((c) => c + " = ?").join(", ")} WHERE ${keyWhere(spec)}`,
+        args: [...cols.map((c) => spec.cols[c](e.cols[c])), ...keyArgs(spec, e.key)],
+      });
+    }
+  }
+  return out;
+}
+
+export async function onRequestPatch({ request, env }) {
+  let body;
+  try { body = await request.json(); } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+  const stmts = patchStatements(body);
+  try {
+    await ensureSchema(env);
+    if (!stmts.length) return Response.json({ ok: true, applied: 0 });
+    await pipeline(env, [tx(stmts)]);
+    const { updated_at, prev } = await touchSyncMetaDetailed(env);
+    return Response.json({ ok: true, applied: stmts.length, updated_at, prev_updated_at: prev });
+  } catch (e) {
     return Response.json({ error: String(e && e.message || e) }, { status: 502 });
   }
 }

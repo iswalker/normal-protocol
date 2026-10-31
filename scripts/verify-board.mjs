@@ -61,7 +61,7 @@ const server = createServer(async (req, res) => {
       res.end(MOCK_ORDERS);
       return;
     }
-    if (url.pathname === '/api/orders' && req.method === 'PUT') {
+    if (url.pathname === '/api/orders' && (req.method === 'PUT' || req.method === 'PATCH')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end('{"ok":true}');
       return;

@@ -14,6 +14,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { applyPatch, clone } from './board-model.mjs';
 
 const ROOT = normalize(join(fileURLToPath(import.meta.url), '..', '..'));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon', '.png': 'image/png' };
@@ -127,7 +128,11 @@ const INV_LOG = [
 ];
 
 const dismissed = new Set();
-const puts = [];      // /api/orders PUT bodies
+const puts = [];      // the whole board as the server holds it after each /api/orders save (PATCH applied to a model of the database)
+const patches = [];   // the /api/orders PATCH bodies exactly as sent
+const legacyPuts = []; // whole-board PUTs -- the board must not send these any more
+let serverBoard = null; // created on first use (ORDERS_BODY is defined above)
+const meta = { at: '2000-01-01T00:00:00.000Z' };
 const posts = [];     // /api/board-settings POST bodies
 
 const json = (res, obj, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
@@ -139,7 +144,13 @@ const server = createServer(async (req, res) => {
       const chunks = []; for await (const c of req) chunks.push(c);
       const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') : {};
       if (p === '/api/orders') {
-        if (req.method === 'PUT') { puts.push(body); return json(res, { ok: true }); }
+        if (req.method === 'PUT') { legacyPuts.push(body); return json(res, { ok: true }); }
+        if (req.method === 'PATCH') {
+          serverBoard = serverBoard || clone(ORDERS_BODY);
+          patches.push(body); applyPatch(serverBoard, body); puts.push(clone(serverBoard));
+          const prev = meta.at; meta.at = new Date().toISOString();
+          return json(res, { ok: true, updated_at: meta.at, prev_updated_at: prev });
+        }
         return json(res, ORDERS_BODY);
       }
       if (p === '/api/board-settings') {
@@ -154,7 +165,7 @@ const server = createServer(async (req, res) => {
       }
       if (p === '/api/inventory-items') return json(res, INV_ITEMS);
       if (p === '/api/inventory') return json(res, INV_LOG);
-      if (p === '/api/meta') return json(res, { updated_at: '2000-01-01T00:00:00.000Z' });
+      if (p === '/api/meta') return json(res, { updated_at: meta.at });
       return json(res, { error: 'stub' }, 502);
     }
     let fp = decodeURIComponent(p); if (fp === '/' || fp === '') fp = '/index.html';
@@ -1050,6 +1061,140 @@ try {
     await rc.close();
   }
 
+  // ── saving writes only what changed; a stale tab can't undo another device ──
+  {
+    const wc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const wp = await wc.newPage();
+    const ten = Array.from({ length: 10 }, (_, i) => monthAt(i));
+    const wBody = {
+      months: ten.map((m, i) => ({ month: m.month, year: m.year, position: i + 1, notes: '' })),
+      orders: [
+        { order_id: 'o_w1', month: M0.month, year: M0.year, merchant: 'Wide One', position: 1, status: 'Staged', notes: null },
+        { order_id: 'o_w2', month: M0.month, year: M0.year, merchant: 'Wide Two', position: 2, status: 'Staged', notes: null },
+      ],
+      items: [
+        card('w_a', 'o_w1', M0, 1, 1, 'Wa', {}), card('w_b', 'o_w1', M0, 1, 2, 'Wb', {}),
+        card('w_c', 'o_w2', M0, 2, 1, 'Wc', {}), card('w_d', 'o_w2', M0, 2, 2, 'Wd', {}),
+      ],
+    };
+    const wModel = clone(wBody), wPatches = [], wOther = [];
+    const wMeta = { at: '2000-01-01T00:00:00.000Z' };
+    let wDelay = 0, wFail = 0, wIn = 0, wMaxIn = 0;
+    const jf = (r, status, obj) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+    await wp.route('**/api/orders', async (r) => {
+      const m = r.request().method();
+      if (m === 'GET') return jf(r, 200, wModel);
+      if (m !== 'PATCH') { wOther.push(m); return jf(r, 200, { ok: true }); }
+      wIn++; wMaxIn = Math.max(wMaxIn, wIn);
+      const body = JSON.parse(r.request().postData() || '{}');
+      if (wDelay) await new Promise((res) => setTimeout(res, wDelay));
+      wIn--;
+      if (wFail > 0) { wFail--; return jf(r, 502, { error: 'boom' }); }
+      wPatches.push(body); applyPatch(wModel, body);
+      const prev = wMeta.at; wMeta.at = new Date().toISOString();
+      return jf(r, 200, { ok: true, updated_at: wMeta.at, prev_updated_at: prev });
+    });
+    await wp.route('**/api/meta', (r) => jf(r, 200, { updated_at: wMeta.at }));
+    await wp.route('**/api/inventory-items', (r) => jf(r, 200, []));
+    await wp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, 200, r.request().method() === 'GET' ? [] : { ok: true }));
+    await wp.goto(base, { waitUntil: 'load' });
+    await wp.waitForSelector('.card[data-id="w_d"]', { state: 'attached', timeout: 15000 });
+    await wp.waitForTimeout(1200);
+    check('a board that was just loaded and not touched saves nothing', wPatches.length === 0, JSON.stringify(wPatches));
+    const dbItem = (id) => wModel.items.find((i) => i.order_item_id === id);
+    const lastPatch = () => wPatches[wPatches.length - 1];
+    const shape = (p) => JSON.stringify(Object.fromEntries(Object.entries(p || {}).map(([k, v]) => [k, { add: v.add.length, set: v.set.length, del: v.del.length }])));
+    const click = (sel) => wp.evaluate((s) => document.querySelector(s).click(), sel);
+
+    await click('.card[data-id="w_a"] .incl-toggle');
+    await wp.waitForTimeout(900);
+    check('flipping one item\'s toggle sends ONE change: that item, that one field', wPatches.length === 1
+      && shape(lastPatch()) === '{"items":{"add":0,"set":1,"del":0}}'
+      && lastPatch().items.set[0].key.order_item_id === 'w_a'
+      && JSON.stringify(lastPatch().items.set[0].cols) === '{"include_in_total":0}', JSON.stringify(lastPatch()));
+    check('…and it is saved (the database now has it off)', dbItem('w_a').include_in_total === 0);
+
+    await click('.card[data-id="w_b"] [data-act="toggle-notes"]');
+    const notes = wp.locator('.card[data-id="w_b"] .card-notes');
+    await notes.click(); await notes.fill('call them'); await wp.keyboard.press('Enter');
+    await wp.waitForTimeout(900);
+    check('editing an item\'s notes sends just that item\'s notes', wPatches.length === 2 && JSON.stringify(lastPatch().items.set) === JSON.stringify([{ key: { order_item_id: 'w_b' }, cols: { notes: 'call them' } }]) && shape(lastPatch()) === '{"items":{"add":0,"set":1,"del":0}}', JSON.stringify(lastPatch()));
+
+    const price = wp.locator('.card[data-id="w_d"] input[data-field="price"]');
+    await price.click(); await wp.keyboard.press('Tab');
+    await wp.waitForTimeout(700);
+    check('clicking into a field and leaving it unchanged sends nothing', wPatches.length === 2, String(wPatches.length));
+    await price.click(); await price.fill('12.5'); await wp.keyboard.press('Tab');
+    await wp.waitForTimeout(900);
+    check('changing a price sends just that item\'s price', wPatches.length === 3 && JSON.stringify(lastPatch().items.set) === JSON.stringify([{ key: { order_item_id: 'w_d' }, cols: { price_per_bottle: 12.5 } }]) && shape(lastPatch()) === '{"items":{"add":0,"set":1,"del":0}}', JSON.stringify(lastPatch()));
+
+    // ── the incident: another device edits OTHER things while this tab sits on an old copy ──
+    dbItem('w_c').notes = 'edited on the phone'; dbItem('w_c').order_qty_bottles = 7;
+    dbItem('w_b').order_qty_bottles = 4; // another field of an item this tab also edited
+    wModel.orders.find((o) => o.order_id === 'o_w2').merchant = 'Renamed on phone';
+    await click('.card[data-id="w_a"] .incl-toggle'); // this tab flips w_a back on
+    await wp.waitForTimeout(900);
+    check('this tab\'s next save still goes through', dbItem('w_a').include_in_total === 1 && wPatches.length === 4);
+    check('…and does not touch an item another device edited', dbItem('w_c').notes === 'edited on the phone' && dbItem('w_c').order_qty_bottles === 7);
+    check('…nor another field of an item this tab edited earlier', dbItem('w_b').order_qty_bottles === 4 && dbItem('w_b').notes === 'call them');
+    check('…nor an order another device renamed', wModel.orders.find((o) => o.order_id === 'o_w2').merchant === 'Renamed on phone');
+    check('…and the board never sends a whole-board PUT', wOther.length === 0, JSON.stringify(wOther));
+
+    // ── moves and deletes: only the rows whose position/existence changed ──
+    const menuItem = async (cardId, label) => {
+      await wp.evaluate((id) => document.querySelector('.card[data-id="' + id + '"] [data-act="open-card-menu"]').click(), cardId);
+      await wp.locator('.ship-ctx-menu .ship-ctx-item', { hasText: new RegExp('^' + label + '$') }).click();
+      await wp.waitForTimeout(900);
+    };
+    await menuItem('w_d', 'Move to Top');
+    check('moving an item to the top of its order saves just the two positions that changed', JSON.stringify(lastPatch().items.set.map((e) => [e.key.order_item_id, e.cols]).sort()) === JSON.stringify([['w_c', { item_position: 2 }], ['w_d', { item_position: 1 }]]) && shape(lastPatch()) === '{"items":{"add":0,"set":2,"del":0}}', JSON.stringify(lastPatch()));
+    check('…and the other shipment is left alone', dbItem('w_a').item_position === 1 && dbItem('w_b').item_position === 2);
+    await menuItem('w_a', 'Delete');
+    check('deleting an item deletes that row, and re-numbers only its neighbour in the order', JSON.stringify(lastPatch().items.del) === JSON.stringify([{ order_item_id: 'w_a' }]) && JSON.stringify(lastPatch().items.set) === JSON.stringify([{ key: { order_item_id: 'w_b' }, cols: { item_position: 1 } }]), JSON.stringify(lastPatch()));
+    check('…and it is gone from the database, with the other order untouched', !dbItem('w_a') && wModel.items.length === 3 && dbItem('w_c').notes === 'edited on the phone');
+
+    // ── a failed save is not lost: the next one carries it ──
+    const before = wPatches.length;
+    wFail = 1;
+    await click('.card[data-id="w_c"] .incl-toggle'); // fails (502)
+    await wp.waitForTimeout(900);
+    check('a save the server rejects changes nothing in the database', wPatches.length === before && !!dbItem('w_c').include_in_total);
+    await click('.card[data-id="w_d"] .incl-toggle'); // succeeds
+    await wp.waitForTimeout(900);
+    check('…and the next successful save carries both the failed edit and the new one', wPatches.length === before + 1 && dbItem('w_c').include_in_total === 0 && dbItem('w_d').include_in_total === 0 && JSON.stringify(lastPatch().items.set.map((e) => e.key.order_item_id).sort()) === '["w_c","w_d"]', JSON.stringify(lastPatch()));
+
+    // ── one save at a time, in order ──
+    wDelay = 450;
+    const before2 = wPatches.length;
+    await click('.card[data-id="w_b"] .incl-toggle');
+    await wp.waitForTimeout(500);
+    await click('.card[data-id="w_c"] .incl-toggle');
+    await wp.waitForTimeout(150);
+    await click('.card[data-id="w_d"] .incl-toggle');
+    await wp.waitForTimeout(2500);
+    wDelay = 0;
+    check('edits made while a save is in flight never overlap it', wMaxIn === 1, String(wMaxIn));
+    check('…and all of them end up saved', dbItem('w_b').include_in_total === 0 && dbItem('w_c').include_in_total === 1 && dbItem('w_d').include_in_total === 1 && wPatches.length <= before2 + 3, JSON.stringify({ n: wPatches.length - before2, b: dbItem('w_b').include_in_total, c: dbItem('w_c').include_in_total, d: dbItem('w_d').include_in_total }));
+
+    // ── the "changed on another device" banner ──
+    const bannerShown = () => wp.evaluate(() => getComputedStyle(document.getElementById('sync-banner')).display !== 'none');
+    await wp.waitForTimeout(1500);
+    check('this tab\'s own saves never raise the "changed elsewhere" banner', !(await bannerShown()));
+    wMeta.at = new Date().toISOString(); // another device writes (we are not told)
+    await wp.waitForTimeout(20);
+    await click('.card[data-id="w_d"] .incl-toggle'); // ...and this tab then saves
+    await wp.waitForTimeout(3000);
+    const changedMsg = await wp.locator('#sync-banner .sync-banner-msg').textContent();
+    check('a save that lands after another device\'s write raises the banner at once (it used to hide it until a 25s poll that our own write had already silenced)', (await bannerShown()) && /changed on another device/.test(changedMsg), changedMsg);
+    await wp.locator('#sync-banner-dismiss').click();
+    await wp.waitForTimeout(500); // let the dismiss's own look at the timestamp finish first
+    wMeta.at = new Date().toISOString(); // another device writes again
+    await wp.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await wp.waitForFunction(() => getComputedStyle(document.getElementById('sync-banner')).display !== 'none', null, { timeout: 5000 }).catch(() => {});
+    check('coming back to the tab checks right away instead of waiting for the next poll', await bannerShown());
+    await wc.close();
+  }
+
   // ── placing an order (Ordered/Entered) in a FUTURE month flags it Preemptive ──
   {
     const pc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
@@ -1066,8 +1211,9 @@ try {
       ],
       items: ['o_now', 'o_f1', 'o_f2', 'o_f3', 'o_f4'].map((o, i) => card('pi_' + o, o, o === 'o_now' ? M0 : M1, i + 1, 1, 'Thing ' + o, {})),
     };
+    const pModel = clone(pBody);
     await pp.route('**/api/orders', (r) => {
-      if (r.request().method() === 'PUT') { pPuts.push(JSON.parse(r.request().postData() || '{}')); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); }
+      if (r.request().method() === 'PATCH') { applyPatch(pModel, JSON.parse(r.request().postData() || '{}')); pPuts.push(clone(pModel)); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); }
       return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pBody) });
     });
     await pp.route('**/api/inventory-items', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
@@ -1408,7 +1554,7 @@ try {
     // (2) a save that fails (sign-in lapsed mid-session) says so instead of failing silently -- and does not reload away the edit
     const c2 = await b2.newContext({ viewport: { width: 1400, height: 900 } });
     const p2 = await c2.newPage();
-    await p2.route('**/api/orders', (r) => (r.request().method() === 'PUT' ? r.abort() : r.continue()));
+    await p2.route('**/api/orders', (r) => (r.request().method() === 'PATCH' ? r.abort() : r.continue()));
     await p2.goto(host, { waitUntil: 'load' });
     await p2.waitForSelector('#tab-board #board .shipment', { state: 'attached', timeout: 15000 });
     await p2.evaluate(() => document.querySelector('.shipment:not(.is-locked) .card:not(.card--ghost):not(.card--divider) .incl-toggle:not([disabled])').click());
@@ -1417,6 +1563,25 @@ try {
     check('a failed save shows a "sign-in expired / offline" banner with a Refresh button', /sign-in expired/.test(msg) && (await p2.locator('#sync-banner-refresh').isVisible()), msg);
     check('…and does not reload the page out from under the unsaved edit', await p2.evaluate(() => !!document.querySelector('.shipment .card')));
     await c2.close();
+    // (2a) a save the server rejects (HTTP 5xx) is reported, not swallowed -- and the banner clears itself once a save goes through
+    const c2a = await b2.newContext({ viewport: { width: 1400, height: 900 } });
+    const p2a = await c2a.newPage();
+    let rejects = 1;
+    const patchesBefore2a = patches.length;
+    await p2a.route('**/api/orders', (r) => (r.request().method() === 'PATCH' && rejects-- > 0 ? r.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"Statement failed"}' }) : r.continue()));
+    await p2a.goto(host, { waitUntil: 'load' });
+    await p2a.waitForSelector('#tab-board #board .shipment', { state: 'attached', timeout: 15000 });
+    const togg = (n) => p2a.evaluate((n) => [...document.querySelectorAll('.shipment:not(.is-locked) .card:not(.card--ghost):not(.card--divider) .incl-toggle:not([disabled])')][n].click(), n);
+    const toggled = await p2a.evaluate(() => [...document.querySelectorAll('.shipment:not(.is-locked) .card:not(.card--ghost):not(.card--divider) .incl-toggle:not([disabled])')].slice(0, 2).map((e) => e.closest('.card').dataset.id));
+    await togg(0);
+    await p2a.waitForFunction(() => getComputedStyle(document.getElementById('sync-banner')).display !== 'none', null, { timeout: 10000 });
+    const msg2a = await p2a.locator('#sync-banner .sync-banner-msg').textContent();
+    check('a save the server rejects (HTTP 502) shows a "couldn\'t save" banner', /Couldn.t save/.test(msg2a) && /server returned an error/.test(msg2a) && /502/.test(msg2a), msg2a);
+    await togg(1);
+    await p2a.waitForFunction(() => getComputedStyle(document.getElementById('sync-banner')).display === 'none', null, { timeout: 10000 });
+    const lastSet = (patches[patches.length - 1].items || { set: [] }).set.filter((e) => e.cols.include_in_total != null).map((e) => e.key.order_item_id).sort();
+    check('…and the banner goes away once a later save succeeds (that one save also carried the first, unsaved edit)', patches.length === patchesBefore2a + 1 && JSON.stringify(lastSet) === JSON.stringify([...toggled].sort()), JSON.stringify({ toggled, lastSet, n: patches.length - patchesBefore2a }));
+    await c2a.close();
     // (2b) an On Hand edit late in the evening logs TODAY (local), not the UTC date, which is already tomorrow
     const c4 = await b2.newContext({ viewport: { width: 1400, height: 900 }, timezoneId: 'America/New_York' });
     const p4 = await c4.newPage();

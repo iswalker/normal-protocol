@@ -2761,6 +2761,14 @@
   (function initSyncBanner() {
     const banner = document.getElementById('sync-banner');
     if (!banner) return;
+    const msgEl = banner.querySelector('.sync-banner-msg');
+    const CHANGED_MSG = msgEl ? msgEl.textContent : '';
+    // (the same banner also reports a failed save -- always put the right words back)
+    function showChanged() {
+      if (msgEl) msgEl.textContent = CHANGED_MSG;
+      banner.dataset.kind = 'changed';
+      banner.style.display = 'flex';
+    }
     const pageLoadedAt = Date.now();
     // The single source of truth for "the latest updated_at this tab knows
     // to be true" -- monotonically increasing. Fed by two inputs: whatever
@@ -2777,6 +2785,8 @@
     // Ring buffer of every write this tab has made, purely for the console
     // dump below when something genuinely foreign does show up.
     const writeLog = [];
+    // Every updated_at one of this tab's own writes produced.
+    const ownStamps = new Set();
 
     const origFetch = window.fetch.bind(window);
     window.fetch = (input, init) => {
@@ -2784,6 +2794,7 @@
       const url = typeof input === 'string' ? input : (input && input.url) || '';
       const promise = origFetch(input, init);
       if (method !== 'GET' && url.startsWith('/api/')) {
+        const knownAtSend = baseline;
         const stack = (new Error().stack || '').split('\n').slice(2).join('\n');
         const entry = { at: Date.now(), method, url, stack, updated_at: null };
         writeLog.push(entry);
@@ -2792,7 +2803,20 @@
         // authoritative, not inferred -- and fold it into baseline the
         // moment it's known. Cloned so the caller can still read the body.
         promise.then((res) => res.clone().json()).then((data) => {
-          if (data && data.updated_at) { entry.updated_at = data.updated_at; bump(data.updated_at); }
+          if (data && data.updated_at) {
+            entry.updated_at = data.updated_at; ownStamps.add(data.updated_at);
+            // The server also says what the timestamp was just before this write.
+            // If that is newer than anything this tab knew when it sent, and isn't
+            // one of its own writes, another device changed things in between --
+            // folding our own write's timestamp into baseline would hide that for
+            // good (the poll would then see nothing newer), so say so now. Judged
+            // a moment later so an overlapping write of ours has time to report in.
+            const prev = data.prev_updated_at;
+            if (prev && knownAtSend && prev > knownAtSend) {
+              setTimeout(() => { if (!ownStamps.has(prev) && banner.style.display === 'none') showChanged(); }, 2000);
+            }
+            bump(data.updated_at);
+          }
         }).catch(() => {});
       }
       return promise;
@@ -2803,7 +2827,9 @@
       const data = await r.json();
       return data.updated_at || null;
     }
+    let lastCheckAt = 0;
     async function checkStale() {
+      lastCheckAt = Date.now();
       if (banner.style.display !== 'none') return; // already showing -- wait for dismiss/refresh
       try {
         const updated_at = await fetchUpdatedAt();
@@ -2822,7 +2848,7 @@
             '\n  this tab loaded:   ', new Date(pageLoadedAt).toISOString(), '(' + Math.round((Date.now() - pageLoadedAt) / 1000) + 's ago)',
             '\n  all writes this tab has made:', writeLog.map(w => `${w.method} ${w.url} @ +${Math.round((w.at - pageLoadedAt) / 1000)}s -> confirmed ${w.updated_at || '(pending/failed)'}`),
           );
-          banner.style.display = 'flex';
+          showChanged();
         }
         bump(updated_at);
       } catch (e) { console.log('[sync-banner] poll failed (offline or API hiccup), will retry next tick:', e.message); }
@@ -2836,6 +2862,14 @@
 
     fetchUpdatedAt().then(bump).catch(() => {});
     setInterval(checkStale, 25000);
+    // A tab in the background has its timers slowed to a crawl (or frozen) and
+    // can sit on an old copy for ages -- look the moment it is in front again,
+    // before anything gets edited.
+    const recheck = () => { if (document.visibilityState === 'visible' && Date.now() - lastCheckAt > 3000) checkStale(); };
+    document.addEventListener('visibilitychange', recheck);
+    window.addEventListener('focus', recheck);
+    window.addEventListener('online', recheck);
+    window.addEventListener('pageshow', recheck);
     // debug/test hook only -- not used by the app itself. Run
     // __syncBanner.getWriteLog() in the console any time to see every write
     // this tab has made, without waiting for the banner to show again.
@@ -3317,12 +3351,18 @@
     location.reload();
     return true;
   }
-  function showSaveFailedBanner() {
+  function showSaveFailedBanner(text) {
     const banner = document.getElementById('sync-banner');
     if (!banner) return;
     const msg = banner.querySelector('.sync-banner-msg');
-    if (msg) msg.textContent = 'Couldn\'t save — you may be offline or your sign-in expired. Refresh to sign in again (changes since then weren\'t saved).';
+    if (msg) msg.textContent = text || 'Couldn\'t save — you may be offline or your sign-in expired. Refresh to sign in again (changes since then weren\'t saved).';
+    banner.dataset.kind = 'save-failed';
     banner.style.display = 'flex';
+  }
+  // the next save that goes through means the earlier failure no longer matters
+  function clearSaveFailedBanner() {
+    const banner = document.getElementById('sync-banner');
+    if (banner && banner.dataset.kind === 'save-failed') { banner.style.display = 'none'; delete banner.dataset.kind; }
   }
 
   // ── data layer: load the board from /api/orders (Turso) ──
@@ -3334,7 +3374,9 @@
     try {
       const res = await fetch('/api/orders');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      fromApi(await res.json());
+      const data = await res.json();
+      fromApi(data);
+      serverSnap = indexBoard(data);
     } catch (e) {
       loadFailed = true;
       if (e instanceof TypeError && reloadToSignIn()) return;
@@ -6535,21 +6577,103 @@
     return { months, orders, items };
   }
 
+  // Saving writes only what CHANGED. This tab remembers what it last knew the
+  // database to hold (what it loaded, or what its own previous save left there)
+  // and, on every save, sends just the rows that differ -- and for a row that
+  // already exists, just the columns that differ. It never re-sends the rest of
+  // the board, so a tab showing an old copy can't overwrite what another device
+  // did to anything this tab didn't change itself (the whole board used to be
+  // rewritten on every edit, which is exactly how a stale tab wiped a phone's
+  // edits). Keys: how a row is identified; cols: how each column is compared
+  // (t text, i integer, f real, b flag) -- '' and NULL count as the same.
+  const SAVE_TABLES = {
+    months: { key: ['month', 'year'], cols: { position: 'i', notes: 't' }, id: (r) => r.month + '|' + (r.year == null ? '' : r.year) },
+    orders: {
+      key: ['order_id'], id: (r) => r.order_id,
+      cols: { month: 't', year: 'i', merchant: 't', position: 'i', status: 't', notes: 't', autoship_link: 't', autoship_next_date: 't', autoship_approved: 't', preemptive: 'i' },
+    },
+    items: {
+      key: ['order_item_id'], id: (r) => r.order_item_id,
+      cols: {
+        order_id: 't', month: 't', year: 'i', block_position: 'i', item_position: 'i', supplement: 't', price_per_bottle: 'f', order_qty_bottles: 'f',
+        include_in_total: 'b', notes: 't', untracked: 'b', recur: 'i', recur_source: 't', autoship_link: 't', autoship_next_date: 't', autoship_approved: 't',
+      },
+    },
+  };
+  function canonCell(kind, v) {
+    if (kind === 'b') return v ? 1 : 0;
+    if (v == null || v === '') return null;
+    if (kind === 't') return String(v);
+    const n = kind === 'i' ? Math.trunc(Number(v)) : Number(v);
+    return Number.isNaN(n) ? null : n;
+  }
+  // rows -> Map(id -> { c: comparable copy, raw: the row as given })
+  function indexRows(spec, rows) {
+    const map = new Map();
+    for (const raw of rows || []) {
+      const c = {};
+      for (const k of spec.key) c[k] = canonCell(k === 'year' ? 'i' : 't', raw[k]);
+      for (const [col, kind] of Object.entries(spec.cols)) c[col] = canonCell(kind, raw[col]);
+      map.set(spec.id(c), { c, raw });
+    }
+    return map;
+  }
+  const indexBoard = (data) => Object.fromEntries(Object.entries(SAVE_TABLES).map(([name, spec]) => [name, indexRows(spec, data[name])]));
+  // The last state this tab knows the database to hold (null until the board has loaded).
+  let serverSnap = null;
+  // null when nothing differs from the snapshot
+  function diffBoard(snap, cur) {
+    const patch = {}; let n = 0;
+    for (const [name, spec] of Object.entries(SAVE_TABLES)) {
+      const add = [], set = [], del = [];
+      const pickKey = (row) => Object.fromEntries(spec.key.map((k) => [k, row[k] == null ? null : row[k]]));
+      for (const [id, now] of cur[name]) {
+        const was = snap[name].get(id);
+        if (!was) { add.push(now.raw); continue; }
+        const cols = {};
+        for (const col of Object.keys(spec.cols)) if (now.c[col] !== was.c[col]) cols[col] = now.raw[col] === undefined ? null : now.raw[col];
+        if (Object.keys(cols).length) set.push({ key: pickKey(now.c), cols });
+      }
+      for (const [id, was] of snap[name]) if (!cur[name].has(id)) del.push(pickKey(was.c));
+      if (add.length || set.length || del.length) { patch[name] = { add, set, del }; n += add.length + set.length + del.length; }
+    }
+    return n ? patch : null;
+  }
+
   let saveTimer = null;
+  let saving = false, saveAgain = false;
+  // One save at a time: a second request racing the first could arrive out of
+  // order and put an older value back. Anything edited meanwhile is picked up
+  // by the next pass (which diffs against whatever the last pass achieved).
   async function persist() {
-    // Never wipe Turso data if the board failed to load (structure would be empty).
-    if (!structure || structure.length === 0) return;
+    // Never touch Turso if the board failed to load (structure would be empty).
+    if (!structure || structure.length === 0 || !serverSnap) return;
+    if (saving) { saveAgain = true; return; }
+    saving = true;
+    try { do { saveAgain = false; await saveChanges(); } while (saveAgain); }
+    finally { saving = false; }
+  }
+  async function saveChanges() {
+    const raw = toApi();
+    const cur = indexBoard(raw);
+    const patch = diffBoard(serverSnap, cur);
+    if (!patch) return; // nothing differs from what the database already holds
     try {
       const res = await fetch('/api/orders', {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toApi()),
+        body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
+      serverSnap = cur; // a failed save leaves this alone, so the next save re-sends everything still unsaved
+      clearSaveFailedBanner();
     } catch (e) {
       console.error('Board: save to /api/orders failed —', e.message);
-      // A lapsed sign-in (or being offline) shows up as a bare TypeError -- say so
-      if (e instanceof TypeError && !IS_LOCAL) showSaveFailedBanner();
+      if (!IS_LOCAL) {
+        // A lapsed sign-in (or being offline) shows up as a bare TypeError -- say so
+        if (e instanceof TypeError) showSaveFailedBanner();
+        else showSaveFailedBanner('Couldn\'t save — the server returned an error (' + e.message + '). Your changes are kept on this page and will be tried again on your next edit; refresh to reload what is actually saved.');
+      }
     }
   }
   function persistSoon() {
