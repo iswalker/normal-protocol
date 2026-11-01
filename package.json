@@ -13,7 +13,8 @@
     "verify:orders": "node scripts/verify-orders-integration.mjs",
     "verify:warnings": "node scripts/verify-warnings.mjs",
     "verify:access": "node scripts/verify-access-middleware.mjs",
-    "verify:sync": "node --no-warnings scripts/verify-orders-sync.mjs"
+    "verify:sync": "node --no-warnings scripts/verify-orders-sync.mjs",
+    "verify:recurrence": "node scripts/verify-recurrence.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0",

@@ -1486,6 +1486,60 @@ try {
     await dc.close();
   }
 
+  // ── a brand-new order glides into view (it lands below the panels at the top of the month, maybe off screen) ──
+  for (const [label, vp] of [['desktop', { width: 1700, height: 700 }], ['mobile', { width: 390, height: 700 }]]) {
+    const c = await openBoard(vp), p = c.page, mid = `${M0.month}_${M0.year}`;
+    await p.evaluate((mid) => { document.querySelector(`.month[data-id="${mid}"]`).scrollTop = 1e6; document.getElementById('tab-board').scrollTop = 1e6; }, mid);
+    await p.waitForTimeout(300);
+    const before = await p.evaluate((mid) => ({ m: document.querySelector(`.month[data-id="${mid}"]`).scrollTop, tb: document.getElementById('tab-board').scrollTop }), mid);
+    check(`${label}: (setup) the month is scrolled away from its top first`, before.m > 100 || before.tb > 100, JSON.stringify(before));
+    await p.evaluate((mid) => document.querySelector(`.month[data-id="${mid}"] [data-act="add-ship"]`).click(), mid);
+    await p.locator('input.inv-picker-search:visible').first().waitFor();
+    await p.locator('input.inv-picker-search:visible').first().fill('Zeta Merchant');
+    await p.keyboard.press('Enter');
+    await p.waitForTimeout(1400); // the glide
+    await p.evaluate(() => { const s = [...document.querySelectorAll('.shipment')].find((e) => e.querySelector('.ship-name')?.textContent.trim() === 'Zeta Merchant'); if (s) s.dataset.t = 'zeta'; });
+    const jump = await clearOfHead(p, '.shipment[data-t="zeta"]');
+    check(`${label}: a new order scrolls into view, just below the month header`, jump.ok, JSON.stringify(jump));
+    await c.ctx.close();
+  }
+
+  // ── phone: Inventory stays pinned to the visible part of the screen when the keyboard pans the page ──
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true });
+    // a stand-in visualViewport the test can pan (headless has no on-screen keyboard)
+    await ctx.addInitScript(() => {
+      const fake = new EventTarget();
+      Object.assign(fake, { offsetTop: 0, offsetLeft: 0, height: 800, width: 390, scale: 1 });
+      window.__vv = fake;
+      Object.defineProperty(window, 'visualViewport', { get: () => fake, configurable: true });
+    });
+    const pg = await ctx.newPage();
+    pg.on('pageerror', (e) => errors.push(String(e)));
+    await pg.goto(base, { waitUntil: 'load' });
+    await pg.waitForSelector('#tab-board #board .month', { state: 'attached' });
+    await pg.waitForTimeout(500);
+    await pg.locator('#inv-search-link').click();
+    await pg.waitForSelector('#inv-modal-ov.open');
+    await pg.waitForTimeout(600);
+    const box = () => pg.evaluate(() => { const o = document.getElementById('inv-modal-ov').getBoundingClientRect(), s = document.getElementById('inv-filter-item').getBoundingClientRect(); return { top: Math.round(o.top), bottom: Math.round(o.bottom), search: Math.round(s.top), scrollTop: document.getElementById('inv-modal-ov').scrollTop, winY: window.scrollY }; });
+    const rest = await box();
+    check('phone Inventory: opens flush with the screen and unscrolled, search bar on screen', rest.top === 0 && rest.bottom === 800 && rest.scrollTop === 0 && rest.winY === 0 && rest.search >= 0 && rest.search < 120, JSON.stringify(rest));
+    // the keyboard rises and the phone pans the page up by 120px, leaving 500px visible
+    await pg.evaluate(() => { __vv.offsetTop = 120; __vv.height = 500; __vv.dispatchEvent(new Event('scroll')); __vv.dispatchEvent(new Event('resize')); });
+    await pg.waitForTimeout(200);
+    const panned = await box();
+    check('phone Inventory: when the page is panned the window follows the visible area (search bar stays at the top of it)', panned.top === 120 && panned.bottom === 620 && panned.search >= 120 && panned.search < 240, JSON.stringify(panned));
+    await pg.evaluate(() => { __vv.offsetTop = 0; __vv.height = 800; __vv.dispatchEvent(new Event('scroll')); __vv.dispatchEvent(new Event('resize')); });
+    await pg.waitForTimeout(200);
+    const back = await box();
+    check('phone Inventory: keyboard away -> full screen again', back.top === 0 && back.bottom === 800, JSON.stringify(back));
+    await pg.locator('#inv-modal-close').click();
+    await pg.waitForTimeout(600);
+    check('phone Inventory: nothing left pinned once it is closed', await pg.evaluate(() => { const o = document.getElementById('inv-modal-ov'); return o.style.getPropertyValue('--vv-top') === '' && o.style.getPropertyValue('--vv-bottom') === ''; }));
+    await ctx.close();
+  }
+
   // ── mobile: panel renders and Approve is tappable ──
   const m = await openBoard({ width: 390, height: 800 });
   if (process.env.SHOT_DIR) await m.page.screenshot({ path: join(process.env.SHOT_DIR, 'warn-mobile.png') });

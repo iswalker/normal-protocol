@@ -990,7 +990,7 @@
          than that gap and overflowing past it. */
       .global-search-box { flex: 1 1 0; min-width: 0; }
       .board-controls .refresh-inv-btn { display: none; }
-      .inv-modal-ov { padding: 0; }
+      .inv-modal-ov { padding: 0; top: var(--vv-top, 0px); bottom: var(--vv-bottom, 0px); }
       /* #tab-inventory carries both the "#tab-inventory" id (a leftover from
          when Inventory rendered as a normal in-flow tab, height:calc(100vh -
          48px) reserving room for a header bar above it) and the "inv-modal"
@@ -2707,8 +2707,12 @@
     // it inside the original tap so the keyboard actually shows. The input
     // itself is static markup (not re-rendered by inventoryActivated
     // below), so there's nothing it needs to wait for.
+    // preventScroll: on a phone the sheet is still off the bottom of the screen
+    // (mid slide-up) at this instant, and a plain focus() scrolls the fixed overlay
+    // to bring the box into view -- which is what pushed the search bar off the top.
     const f = document.getElementById('inv-filter-item');
-    if (f) { f.focus(); f.select?.(); }
+    if (f) { f.focus({ preventScroll: true }); f.select?.(); }
+    invOv.scrollTop = 0; invOv.scrollLeft = 0;
     // The table only renders its rows on this event.
     document.dispatchEvent(new CustomEvent('inventoryActivated'));
   }
@@ -2737,6 +2741,31 @@
     modal?.addEventListener('animationend', onEnd);
     invCloseTimer = setTimeout(() => { modal?.removeEventListener('animationend', onEnd); if (invClosing) finishCloseInventory(); }, 400); // never stuck open
   }
+  // The keyboard comes up while the sheet is still sliding in, and the phone then
+  // pans the page to keep the focused search box above it -- by the time the sheet
+  // has landed, the page is still panned and the top of Inventory (the search bar)
+  // is off screen. So while Inventory is open the overlay is pinned to the part of
+  // the screen that is actually visible (top = how far the page was panned, bottom =
+  // what the keyboard covers): a pan can't push the search bar out of view, and the
+  // list ends above the keyboard instead of running under it.
+  (function pinInventoryToVisibleArea() {
+    const vv = window.visualViewport;
+    if (!vv || !invOv) return;
+    let raf = 0;
+    function pin() {
+      raf = 0;
+      const live = invOv.classList.contains('open') && vv.scale < 1.01; // pinch-zoomed: leave it alone
+      if (!live) { invOv.style.removeProperty('--vv-top'); invOv.style.removeProperty('--vv-bottom'); return; }
+      invOv.style.setProperty('--vv-top', Math.max(0, vv.offsetTop) + 'px');
+      invOv.style.setProperty('--vv-bottom', Math.max(0, window.innerHeight - vv.offsetTop - vv.height) + 'px');
+      invOv.scrollTop = 0; invOv.scrollLeft = 0;
+      if (window.scrollY) window.scrollTo(0, 0);
+    }
+    const queue = () => { if (!raf) raf = requestAnimationFrame(pin); };
+    vv.addEventListener('resize', queue);
+    vv.addEventListener('scroll', queue);
+    new MutationObserver(queue).observe(invOv, { attributes: true, attributeFilter: ['class'] });
+  })();
   document.getElementById('inv-search-link')?.addEventListener('click', openInventory);
   document.getElementById('inv-modal-close')?.addEventListener('click', closeInventory);
   invOv?.addEventListener('click', (e) => { if (e.target === invOv) closeInventory(); });
@@ -6122,6 +6151,87 @@
     removeCards(unlockedGhostsOf(sourceId));
   }
 
+  // ── Ending a recurring series ──
+  // Deleting a projection (one of a root's future ghosts) doesn't punch a hole
+  // in the series -- it ends it there: that month and every later one go, the
+  // earlier ones stay, and the root's note starts with "Ends after Dec" so
+  // there's visible evidence the series was cut short. The note IS the setting
+  // (nothing else is stored): syncGhosts reads it back to know where to stop, so
+  // deleting that prefix -- or clearing and re-entering "ev N mo" -- puts the
+  // series back to recurring indefinitely, and the user can keep typing after it
+  // ("Ends after Dec.  Need to figure this one out").
+  const MONTH_RE = '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
+  const SERIES_END_RE = new RegExp('^\\s*Ends after ' + MONTH_RE + '(?: (\\d{4}))?(?![A-Za-z])\\.?[\\s\\u00a0]*', 'i');
+  // Month index in the board's own timeline as year*12 + month, or null if unknown.
+  function monthOrd(mi) {
+    const m = structure[mi];
+    if (!m) return null;
+    const y = parseInt(m.sub, 10), i = MONTH_NAMES.indexOf(m.name);
+    return y && i >= 0 ? y * 12 + i : null;
+  }
+  // Where the root's note says the series stops (a monthOrd), or null for "no end".
+  // With no year ("Ends after Dec") it's the first such month on or after the root's.
+  function seriesEndOrd(src, srcOrd) {
+    const m = SERIES_END_RE.exec(src.notes || '');
+    if (!m) return null;
+    const mon = MONTH_NAMES.findIndex((n) => n.toLowerCase() === m[1].toLowerCase());
+    if (mon < 0) return null;
+    return m[2] ? Number(m[2]) * 12 + mon : srcOrd + ((mon - (srcOrd % 12) + 12) % 12);
+  }
+  // A note with its "Ends after ..." prefix (and the ".  " after it) taken off.
+  const stripSeriesEnd = (text) => String(text || '').replace(SERIES_END_RE, '');
+  // The same note with the prefix set to `label` ("Dec"), or removed for no label.
+  function withSeriesEnd(text, label) {
+    const rest = stripSeriesEnd(text);
+    return label ? 'Ends after ' + label + (rest.trim() ? '.  ' + rest : '') : rest;
+  }
+  // Puts a changed note back on a card that is already on screen.
+  function showCardNotes(id) {
+    const cardEl = board.querySelector(`.card[data-id="${id}"]`);
+    if (!cardEl) return;
+    const nEl = cardEl.querySelector('.card-notes');
+    const text = (STATE.cardData[id] || {}).notes || '';
+    if (nEl && nEl.textContent !== text) nEl.textContent = text;
+    cardEl.classList.toggle('notes-open', !!text.trim());
+  }
+
+  // What deleting this projection would do, or null when it isn't a pure
+  // projection (a real placed order, or no longer linked to a live root).
+  function planEndSeries(ghostId) {
+    const g = STATE.cardData[ghostId];
+    if (!g || !g.ghostOf || isCardLocked(ghostId)) return null;
+    const rootId = g.ghostOf, root = STATE.cardData[rootId];
+    if (!root || root.ghostOf) return null;
+    const gMi = findCardLocation(ghostId).monthIdx, rootMi = findCardLocation(rootId).monthIdx;
+    if (gMi < 0 || rootMi < 0 || gMi <= rootMi) return null;
+    const doomed = unlockedGhostsOf(rootId).filter((id) => findCardLocation(id).monthIdx >= gMi);
+    // The last occurrence that survives: the root, or a placed (locked) one that
+    // came after it, or an earlier unplaced projection.
+    let lastMi = rootMi;
+    Object.keys(STATE.cardData).forEach((id) => {
+      if (STATE.cardData[id]?.ghostOf !== rootId) return;
+      const mi = findCardLocation(id).monthIdx;
+      if (mi < gMi && mi > lastMi) lastMi = mi;
+    });
+    const last = structure[lastMi];
+    const long = (monthOrd(lastMi) ?? 0) - (monthOrd(rootMi) ?? 0) >= 12; // "Dec" alone would be ambiguous
+    const label = last ? last.name + (long ? ' ' + last.sub : '') : '';
+    const first = structure[gMi];
+    const n = doomed.length;
+    return {
+      rootId, doomed, label,
+      message: `Delete "${root.name}" from ${first ? first.name + ' ' + first.sub : 'this month'} onward (${n} recurring order${n !== 1 ? 's' : ''})?\n\nThe series will end after ${label}. Earlier orders aren't touched.`,
+    };
+  }
+  function applyEndSeries(plan) {
+    const root = STATE.cardData[plan.rootId];
+    removeCards(plan.doomed);
+    if (!root) return;
+    root.notes = withSeriesEnd(root.notes, plan.label);
+    showCardNotes(plan.rootId);
+    propagateFieldToGhosts(plan.rootId, 'notes', root.notes); // the ones still ahead carry it too
+  }
+
   // Shared by the price-sign toggle circle's click and typing "-" directly
   // into the Price field (see the keydown handler below) -- both just flip
   // whichever sign the field currently has. With something already typed,
@@ -6159,6 +6269,13 @@
   function deleteCard(cardEl) {
     const id = cardEl.dataset.id;
     const c = STATE.cardData[id];
+    const plan = planEndSeries(id);
+    if (plan) {
+      if (!confirm(plan.message)) return;
+      applyEndSeries(plan);
+      recalcAll(); persist();
+      return;
+    }
     if (c && !c.ghostOf && c.recur) {
       const ghostCount = unlockedGhostsOf(id).length;
       if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
@@ -6204,6 +6321,15 @@
       const ghostCount = unlockedGhostsOf(cid).length;
       if (ghostCount > 0 && !confirm(`Delete "${c.name}" and its ${ghostCount} recurring ghost${ghostCount !== 1 ? 's' : ''}?`)) return;
     }
+    // A projection in here (a future month's copy of a recurring item) ends its series
+    // at this month rather than leaving a gap -- see planEndSeries.
+    const plans = [], seen = new Set();
+    shipEl.querySelectorAll('.ship-body > .card[data-id]').forEach((cardEl) => {
+      const plan = planEndSeries(cardEl.dataset.id);
+      if (plan && !seen.has(plan.rootId)) { seen.add(plan.rootId); plans.push(plan); }
+    });
+    for (const plan of plans) if (!confirm(plan.message)) return;
+    plans.forEach(applyEndSeries);
     deleteShipmentCascade(shipEl, recurCards);
   }
 
@@ -6222,7 +6348,12 @@
 
     // Every remaining month at an N-month interval from the source.
     const wanted = [];
-    for (let off = N; srcMi + off < structure.length; off += N) wanted.push(srcMi + off);
+    const srcOrd = monthOrd(srcMi);
+    const endOrd = srcOrd == null ? null : seriesEndOrd(src, srcOrd); // "Ends after Dec" in the root's note
+    for (let off = N; srcMi + off < structure.length; off += N) {
+      if (endOrd != null) { const o = monthOrd(srcMi + off); if (o != null && o > endOrd) break; }
+      wanted.push(srcMi + off);
+    }
     const wantedSet = new Set(wanted);
 
     // Keep one existing ghost per wanted month; discard duplicates and strays.
@@ -6273,6 +6404,7 @@
 
     let added = 0;
     let reparented = false;
+    let recurFixed = false;
     for (const tMi of wanted) {
       const tMonth = structure[tMi];
       const tMonthEl = monthEls[tMi] || null;
@@ -6290,6 +6422,20 @@
         // brand-new instance already gets.
         const gId = kept.get(tMi);
         const gEl = tMonthEl?.querySelector(`.card[data-id="${gId}"]`);
+        // The ghost's own "ev N mo" is whatever it was created with. Left alone
+        // after the root's interval changes it kept showing (and saving) the old
+        // one -- and when it became the root (the root's order was placed) the
+        // series snapped back to the old spacing.
+        const gData = STATE.cardData[gId];
+        if (gData && Number(gData.recur) !== N) {
+          gData.recur = N;
+          recurFixed = true;
+          if (gEl) {
+            gEl.dataset.recur = String(N);
+            const rInp = gEl.querySelector('.recur-ctl-n');
+            if (rInp) rInp.value = String(N);
+          }
+        }
         const curShipEl = gEl?.closest('.shipment') || null;
         const curShipId = curShipEl?.dataset.id || null;
         const curShipName = curShipId ? (STATE.shipmentData[curShipId]?.name || '').trim() : null;
@@ -6359,7 +6505,7 @@
     if (!skipRecalc) recalcAll();
     // Only save when the ghost set actually changed, so a plain page load that
     // reconciles to the same result doesn't rewrite Turso.
-    if (added || strays.length || reparented) persistSoon();
+    if (added || strays.length || reparented || recurFixed) persistSoon();
   }
 
   // On initial load: auto-promote ghosts whose source is already in an ordered shipment.
@@ -6404,6 +6550,12 @@
     // needs src.autoshipNextDate to compute a shift from; without one,
     // keep whatever this ghost already had rather than blanking it.
     STATE.cardData[firstId].autoshipLink = src.autoshipLink || '';
+    // It becomes the series' driver, so it must carry the series' interval and
+    // (if the root's note says the series ends) that end too.
+    STATE.cardData[firstId].recur = src.recur;
+    if (SERIES_END_RE.test(src.notes || '') && !SERIES_END_RE.test(STATE.cardData[firstId].notes || '')) {
+      STATE.cardData[firstId].notes = (src.notes.match(SERIES_END_RE)[0].replace(/[.\s\u00a0]+$/, '')) + (STATE.cardData[firstId].notes ? '.  ' + STATE.cardData[firstId].notes : '');
+    }
     if (sourceMi >= 0 && firstMi > sourceMi && src.autoshipNextDate) {
       STATE.cardData[firstId].autoshipNextDate = toISODate(addMonthsToDate(SB.parseDate(src.autoshipNextDate), firstMi - sourceMi));
     }
@@ -7212,6 +7364,8 @@
       if (newVal !== c.recur) {
         c.recur = newVal;
         cardEl.dataset.recur = String(newVal || '');
+        // Clearing the interval is the "start over" gesture: the series' end goes with it.
+        if (newVal == null && SERIES_END_RE.test(c.notes || '')) { c.notes = stripSeriesEnd(c.notes); showCardNotes(id); }
         syncGhosts(id); // reconciles, and clears the ghosts when newVal is null
         persistSoon();
       }
@@ -8477,8 +8631,11 @@
     recalcAll(); persist();
     if (!name) {
       const nm = node.querySelector('.ship-name');
-      nm.focus(); selectAll(nm);
+      nm.focus({ preventScroll: true }); selectAll(nm); // the glide below does the scrolling
     }
+    // It lands below whatever sits above the orders (Preemptive, Needs Attention),
+    // maybe off screen -- glide to it like every other jump on the board.
+    requestAnimationFrame(() => scrollElementIntoBoardView(node));
     return node;
   }
 
@@ -8644,6 +8801,12 @@
       );
       focusValues.delete(t);
       if (changed && t.matches('.ship-name')) propagateShipmentRename(t);
+      if (changed && t.matches('.card-notes')) {
+        // The root's note carries the series' end -- see planEndSeries.
+        const nid = t.closest('.card')?.dataset.id;
+        const nc = nid && STATE.cardData[nid];
+        if (nc && !nc.ghostOf && nc.recur) syncGhosts(nid);
+      }
       if (changed) persist();
       // Collapse back to the icon/menu-triggered closed state if the field
       // was opened (by tap or "Add Notes") and left blank -- otherwise an
@@ -9068,6 +9231,9 @@
         // makeShipSortable) covers the same "move to a different order"
         // ground more directly.
         if (isGhostCard) {
+          // Ends the series here (see planEndSeries) -- asks first.
+          menu.appendChild(ctxItem('Delete', false, () => deleteCard(cardEl), 'ctx-danger'));
+          menu.appendChild(ctxDivider());
           menu.appendChild(ctxItem('Move to Top', isFirst, () => { container.prepend(cardEl); recalcAll(); persist(); }));
           menu.appendChild(ctxItem('Move to End', isLast, () => { container.append(cardEl); recalcAll(); persist(); }));
           menu.appendChild(ctxOrderPickRow());
