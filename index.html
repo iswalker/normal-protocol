@@ -8078,6 +8078,11 @@
     const isActive = globalPinnedMerchant.toLowerCase() === name.toLowerCase();
     globalPinnedMerchant = isActive ? '' : name;
     globalAutoshipOnly = false;
+    // Typed search text and a pinned merchant are one-or-the-other (typing
+    // already drops the pin), so picking a chip empties the search box too.
+    globalSearchQuery = '';
+    const searchInput = document.getElementById('global-search-input');
+    if (searchInput) searchInput.value = '';
     refreshBoardFilters();
   });
   // Right-click (desktop) / hold (mobile) a chip -- opens a small menu with

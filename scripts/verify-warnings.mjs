@@ -1340,6 +1340,21 @@ try {
     await sp.locator('#global-search-clear').click();
     await sp.waitForTimeout(300);
     check('…and clicking the × clears it (chip deselected, × disabled again)', !(await sp.locator('#pinned-merchants-desktop .pin-chip').evaluate((e) => e.classList.contains('active'))) && (await sp.locator('#global-search-clear').isDisabled()));
+    // typing drops the pin (existing rule); picking a chip must in turn empty the search box
+    const chipSel = '#pinned-merchants-desktop .pin-chip', isOn = () => sp.locator(chipSel).evaluate((e) => e.classList.contains('active'));
+    await sp.locator('#global-search-input').fill('Other');
+    await sp.waitForTimeout(300);
+    check('typing in the search box leaves no chip selected', !(await isOn()));
+    await sp.locator(chipSel).click();
+    await sp.waitForTimeout(300);
+    check('clicking a pinned merchant empties the search text', (await sp.locator('#global-search-input').inputValue()) === '' && (await isOn()));
+    check('…and the board shows that merchant, not the old text (Blue Sky visible, Other Co hidden)', await sp.evaluate(() => {
+      const vis = (id) => { const s = document.querySelector(`.shipment[data-id="${id}"]`); return !!s && !s.classList.contains('search-hide') && s.getClientRects().length > 0; };
+      return vis('o_bs') && !vis('o_ot');
+    }));
+    await sp.locator(chipSel).click();
+    await sp.waitForTimeout(300);
+    check('clicking the active chip again turns the filter off and leaves the search empty', !(await isOn()) && (await sp.locator('#global-search-input').inputValue()) === '');
     await sc.close();
   }
 
