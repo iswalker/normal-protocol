@@ -526,8 +526,21 @@ try {
   const boxBg = await panel(page).evaluate((e) => getComputedStyle(e).backgroundColor);
   const shipBg = await page.evaluate(() => getComputedStyle(document.querySelector('.shipment[data-id="o_norm"]')).backgroundColor);
   check('panel background matches a shipment', boxBg === shipBg, `${boxBg} vs ${shipBg}`);
-  check('one-month rule: a 3rd-of-next-month autoship shows in the CURRENT month', names.includes('Next Early'));
+  // the first-week-of-next-month autoships are their own section (further down, above next month's Preemptive previews)
+  const tailSel = `.month[data-id="${M0.month}_${M0.year}"] .month-warn-tail`;
+  const tailNames = await page.locator(tailSel + ' .warn-name').allTextContents();
+  check('one-month rule: a 3rd-of-next-month autoship shows in the CURRENT month -- in its own "first week of next month" section', tailNames.includes('Next Early') && !names.includes('Next Early'), JSON.stringify({ tailNames, names }));
   check('one-month rule: …and NOT again in the next month', !m1Panel.includes('Next Early'), m1Panel.join(', '));
+  check('the second section is titled for next month\'s first week', (await page.locator(tailSel.replace('.month-warn-tail', '.month-warn-tail-head')).textContent()).trim().replace(/\d+ completed/, '').trim() === `Autoships · ${M1.month} 1–7`);
+  check('the second section sits after In-Month Orders and right above the Preemptive Orders · next month block', await page.evaluate((id) => {
+    const kids = [...document.querySelector(`.month[data-id="${id}"] > .month-list`).children];
+    const cls = (c) => kids.findIndex((n) => n.classList.contains(c));
+    const th = cls('month-warn-tail-head'), tb = cls('month-warn-tail'), mh = cls('month-mirror-head');
+    return th > cls('month-in-head') && th > cls('month-warn') && tb === th + 1 && mh === tb + 1 && cls('month-warn') < cls('month-in-head');
+  }, M0.month + '_' + M0.year));
+  check('the second section\'s rows are real autoship rows with an Approve button', (await page.locator(tailSel + ' .warn-row [data-act="warn-approve"]').count()) === tailNames.length && tailNames.length > 0);
+  check('run-outs stay in the main Needs Attention section (even one dated early next month)', names.includes('Next Runner') && !tailNames.includes('Next Runner'));
+  check('the "n completed" chip is on the main section only (not duplicated)', (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .warn-ign`).count()) <= 1);
   check('one-month rule (run-outs): an item running out the 3rd of next month shows in the CURRENT month', names.includes('Next Runner'), names.join(', '));
   check('one-month rule (run-outs): …and NOT again in the next month', !m1Panel.includes('Next Runner'), m1Panel.join(', '));
   check('one-month rule (run-outs): a mid-next-month run-out is only in the next month', !names.includes('Mid Runner') && m1Panel.includes('Mid Runner'), m1Panel.join(', '));

@@ -1164,7 +1164,7 @@
        list (a sibling of .month-list, never inside it -- the list's children
        are assumed to be only cards/shipments all over this file). Same
        orange/red vocabulary as the SOON/OUT badges. ── */
-    #tab-board .month-warn { padding: 0; } /* a child of .month-list now, which supplies the side padding */
+    #tab-board .month-warn, #tab-board .month-warn-tail { padding: 0; } /* a child of .month-list now, which supplies the side padding */
     /* Same chrome as a shipment block (teal tint, border, radius, shadow),
        with the header/count dressed like .ship-name/.scount. */
     #tab-board .warn-box {
@@ -4504,6 +4504,10 @@
   //     so it lapses by itself once the series advances. Projected ghosts, the
   //     shipments that only hold them, and anything already Ordered/Entered/
   //     Received are skipped -- no approving in advance, nothing left to do.
+  //     The panel is shown in two parts: "Needs Attention" (run-outs + autoships
+  //     up to the end of the month) and, further down just above next month's
+  //     Preemptive previews, "Autoships · <next month> 1-7" for the ones dated in
+  //     the next month's first week.
   //   • Runs-out rows: an Inventory item whose run-out (as of the start of
   //     that month, i.e. after every earlier month's orders) lands in the same
   //     window while no card with a quantity for it exists in the month. Ignore
@@ -4527,6 +4531,8 @@
       return {
         start,
         end: new Date(year, mIdx + 1, WARN_TAIL_DAYS + 1), // exclusive: day 8 of next month
+        tailStart: new Date(year, mIdx + 1, 1), // autoships from here on are the "first week of next month" ones
+        nextName: MONTH_NAMES[(mIdx + 1) % 12],
         isCurrent: start.getTime() === curStart,
         ym: year + '-' + String(mIdx + 1).padStart(2, '0'),
         name: MONTH_NAMES[mIdx],
@@ -4671,7 +4677,7 @@
     // Same m/d vs "Mmm d" choice the board's own dates make (see updateCard)
     const df = board.classList.contains('layout-compact') ? SB.fmtDateShort : SB.fmtDate;
     const pending = p.autoship.length + p.runout.length;
-    const rows = [];
+    const rows = [], tailRows = [];
     const monthLink = (label, target) => `<span class="warn-month" data-act="warn-goto" data-wtargets="${escAttr(targetsAttr([target]))}" title="Jump to the order">${esc(label)}</span>`;
     // An item linked to Inventory always opens Inventory; anything else is plain text
     const nameHTML = (name, isItem) => (isItem && INV_MAP[name.trim().toLowerCase()]
@@ -4690,7 +4696,7 @@
       const roHTML = r.runOut
         ? ` · <span class="warn-ro${gap ? ' is-gap' : ''}" title="${gap ? 'Runs out before this autoship ships' : 'Current run-out, before this order'}">${r.runOut < today ? 'ran out' : 'runs out'} ${df(r.runOut)}</span>`
         : '';
-      rows.push({ date: r.date, html: `<div class="warn-row" data-wdate="${toISODate(r.date)}">
+      (r.date >= w.tailStart ? tailRows : rows).push({ date: r.date, html: `<div class="warn-row" data-wdate="${toISODate(r.date)}">
         <span class="warn-main">
           ${nameHTML(r.name, r.kind === 'card')}
           <span class="warn-detail">autoships ${dateHTML}${roHTML}${extra ? ' · ' + extra : ''}</span>
@@ -4717,7 +4723,12 @@
     const chip = p.completed.length
       ? `<button type="button" class="warn-ign" data-act="warn-ign" data-ym="${w.ym}" aria-haspopup="true" title="Approved autoships and ignored run-outs -- hover to review or restore">${p.completed.length} completed</button>`
       : '';
-    return { head: 'Needs Attention' + chip, box: rows.sort((a, b) => a.date - b.date).map((r) => r.html).join('') };
+    const html = (list) => list.sort((a, b) => a.date - b.date).map((r) => r.html).join('');
+    // the "n completed" chip covers the whole month; it rides on the first part that is showing
+    return {
+      head: rows.length ? 'Needs Attention' + chip : '', box: html(rows),
+      tailHead: tailRows.length ? `Autoships · ${esc(w.nextName)} 1–${WARN_TAIL_DAYS}` + (rows.length ? '' : chip) : '', tailBox: html(tailRows),
+    };
   }
 
   // Does a Needs Attention row survive the board's active search/filter? Same
@@ -4768,18 +4779,22 @@
       // siblings rather than nested, and removed outright when there's nothing
       // left to act on (completed items live in the title's chip), so that
       // :first-child means the first thing actually in the list.
-      let head = list.querySelector(':scope > .month-warn-head');
-      let box = list.querySelector(':scope > .month-warn');
       const p = per[mi];
-      if (!(p && (p.autoship.length || p.runout.length))) { head?.remove(); box?.remove(); return; }
-      const parts = warnPanelHTML(wins[mi], p, mi, monthNames);
-      if (!head) { head = document.createElement('div'); head.className = 'month-sec-head warn-head month-warn-head month-aux'; list.prepend(head); }
-      if (!box) { box = document.createElement('div'); box.className = 'month-warn warn-box month-aux'; list.prepend(box); }
-      // recalcAll runs on every keystroke -- only touch the DOM when the
-      // content actually changed, so a button isn't replaced out from under a
-      // click that's mid-flight.
-      if (head._html !== parts.head) { head._html = parts.head; head.innerHTML = parts.head; }
-      if (box._html !== parts.box) { box._html = parts.box; box.innerHTML = parts.box; }
+      const parts = p && (p.autoship.length || p.runout.length) ? warnPanelHTML(wins[mi], p, mi, monthNames) : null;
+      const place = (headCls, boxCls, headHTML, boxHTML) => {
+        let head = list.querySelector(':scope > .' + headCls);
+        let box = list.querySelector(':scope > .' + boxCls);
+        if (!boxHTML) { head?.remove(); box?.remove(); return; }
+        if (!head) { head = document.createElement('div'); head.className = 'month-sec-head warn-head ' + headCls + ' month-aux'; list.prepend(head); }
+        if (!box) { box = document.createElement('div'); box.className = boxCls + ' warn-box month-aux'; list.prepend(box); }
+        // recalcAll runs on every keystroke -- only touch the DOM when the
+        // content actually changed, so a button isn't replaced out from under a
+        // click that's mid-flight.
+        if (head._html !== headHTML) { head._html = headHTML; head.innerHTML = headHTML; }
+        if (box._html !== boxHTML) { box._html = boxHTML; box.innerHTML = boxHTML; }
+      };
+      place('month-warn-head', 'month-warn', parts ? parts.head : '', parts ? parts.box : '');
+      place('month-warn-tail-head', 'month-warn-tail', parts ? parts.tailHead : '', parts ? parts.tailBox : '');
     });
     layoutMonthLists(); // (a no-op unless something just appeared or vanished)
     refreshIgnPop();
@@ -4893,6 +4908,7 @@
   //                             (flagged Launch Preemptively); draggable among themselves
   //   b) Needs Attention     -- the warnings panel (a label + a box)
   //   c) In-Month Orders     -- everything else still open (orders + loose cards)
+  //   c2) Autoships · <next month> 1-7 -- the part of the panel for next month's first week
   //   d) Preemptive Orders · <next month> -- read-only previews of NEXT month's
   //                             preemptive orders, which get placed during this one
   //                             (not Approved ones -- those only show in their own month)
@@ -4945,7 +4961,7 @@
       const pre = kids.filter((n) => isShip(n) && !n.classList.contains('is-locked') && !appr.includes(n) && isShipPreemptive(n));
       const std = kids.filter((n) => (isShip(n) || n.classList.contains('card')) && !locked.includes(n) && !pre.includes(n) && !appr.includes(n));
       const want = [aux('month-pre-head'), ...pre, aux('month-warn-head'), aux('month-warn'), aux('month-in-head'), ...std,
-        aux('month-mirror-head'), aux('month-preempt'), aux('month-appr-head'), ...appr, aux('month-done-head'), ...locked].filter(Boolean);
+        aux('month-warn-tail-head'), aux('month-warn-tail'), aux('month-mirror-head'), aux('month-preempt'), aux('month-appr-head'), ...appr, aux('month-done-head'), ...locked].filter(Boolean);
       kids.forEach((n) => { if (!want.includes(n)) want.push(n); }); // anything unexpected keeps its place at the end
       if (want.every((n, i) => kids[i] === n)) return;
       want.forEach((n) => list.appendChild(n)); // re-appending in order leaves exactly this sequence
@@ -8284,7 +8300,7 @@
     // does everywhere else. Dividers are never real content.
     const anyVisible = [...list.children].some((node) =>
       !node.classList.contains('card--divider') && !node.classList.contains('search-hide')
-      && (!node.classList.contains('month-aux') || node.classList.contains('month-warn'))); // matching Needs Attention rows count as content
+      && (!node.classList.contains('month-aux') || node.classList.contains('month-warn') || node.classList.contains('month-warn-tail'))); // matching Needs Attention rows count as content
     monthEl.classList.toggle('search-hide', filterActive && !anyVisible);
     recalcTotalsFor(monthEl);
   }
