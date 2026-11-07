@@ -950,10 +950,8 @@ try {
   await page.waitForTimeout(200);
 
   // ── Inventory is a round button bottom-right; Scan lives in the Inventory window; one "clear all filters" button ──
-  check('the Inventory button is no longer in the header', await page.evaluate(() => !document.querySelector('header #inv-search-link, header .inv-search-link, header #inv-scan-btn')));
-  const fab = await page.evaluate(() => { const b = document.getElementById('inv-search-link'), r = b.getBoundingClientRect(), cs = getComputedStyle(b); const sv = b.querySelector('svg').getBoundingClientRect(); return { pos: getComputedStyle(b.parentElement).position, radius: cs.borderRadius, w: Math.round(r.width), h: Math.round(r.height), right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom), svg: [Math.round(sv.width), Math.round(sv.height)] }; });
-  check('Inventory is a round teal button fixed at the bottom-right (same as the old mobile Scan one)', fab.pos === 'fixed' && fab.radius === '50%' && fab.w === 52 && fab.h === 52 && fab.right === 16 && fab.bottom === 24, JSON.stringify(fab));
-  check('…with a 40x40 icon inside it', fab.svg[0] === 40 && fab.svg[1] === 40, JSON.stringify(fab.svg));
+  check('desktop: Inventory is a labelled button in the header, immediately left of Autoship', await page.evaluate(() => { const b = document.querySelector('header #inv-search-link'); return !!b && b.textContent.trim() === 'Inventory' && b.nextElementSibling === document.getElementById('inv-autoship-btn') && b.getBoundingClientRect().width > 60 && !document.querySelector('header #inv-scan-btn'); }));
+  check('desktop: the header button matches Autoship (same height, 7px radius) and the round phone button is hidden', await page.evaluate(() => { const b = document.getElementById('inv-search-link'), a = document.getElementById('inv-autoship-btn'); const rb = b.getBoundingClientRect(), ra = a.getBoundingClientRect(); return Math.abs(rb.height - ra.height) <= 1 && getComputedStyle(b).borderRadius === '7px' && getComputedStyle(document.getElementById('mob-inv-fab')).display === 'none'; }));
   check('there is no "Show Scan Button" setting any more', (await page.locator('#show-scan-toggle').count()) === 0);
   await page.locator('#inv-search-link').click();
   await page.waitForSelector('#inv-modal-ov.open');
@@ -1453,7 +1451,7 @@ try {
     const autoOff = await hot('#inv-autoship-btn');
     check('…and once it is switched off it is back to its normal outline (no sticky hover teal)', autoOff.border === autoBase.border && !autoOff.focused, JSON.stringify({ autoBase, autoOff }));
     // Inventory: a sheet that rides up from the bottom...
-    await tp.tap('#inv-search-link');
+    await tp.tap('#inv-fab-btn');
     const sheetIn = await tp.evaluate(() => getComputedStyle(document.getElementById('tab-inventory')).animationName);
     await tp.waitForTimeout(700);
     const sheetRest = await tp.evaluate(() => { const r = document.getElementById('tab-inventory').getBoundingClientRect(); return { top: Math.round(r.top), transform: getComputedStyle(document.getElementById('tab-inventory')).transform }; });
@@ -1466,7 +1464,7 @@ try {
     await tp.waitForTimeout(600);
     const closed = await tp.evaluate(() => ({ cls: document.getElementById('inv-modal-ov').className, shown: getComputedStyle(document.getElementById('inv-modal-ov')).display }));
     check('…and then it is gone', !/open|closing/.test(closed.cls) && closed.shown === 'none', JSON.stringify(closed));
-    await tp.tap('#inv-search-link'); // reopening works after a close
+    await tp.tap('#inv-fab-btn'); // reopening works after a close
     await tp.waitForTimeout(500);
     check('…and it reopens normally afterwards', await tp.evaluate(() => document.getElementById('inv-modal-ov').classList.contains('open') && !document.getElementById('inv-modal-ov').classList.contains('closing')));
     await tc.close();
@@ -1534,7 +1532,7 @@ try {
     await pg.goto(base, { waitUntil: 'load' });
     await pg.waitForSelector('#tab-board #board .month', { state: 'attached' });
     await pg.waitForTimeout(500);
-    await pg.locator('#inv-search-link').click();
+    await pg.locator('#inv-fab-btn').click();
     await pg.waitForSelector('#inv-modal-ov.open');
     await pg.waitForTimeout(600);
     const box = () => pg.evaluate(() => { const o = document.getElementById('inv-modal-ov').getBoundingClientRect(), s = document.getElementById('inv-filter-item').getBoundingClientRect(); return { top: Math.round(o.top), bottom: Math.round(o.bottom), search: Math.round(s.top), scrollTop: document.getElementById('inv-modal-ov').scrollTop, winY: window.scrollY }; });
@@ -1593,9 +1591,9 @@ try {
     const rows = [...box.querySelectorAll('.warn-row, .warn-btn')];
     return box.scrollWidth <= box.clientWidth + 1 && rows.every((e) => e.getBoundingClientRect().right <= col.right + 1);
   }, M0.month + '_' + M0.year));
-  const mfab = await m.page.evaluate(() => { const b = document.getElementById('inv-search-link'), r = b.getBoundingClientRect(); return { radius: getComputedStyle(b).borderRadius, right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom), w: Math.round(r.width) }; });
-  check('mobile: the round Inventory button sits bottom-right', mfab.radius === '50%' && mfab.w === 52 && mfab.right === 16 && mfab.bottom === 24, JSON.stringify(mfab));
-  await m.page.locator('#inv-search-link').click();
+  const mfab = await m.page.evaluate(() => { const b = document.getElementById('inv-fab-btn'), r = b.getBoundingClientRect(); return { radius: getComputedStyle(b).borderRadius, right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom), w: Math.round(r.width), svg: [Math.round(b.querySelector('svg').getBoundingClientRect().width)], hdr: getComputedStyle(document.getElementById('inv-search-link')).display }; });
+  check('mobile: the round Inventory button sits bottom-right (40x40 icon), and the header button is gone', mfab.radius === '50%' && mfab.w === 52 && mfab.right === 16 && mfab.bottom === 24 && mfab.svg[0] === 40 && mfab.hdr === 'none', JSON.stringify(mfab));
+  await m.page.locator('#inv-fab-btn').click();
   await m.page.waitForSelector('#inv-modal-ov.open');
   await m.page.waitForSelector('#inv-cards .inv-card', { timeout: 10000 });
   const mhead = await m.page.evaluate(() => { const sc = document.getElementById('inv-scan-btn'), cl = document.getElementById('inv-modal-close'), a = sc.getBoundingClientRect(), b = cl.getBoundingClientRect(); return { visible: a.width > 0, nextIsClose: sc.nextElementSibling === cl, gap: Math.round(b.left - a.right), sameRow: Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) < 2, rightEdge: Math.round(innerWidth - b.right) }; });
