@@ -334,6 +334,43 @@ try {
     check('the end moves to the new last month', s[1].notes.startsWith(`Ends after ${lab(2)}`), JSON.stringify(s.map((c) => c.notes)));
     await ctx.close();
   }
+  // ── duplicating a recurring item / its order: the copy gets its OWN future ghosts ──
+  const perMonth = (page, name = 'Rooty') => page.evaluate((name) => [...document.querySelectorAll('#board > .month')].map((m) => [...m.querySelectorAll('.card[data-id] .card-name')].filter((n) => n.textContent.trim() === name).length), name);
+  const dupMenu = async (page, sel) => clickMenu(page, sel, 'Duplicate');
+  {
+    const { ctx, page } = await fresh();
+    const before = await perMonth(page);
+    check('(setup) one Rooty per month from the current one on', before.filter(Boolean).length > 5 && before.every((n) => n <= 1), JSON.stringify(before));
+    await dupMenu(page, '.shipment[data-id="o_root"] [data-act="open-ship-menu"]');
+    const after = await perMonth(page);
+    check('duplicating the ORDER: every month now holds a second one (the copy\'s own ghosts)', after.every((n, i) => n === before[i] * 2), JSON.stringify({ before, after }));
+    const twoRoots = await page.evaluate(() => [...document.querySelectorAll('.card[data-id]')].filter((c) => c.querySelector('.card-name')?.textContent.trim() === 'Rooty' && !c.classList.contains('card--ghost')).length);
+    check('…with exactly 2 real (non-ghost) ones, both still recurring', twoRoots === 2);
+    await settle(page);
+    check('saved: both series persisted (2 per month)', dbItems().length === before.reduce((a, b) => a + b, 0) * 2, JSON.stringify({ n: dbItems().length }));
+    await ctx.close();
+    const again = await openBoard();
+    check('after a reload nothing changes (no extra ghosts, none missing)', JSON.stringify(await perMonth(again.page)) === JSON.stringify(after), JSON.stringify(await perMonth(again.page)));
+    await again.ctx.close();
+  }
+  {
+    const { ctx, page } = await fresh();
+    const before = await perMonth(page);
+    await dupMenu(page, '.card[data-id="oi_root"] [data-act="open-card-menu"]');
+    const after = await perMonth(page);
+    check('duplicating the ITEM: its copy gets its own ghosts too', after.every((n, i) => n === before[i] * 2), JSON.stringify({ before, after }));
+    await ctx.close();
+  }
+  {
+    // duplicating an order that only holds projections doesn't copy the projections (nothing to put in the copy)
+    const { ctx, page } = await fresh();
+    const s = await series(page);
+    const shipId = await page.evaluate((id) => document.querySelector(`.card[data-id="${id}"]`).closest('.shipment').dataset.id, s[2].id);
+    const before = await perMonth(page);
+    await dupMenu(page, `.shipment[data-id="${shipId}"] [data-act="open-ship-menu"]`);
+    check('duplicating an order of projections adds no stray duplicate ghosts', JSON.stringify(await perMonth(page)) === JSON.stringify(before), JSON.stringify(await perMonth(page)));
+    await ctx.close();
+  }
 } catch (e) {
   errors.push('TEST CRASH: ' + (e && e.stack || e));
 }

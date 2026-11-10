@@ -9321,6 +9321,7 @@
           STATE.cardData[newId] = Object.assign({}, STATE.cardData[cardEl.dataset.id] || {});
           const newEl = el(cardHTML(newId));
           cardEl.after(newEl);
+          reconcileMovedRecurring(newEl); // ...and a recurring item's copy projects its own future ghosts
           recalcAll(); persist();
         }));
         menu.appendChild(ctxDivider());
@@ -9338,6 +9339,17 @@
         }));
       });
       activeCtxMenu._forBtn = cardEl;
+  }
+
+  // The cards an order copy (Duplicate / Copy to month) carries over: everything
+  // except the order's projections. A ghost is not a card of its own -- it is
+  // the recurring root's projection into that month -- so the copy of a
+  // recurring item gets its OWN projections (reconcileMovedRecurring below),
+  // and a copied ghost would only sit there as a stray duplicate of the original's.
+  function copiableCardIds(shipEl) {
+    return [...shipEl.querySelectorAll(':scope .ship-body > .card[data-id]')]
+      .map((c) => c.dataset.id)
+      .filter((id) => !(STATE.cardData[id]?.ghostOf && !isCardLocked(id)));
   }
 
   // Builds and opens a shipment's context menu -- same shared contract as
@@ -9373,7 +9385,7 @@
     function copyShipToMonth(targetMonthEl) {
       const sid = uid('s_');
       STATE.shipmentData[sid] = Object.assign({}, STATE.shipmentData[shipEl.dataset.id] || {});
-      const oldCardIds = [...shipEl.querySelectorAll(':scope .ship-body > .card[data-id]')].map(c => c.dataset.id);
+      const oldCardIds = copiableCardIds(shipEl);
       const newCards = oldCardIds.map(oldId => {
         const newId = uid('c_');
         STATE.cardData[newId] = Object.assign({}, STATE.cardData[oldId] || {});
@@ -9428,7 +9440,7 @@
       menu.appendChild(ctxItem('Duplicate', false, () => {
         const sid = uid('s_');
         STATE.shipmentData[sid] = Object.assign({}, STATE.shipmentData[shipEl.dataset.id] || {});
-        const oldCardIds = [...shipEl.querySelectorAll(':scope .ship-body > .card[data-id]')].map(c => c.dataset.id);
+        const oldCardIds = copiableCardIds(shipEl);
         const newCards = oldCardIds.map(oldId => {
           const newId = uid('c_');
           STATE.cardData[newId] = Object.assign({}, STATE.cardData[oldId] || {});
@@ -9437,6 +9449,7 @@
         const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: newCards }));
         shipEl.after(newEl);
         makeShipSortable(newEl.querySelector('.ship-body'));
+        reconcileMovedRecurring(newEl); // a recurring item in the copy projects its own future ghosts
         recalcAll(); persist();
       }));
       menu.appendChild(ctxDivider());
