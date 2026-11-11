@@ -322,7 +322,7 @@ try {
   const doneHead = await page.evaluate((id) => {
     const list = document.querySelector('.month[data-id="' + id + '"] > .month-list');
     const h = list.querySelector(':scope > .month-done-head');
-    return { text: h && h.textContent, before: !!h && h.nextElementSibling && h.nextElementSibling.classList.contains('is-locked'), after: !!h && !h.previousElementSibling.classList.contains('is-locked') };
+    return { text: h && h.firstChild.nodeValue, before: !!h && h.nextElementSibling && h.nextElementSibling.classList.contains('is-locked'), after: !!h && !h.previousElementSibling.classList.contains('is-locked') };
   }, M0.month + '_' + M0.year);
   check('completed header: "Completed Orders" sits right above the first completed order', doneHead.text === 'Completed Orders' && doneHead.before && doneHead.after, JSON.stringify(doneHead));
   check('completed header: a month with no completed orders has none', (await page.locator('.month[data-id="' + M2.month + '_' + M2.year + '"] > .month-list > .month-done-head').count()) === 0);
@@ -342,7 +342,7 @@ try {
     return 'other';
   }), m1id);
   check('month layout: Preemptive / Needs Attention / In-Month / Preemptive-from-next / Completed', /^pre-head( pre)+ warn-head warn in-head( (std|other))+ mirror-head mirrors appr-head( approved)+ done-head( locked)+$/.test(seq.join(' ')), seq.join(' '));
-  const heads = await page.evaluate((id) => Object.fromEntries(['pre-head', 'in-head', 'mirror-head', 'done-head'].map((k) => [k, document.querySelector('.month[data-id="' + id + '"] > .month-list > .month-' + k.replace('-head', '') + (k === 'mirror-head' ? '-head' : '-head'))?.textContent])), m1id);
+  const heads = await page.evaluate((id) => Object.fromEntries(['pre-head', 'in-head', 'mirror-head', 'done-head'].map((k) => [k, document.querySelector('.month[data-id="' + id + '"] > .month-list > .month-' + k.replace('-head', '') + (k === 'mirror-head' ? '-head' : '-head'))?.firstChild.nodeValue])), m1id);
   check('section headers read Preemptive Orders / In-Month Orders / Preemptive Orders · <next month> / Completed Orders', heads['pre-head'] === 'Preemptive Orders' && heads['in-head'] === 'In-Month Orders' && heads['mirror-head'] === 'Preemptive Orders · ' + M2.month && heads['done-head'] === 'Completed Orders', JSON.stringify(heads));
   check('the panel really is below the Preemptive group and above In-Month', seq.indexOf('warn') > seq.lastIndexOf('pre') && seq.indexOf('warn') < seq.indexOf('in-head'));
   // ── the "Approved" status: every item an approved autoship ──
@@ -358,7 +358,7 @@ try {
   check('Approved: a 1-item order whose own (order-level) autoship date is approved becomes Approved', await isAppr('o_appr2'));
   check('Approved: a 1-item order whose item is an approved autoship becomes Approved even with its order-level date still pending', await isAppr('o_appr3'));
   check('Approved: …and that pending order-level date still has its own row in Needs Attention', (await page.locator('.month[data-id="' + m1id + '"] .month-warn .warn-name', { hasText: 'Pending Order Date Co' }).count()) === 1);
-  check('Approved: it has its own "Approved Orders" header above Completed', (await page.locator('.month[data-id="' + m1id + '"] > .month-list > .month-appr-head').textContent()) === 'Approved Orders');
+  check('Approved: it has its own "Approved Orders" header above Completed', (await page.locator('.month[data-id="' + m1id + '"] > .month-list > .month-appr-head').evaluate((h) => h.firstChild.nodeValue)) === 'Approved Orders');
   check('Approved: an order with items that are NOT all approved autoships is not Approved', !(await page.evaluate(() => document.querySelector('.shipment[data-id="o_a"]').classList.contains('is-approved'))) && !(await page.evaluate(() => document.querySelector('.shipment[data-id="o_norm"]').classList.contains('is-approved'))));
   const planned0 = await m1Planned();
   // revoke one approval -> pulled straight back out to blank
@@ -551,7 +551,7 @@ try {
     document.querySelectorAll('#board > .month').forEach((month) => {
       const kids = [...month.querySelector(':scope > .month-list').children];
       kids.forEach((h, i) => {
-        if (!h.classList.contains('month-sec-head') || !h.dataset.total) return;
+        if (!h.classList.contains('month-sec-head') || !h.querySelector(':scope > .sec-total')) return;
         let p = 0, m = 0;
         for (let j = i + 1; j < kids.length && !kids[j].classList.contains('month-sec-head'); j++) {
           const n = kids[j];
@@ -563,7 +563,7 @@ try {
             [...n.children].forEach((host) => { const tt = host._mship && host._mship.querySelector('.ship-total'); if (tt) { p += money(tt.querySelector('.amt').textContent); m += money(tt.querySelector('.ship-max').textContent); } });
           }
         }
-        const t = h.dataset.total, mm = /^Planned (.+) \/ Max (.+)$/.exec(t);
+        const t = h.querySelector(':scope > .sec-total').textContent, mm = /^Planned (.+) \/ Max (.+)$/.exec(t);
         out.push({ month: month.dataset.id, section: [...h.classList].find((c) => /^month-.+-head$/.test(c) && c !== 'month-sec-head'), shown: t, planned: money(mm && mm[1]), max: money(mm && mm[2]), p, m });
       });
     });
@@ -577,8 +577,14 @@ try {
   const m0in = secs.find((x) => x.month === M0.month + '_' + M0.year && x.section === 'month-in-head');
   const m0Month = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent();
   check('…and it is NOT the whole month (the month figure also holds Completed orders and its Spent)', m0in && m0in.shown !== 'Planned ' + m0Month.trim() + ' / Max ' + (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .maxv`).textContent()).trim(), JSON.stringify({ section: m0in && m0in.shown, month: m0Month }));
-  check('the Needs Attention sections (rows, not orders) carry no total', await page.evaluate(() => ![...document.querySelectorAll('.month-warn-head, .month-warn-tail-head')].some((h) => h.dataset.total)));
-  check('the total is shown at the right end of the header', await page.evaluate((id) => { const h = document.querySelector(`.month[data-id="${id}"] .month-in-head`), r = h.getBoundingClientRect(); const c = getComputedStyle(h, '::before'); return c.content.startsWith('"Planned') && c.order === '2' && h.textContent.trim() === 'In-Month Orders'; }, M0.month + '_' + M0.year));
+  check('the Needs Attention sections (rows, not orders) carry no total', await page.evaluate(() => ![...document.querySelectorAll('.month-warn-head, .month-warn-tail-head')].some((h) => h.querySelector('.sec-total'))));
+  check('the total is shown at the right end of the header, after the rule', await page.evaluate((id) => { const h = document.querySelector(`.month[data-id="${id}"] .month-in-head`), sp = h.querySelector('.sec-total'), r = h.getBoundingClientRect(), sr = sp.getBoundingClientRect(); return h.firstChild.nodeValue === 'In-Month Orders' && h.lastElementChild === sp && sr.right > r.right - 12 && sr.left > r.left + r.width / 2; }, M0.month + '_' + M0.year));
+  // real text: it can be selected and copied
+  const secSpan = page.locator(`.month[data-id="${M0.month}_${M0.year}"] .month-in-head .sec-total`);
+  await secSpan.dblclick();
+  await secSpan.click({ clickCount: 3 });
+  check('the total can be selected (triple-click) and copied as text', await page.evaluate(() => /^Planned \$[\d,]+(\.\d\d)? \/ Max \$[\d,]+(\.\d\d)?$/i.test(window.getSelection().toString().trim())) && (await secSpan.evaluate((e) => getComputedStyle(e).userSelect)) === 'text', await page.evaluate(() => window.getSelection().toString()));
+  await page.evaluate(() => window.getSelection().removeAllRanges());
   // a search narrows the orders, so it narrows the totals the same way
   await page.locator('#global-search-input').fill('Alpha');
   await page.waitForTimeout(500);

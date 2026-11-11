@@ -2038,8 +2038,11 @@
        Needs Attention panel are separate children, removed when empty */
     #tab-board .month-sec-head:first-child { margin-top: -4px; }
     #tab-board .month-sec-head::after { content: ''; flex: 1 1 auto; height: 1px; background: #dde3e4; order: 1; }
-    /* Planned / Max across the orders in the section (data-total, see renderSectionTotals) */
-    #tab-board .month-sec-head[data-total]::before { content: attr(data-total); order: 2; font-weight: 500; letter-spacing: .04em; white-space: nowrap; }
+    /* Planned / Max across the orders in the section (see renderSectionTotals) -- real text, so it can be selected and copied */
+    #tab-board .month-sec-head .sec-total {
+      order: 2; font-weight: 500; letter-spacing: .04em; white-space: nowrap;
+      -webkit-user-select: text; user-select: text; cursor: text;
+    }
 
     /* Divider above the first locked shipment */
     #tab-board .month-list > *:not(.shipment.is-locked):not(.month-done-head) + .shipment.is-locked {
@@ -4973,7 +4976,7 @@
   }
   // Planned / Max across just the orders of one section (not the whole month):
   // the same two figures each order's own badge shows, added up. Shown at the right
-  // end of the section's label (CSS, from data-total). Search-hidden orders are left
+  // end of the section's label (a .sec-total span). Search-hidden orders are left
   // out, like they are everywhere else the board adds things up.
   function renderSectionTotals() {
     const monthEls = [...board.querySelectorAll('.month')];
@@ -4984,7 +4987,9 @@
       if (!h) return;
       const s = sum(nodes.filter(live));
       const text = 'Planned ' + SB.fmtMoney(s.p) + ' / Max ' + SB.fmtMoney(s.m);
-      if (h.dataset.total !== text) h.dataset.total = text;
+      let span = h.querySelector(':scope > .sec-total');
+      if (!span) { span = document.createElement('span'); span.className = 'sec-total'; h.appendChild(span); }
+      if (span.textContent !== text) span.textContent = text;
     };
     monthEls.forEach((monthEl, mi) => {
       const list = monthEl.querySelector(':scope > .month-list');
@@ -5510,7 +5515,9 @@
       // mirror sync observer would otherwise keep re-triggering itself.
       const text = 'Preemptive Orders · ' + nextName;
       const title = 'Orders tracked in ' + nextName + ' but placed during this month -- edits here apply to the order itself';
-      if (mh.textContent !== text) mh.textContent = text;
+      const labelNode = mh.firstChild && mh.firstChild.nodeType === 3 ? mh.firstChild : null;
+      if (!labelNode) mh.insertBefore(document.createTextNode(text), mh.firstChild);
+      else if (labelNode.nodeValue !== text) labelNode.nodeValue = text;
       if (mh.title !== title) mh.title = title;
       const existing = new Map([...wrap.children].map((h) => [h.dataset.preSid, h]));
       const hosts = items.map(({ sid, shipEl }) => {
