@@ -10967,14 +10967,26 @@
   // card's cell was left holding the (now-committed) <input>, which never
   // reverted to display text, making a successful blur-commit look like it
   // hadn't saved on mobile.
-  function refreshRow(key, newCaps, loggedOn, itemMap) {
+  //
+  // newCaps is what's on hand RIGHT NOW (it's what the On Hand / Bottles cells
+  // show). The run-out, though, counts from the last Reset -- estimateRunOut
+  // takes the amount AS OF that date and subtracts the days since itself. For
+  // an On Hand edit those are the same thing (it posts a fresh Reset dated
+  // today), so the default is fine. A save that ISN'T resetting anything
+  // (Bottle Size, say) must pass `runOutBase` -- the log's own { amount,
+  // loggedOn } baseline, what renderInventory uses -- because newCaps has
+  // already been projected forward from the old Reset, and counting those
+  // elapsed days a second time ran an item with weeks left straight to EMPTY.
+  function refreshRow(key, newCaps, loggedOn, itemMap, runOutBase) {
     const meta = itemMap[key] || {};
     const bs   = meta.bottleSize || 0;
     const dose = meta.dose || 0;
     const bottleFloat = bs > 0 ? newCaps / bs : 0;
     const bottles     = bs > 0 ? bottleFloat.toFixed(1) : '—';
     const bottleBars  = bs > 0 ? barsHtml(Math.floor(bottleFloat), bottleFloat % 1) : '';
-    const ro          = estimateRunOut(newCaps, dose, loggedOn);
+    const ro          = runOutBase
+      ? estimateRunOut(runOutBase.amount, dose, runOutBase.loggedOn)
+      : estimateRunOut(newCaps, dose, loggedOn);
     const roMonths    = ro && ro.date ? countCoveredMonths(ro.date) : 0;
     const roBars      = ro ? barsHtml(roMonths, 0) : '';
 
@@ -11154,10 +11166,11 @@
         // the time that finished (a fetch + full rebuild, not instant),
         // its freshly-opened <input> got wiped out from under you mid-edit
         // -- the "stutter"/unfocus this was reported as.
-        const loggedOn = doseChanged
-          ? isoToday() // just posted a fresh Reset dated today, above
-          : (computeOnHand(window._INV_LOG_ROWS || [])[key] || {}).loggedOn || null;
-        refreshRow(key, currentCaps, loggedOn, itemMap);
+        // The log's own baseline for this item: after a dose change that's the
+        // fresh Reset just cached above (today, currentCaps); otherwise the
+        // last Reset, whose amount is NOT the same as what's on hand now.
+        const base = computeOnHand(window._INV_LOG_ROWS || [])[key] || null;
+        refreshRow(key, currentCaps, base ? base.loggedOn : null, itemMap, base);
       } catch (e) {
         console.error('Meta save failed:', e);
         renderInventory();
