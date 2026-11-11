@@ -541,6 +541,53 @@ try {
   check('the second section\'s rows are real autoship rows with an Approve button', (await page.locator(tailSel + ' .warn-row [data-act="warn-approve"]').count()) === tailNames.length && tailNames.length > 0);
   check('run-outs stay in the main Needs Attention section (even one dated early next month)', names.includes('Next Runner') && !tailNames.includes('Next Runner'));
   check('the "n completed" chip is on the main section only (not duplicated)', (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .warn-ign`).count()) <= 1);
+
+  // ── every section of orders carries its own Planned / Max (just that section's orders, not the month) ──
+  // For each header with a total: add up the badges of the orders actually shown under it
+  // (plus loose items in In-Month), and compare with what the header says.
+  const sectionTotals = (pg) => pg.evaluate(() => {
+    const money = (t) => { const m = /(-?)\$([\d,]+(?:\.\d+)?)/.exec(t || ''); return m ? (m[1] ? -1 : 1) * parseFloat(m[2].replace(/,/g, '')) : 0; };
+    const out = [];
+    document.querySelectorAll('#board > .month').forEach((month) => {
+      const kids = [...month.querySelector(':scope > .month-list').children];
+      kids.forEach((h, i) => {
+        if (!h.classList.contains('month-sec-head') || !h.dataset.total) return;
+        let p = 0, m = 0;
+        for (let j = i + 1; j < kids.length && !kids[j].classList.contains('month-sec-head'); j++) {
+          const n = kids[j];
+          if (n.classList.contains('search-hide')) continue;
+          if (n.classList.contains('shipment')) { p += money(n.querySelector('.ship-total .amt').textContent); m += money(n.querySelector('.ship-total .ship-max').textContent); }
+          else if (n.classList.contains('card') && !n.classList.contains('card--divider')) { const c = money(n.querySelector('.ototal .amt').textContent); m += c; p += c; }
+          else if (n.classList.contains('month-preempt')) {
+            // next month's preemptive previews: the real orders' own badges
+            [...n.children].forEach((host) => { const tt = host._mship && host._mship.querySelector('.ship-total'); if (tt) { p += money(tt.querySelector('.amt').textContent); m += money(tt.querySelector('.ship-max').textContent); } });
+          }
+        }
+        const t = h.dataset.total, mm = /^Planned (.+) \/ Max (.+)$/.exec(t);
+        out.push({ month: month.dataset.id, section: [...h.classList].find((c) => /^month-.+-head$/.test(c) && c !== 'month-sec-head'), shown: t, planned: money(mm && mm[1]), max: money(mm && mm[2]), p, m });
+      });
+    });
+    return out;
+  });
+  const secs = await sectionTotals(page);
+  const wrong = secs.filter((x) => Math.abs(x.planned - x.p) > 0.011 || Math.abs(x.max - x.m) > 0.011);
+  const kinds = new Set(secs.map((x) => x.section));
+  check('section headers show a Planned / Max total (in-month, preemptive, completed, ... sections all do)', secs.length >= 6 && kinds.has('month-in-head') && kinds.has('month-pre-head') && kinds.has('month-done-head') && kinds.has('month-mirror-head'), JSON.stringify([...kinds]));
+  check('each section total is exactly the sum of the orders in that section', wrong.length === 0, JSON.stringify(wrong.slice(0, 3)));
+  const m0in = secs.find((x) => x.month === M0.month + '_' + M0.year && x.section === 'month-in-head');
+  const m0Month = await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .plannedv`).textContent();
+  check('…and it is NOT the whole month (the month figure also holds Completed orders and its Spent)', m0in && m0in.shown !== 'Planned ' + m0Month.trim() + ' / Max ' + (await page.locator(`.month[data-id="${M0.month}_${M0.year}"] .maxv`).textContent()).trim(), JSON.stringify({ section: m0in && m0in.shown, month: m0Month }));
+  check('the Needs Attention sections (rows, not orders) carry no total', await page.evaluate(() => ![...document.querySelectorAll('.month-warn-head, .month-warn-tail-head')].some((h) => h.dataset.total)));
+  check('the total is shown at the right end of the header', await page.evaluate((id) => { const h = document.querySelector(`.month[data-id="${id}"] .month-in-head`), r = h.getBoundingClientRect(); const c = getComputedStyle(h, '::before'); return c.content.startsWith('"Planned') && c.order === '2' && h.textContent.trim() === 'In-Month Orders'; }, M0.month + '_' + M0.year));
+  // a search narrows the orders, so it narrows the totals the same way
+  await page.locator('#global-search-input').fill('Alpha');
+  await page.waitForTimeout(500);
+  const filtered = await sectionTotals(page);
+  const wrongF = filtered.filter((x) => Math.abs(x.planned - x.p) > 0.011 || Math.abs(x.max - x.m) > 0.011);
+  const inAlpha = filtered.find((x) => x.month === M0.month + '_' + M0.year && x.section === 'month-in-head');
+  check('while searching, section totals follow the orders still shown', wrongF.length === 0 && inAlpha && inAlpha.max < (m0in ? m0in.max : 0), JSON.stringify({ wrongF: wrongF.slice(0, 2), inAlpha, before: m0in }));
+  await page.locator('#global-search-input').fill('');
+  await page.waitForTimeout(500);
   check('one-month rule (run-outs): an item running out the 3rd of next month shows in the CURRENT month', names.includes('Next Runner'), names.join(', '));
   check('one-month rule (run-outs): …and NOT again in the next month', !m1Panel.includes('Next Runner'), m1Panel.join(', '));
   check('one-month rule (run-outs): a mid-next-month run-out is only in the next month', !names.includes('Mid Runner') && m1Panel.includes('Mid Runner'), m1Panel.join(', '));

@@ -2037,7 +2037,9 @@
     /* only ever the first thing actually in the list: the title and box of the
        Needs Attention panel are separate children, removed when empty */
     #tab-board .month-sec-head:first-child { margin-top: -4px; }
-    #tab-board .month-sec-head::after { content: ''; flex: 1 1 auto; height: 1px; background: #dde3e4; }
+    #tab-board .month-sec-head::after { content: ''; flex: 1 1 auto; height: 1px; background: #dde3e4; order: 1; }
+    /* Planned / Max across the orders in the section (data-total, see renderSectionTotals) */
+    #tab-board .month-sec-head[data-total]::before { content: attr(data-total); order: 2; font-weight: 500; letter-spacing: .04em; white-space: nowrap; }
 
     /* Divider above the first locked shipment */
     #tab-board .month-list > *:not(.shipment.is-locked):not(.month-done-head) + .shipment.is-locked {
@@ -4457,6 +4459,7 @@
           });
           node.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
           node.querySelector('.ship-total .ship-max').textContent = ' / ' + SB.fmtMoney(sMax);
+          node._planned = sTot; node._max = sMax; // read by the section headers' totals (renderSectionTotals)
           node.querySelector('.scount').textContent = sCount;
           const md = node.querySelector('.ship-min-date');
           if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
@@ -4467,6 +4470,7 @@
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
           const cost = updateCard(node);
+          node._max = cost; node._planned = STATE.cardData[node.dataset.id]?.includeInMonthTotal ? cost : 0;
           if (!node.classList.contains('search-hide')) {
             maxItems += cost;
             if (STATE.cardData[node.dataset.id] && STATE.cardData[node.dataset.id].includeInMonthTotal) plannedItems += cost;
@@ -4967,11 +4971,47 @@
       want.forEach((n) => list.appendChild(n)); // re-appending in order leaves exactly this sequence
     });
   }
+  // Planned / Max across just the orders of one section (not the whole month):
+  // the same two figures each order's own badge shows, added up. Shown at the right
+  // end of the section's label (CSS, from data-total). Search-hidden orders are left
+  // out, like they are everywhere else the board adds things up.
+  function renderSectionTotals() {
+    const monthEls = [...board.querySelectorAll('.month')];
+    const live = (n) => !n.classList.contains('search-hide');
+    const sum = (nodes) => nodes.reduce((a, n) => { a.p += n._planned || 0; a.m += n._max || 0; return a; }, { p: 0, m: 0 });
+    const put = (list, cls, nodes) => {
+      const h = list.querySelector(':scope > .' + cls);
+      if (!h) return;
+      const s = sum(nodes.filter(live));
+      const text = 'Planned ' + SB.fmtMoney(s.p) + ' / Max ' + SB.fmtMoney(s.m);
+      if (h.dataset.total !== text) h.dataset.total = text;
+    };
+    monthEls.forEach((monthEl, mi) => {
+      const list = monthEl.querySelector(':scope > .month-list');
+      if (!list) return;
+      const kids = [...list.children];
+      const ships = kids.filter((n) => n.classList.contains('shipment'));
+      const done = ships.filter((n) => n.classList.contains('is-locked'));
+      const appr = ships.filter((n) => !n.classList.contains('is-locked') && n.classList.contains('is-approved'));
+      const pre = ships.filter((n) => !n.classList.contains('is-locked') && !appr.includes(n) && isShipPreemptive(n));
+      const std = kids.filter((n) => !done.includes(n) && !pre.includes(n) && !appr.includes(n)
+        && (n.classList.contains('shipment') || (n.classList.contains('card') && !n.classList.contains('card--divider'))));
+      put(list, 'month-pre-head', pre);
+      put(list, 'month-in-head', std);
+      put(list, 'month-appr-head', appr);
+      put(list, 'month-done-head', done);
+      // next month's preemptive orders, previewed here: those same orders' own figures
+      const nextShips = [...(monthEls[mi + 1]?.querySelectorAll(':scope > .month-list > .shipment') || [])]
+        .filter((s) => !(STATE.shipmentData[s.dataset.id] || {}).stage && isShipPreemptive(s) && !s.classList.contains('is-approved'));
+      put(list, 'month-mirror-head', nextShips);
+    });
+  }
   // The one call that (re)builds every non-order block in the lists
   function renderMonthSections() {
     renderSectionHeaders();
     renderPreemptMirrors();
     layoutMonthLists();
+    renderSectionTotals();
   }
 
   // A shipment flagged Launch Preemptively is tracked in month N but placed in
@@ -7514,12 +7554,14 @@
         });
         n.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
         n.querySelector('.ship-total .ship-max').textContent = ' / ' + SB.fmtMoney(sMax);
+        n._planned = sTot; n._max = sMax;
         const md = n.querySelector('.ship-min-date');
         if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
       } else if (n.classList.contains('card')) {
         if (n.classList.contains('search-hide')) return;
         const c = STATE.cardData[n.dataset.id];
         const cost = c ? calcForCard(c).cost : 0;
+        n._max = cost; n._planned = c && c.includeInMonthTotal ? cost : 0;
         maxItems += cost;
         if (c && c.includeInMonthTotal) plannedItems += cost;
       }
