@@ -1017,6 +1017,93 @@ try {
   const todayMD = `${now.getMonth() + 1}/${now.getDate()}`;
   check('after editing On Hand, Lasts For is still a month figure (not the reset date)', /^\d+\.\dm$/.test((await lasts()).trim()), await lasts());
   check('…and Last Reset got the date instead', (await page.locator('#inv-body tr[data-key="runner"] .inv-reset').textContent()).trim() === todayMD);
+  // ── New Item dialog: Daily Dose evaluates formulas like the table's own Dose / Day edit ──
+  {
+    const itemPosts = [];
+    await page.route('**/api/inventory-items', async (route) => {
+      const rq = route.request();
+      if (rq.method() === 'POST') { itemPosts.push(JSON.parse(rq.postData() || '{}')); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, id: 99 }) }); }
+      // GET: the catalog plus whatever was just added (the mock server has no memory of POSTs)
+      const base = await (await route.fetch()).json();
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([...base, ...itemPosts.map((p, i) => ({ id: 100 + i, name: p.name, bottle_size: p.bottle_size, daily_dose: p.daily_dose }))]) });
+    });
+    await page.locator('#inv-filter-item').fill('Brand New Thing');
+    await page.locator('#inv-add-row .inv-add-cell').click();
+    await page.waitForSelector('#snm-dose', { state: 'visible' }); await page.waitForTimeout(200); // the dialog refocuses its Name box ~50ms after opening
+    check('Daily Dose accepts typed math (a text field, not a number spinner)', (await page.locator('#snm-dose').getAttribute('type')) === 'text');
+    await page.locator('#snm-dose').fill('2*3');
+    await page.locator('#snm-confirm-btn').click();
+    await page.waitForTimeout(500);
+    check('Daily Dose "2*3" is saved as 6', itemPosts.length === 1 && itemPosts[0].daily_dose === 6, JSON.stringify(itemPosts));
+    await page.locator('#inv-filter-item').fill('Another New Thing');
+    await page.locator('#inv-add-row .inv-add-cell').click();
+    await page.waitForSelector('#snm-dose', { state: 'visible' }); await page.waitForTimeout(200); // the dialog refocuses its Name box ~50ms after opening
+    await page.locator('#snm-dose').fill('3*');
+    await page.locator('#snm-confirm-btn').click();
+    await page.waitForTimeout(400);
+    check('a Daily Dose that is not a valid formula keeps the dialog open and saves nothing', itemPosts.length === 1 && await page.locator('#snm-dose').isVisible());
+    await page.locator('#snm-dose').fill('1.5+1');
+    await page.locator('#snm-confirm-btn').click();
+    await page.waitForTimeout(500);
+    check('Daily Dose "1.5+1" is saved as 2.5', itemPosts.length === 2 && itemPosts[1].daily_dose === 2.5, JSON.stringify(itemPosts));
+    // On Hand: blank = one full bottle (as before); typed = that many caps (formulas work)
+    const logPosts = [];
+    await page.route('**/api/inventory', async (route) => {
+      const rq = route.request();
+      if (rq.method() === 'POST') { logPosts.push(JSON.parse(rq.postData() || '{}')); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) }); }
+      return route.fallback();
+    });
+    const addNew = async (name, fields) => {
+      await page.locator('#inv-filter-item').fill(name);
+      await page.locator('#inv-add-row .inv-add-cell').click();
+      await page.waitForSelector('#snm-dose', { state: 'visible' }); await page.waitForTimeout(200); // the dialog refocuses its Name box ~50ms after opening
+      for (const [id, v] of Object.entries(fields)) await page.locator('#' + id).fill(v);
+    };
+    // Enter in the search box with no matching item opens the same dialog as the "+ Add" link
+    await page.locator('#inv-filter-item').fill('Zzz Nothing Matches');
+    await page.locator('#inv-filter-item').press('Enter');
+    await page.waitForSelector('#snm-name', { state: 'visible' });
+    check('Enter with no matching item opens the New Item dialog, pre-filled with the search', (await page.locator('#snm-name').inputValue()) === 'Zzz Nothing Matches' && (await page.locator('#snm-title').textContent()) === 'Add New Item');
+    await page.waitForTimeout(200);
+    await page.locator('#snm-cancel-btn').click();
+    await page.waitForTimeout(200);
+    await page.locator('#inv-filter-item').fill('Runner'); // matches existing items
+    await page.locator('#inv-filter-item').press('Enter');
+    await page.waitForTimeout(300);
+    check('Enter while items still match does not open the dialog', !(await page.locator('#snm-name').isVisible()));
+    await page.locator('#inv-filter-item').fill('');
+    await page.locator('#inv-filter-item').press('Enter');
+    await page.waitForTimeout(300);
+    check('Enter on an empty search does nothing', !(await page.locator('#snm-name').isVisible()));
+    check('the New Item dialog has an On Hand field', (await page.locator('#snm-onhand').count()) === 1);
+    await addNew('Stocked Thing', { 'snm-bottle': '60', 'snm-dose': '2', 'snm-onhand': '12*2' });
+    await page.locator('#snm-confirm-btn').click(); await page.waitForTimeout(600);
+    const stockedLog = logPosts.filter((p) => p.item === 'Stocked Thing');
+    check('On Hand "12*2" is logged as 24 caps (a Reset), not a full bottle', stockedLog.length === 1 && stockedLog[0].amount === 24 && stockedLog[0].type === 'Reset', JSON.stringify(stockedLog));
+    await addNew('Blank Thing', { 'snm-bottle': '60', 'snm-dose': '2' });
+    await page.locator('#snm-confirm-btn').click(); await page.waitForTimeout(600);
+    const blankLog = logPosts.filter((p) => p.item === 'Blank Thing');
+    check('blank On Hand still assumes one full bottle (Received 60)', blankLog.length === 1 && blankLog[0].amount === 60 && blankLog[0].type === 'Received', JSON.stringify(blankLog));
+    await addNew('Bad Thing', { 'snm-bottle': '60', 'snm-onhand': '5+' });
+    const postsBefore = itemPosts.length;
+    await page.locator('#snm-confirm-btn').click(); await page.waitForTimeout(400);
+    check('an On Hand that is not a valid formula keeps the dialog open and saves nothing', itemPosts.length === postsBefore && await page.locator('#snm-onhand').isVisible());
+    await page.locator('#snm-cancel-btn').click();
+    await page.unroute('**/api/inventory');
+    await page.unroute('**/api/inventory-items');
+    await page.locator('#inv-filter-item').fill('');
+  }
+  // filters left on from an earlier visit are cleared when an item is opened from the board
+  await page.locator('#inv-noorder-btn').click();
+  await page.locator('#inv-soon-btn').click();
+  check('(setup) No Order and Soon are both on', await page.evaluate(() => ['inv-noorder-btn', 'inv-soon-btn'].every((id) => document.getElementById(id).classList.contains('active'))));
+  await page.locator('#inv-modal-close').click();
+  await page.waitForTimeout(500);
+  const openedName = (await page.locator('.month-warn .warn-name[data-act="warn-inv"]').first().textContent()).trim();
+  await page.locator('.month-warn .warn-name[data-act="warn-inv"]').first().click();
+  await page.waitForSelector('#inv-modal-ov.open'); await page.waitForTimeout(500);
+  check('opening an item from the board clears the No Order / Soon filters left on earlier', await page.evaluate(() => ['inv-noorder-btn', 'inv-soon-btn'].every((id) => !document.getElementById(id).classList.contains('active'))));
+  check('…so the item you clicked is actually listed', await page.evaluate((n) => [...document.querySelectorAll('#inv-body tr[data-key]')].some((tr) => tr.dataset.key === n.toLowerCase() && tr.style.display !== 'none'), openedName));
   await page.locator('#inv-modal-close').click();
   await page.waitForTimeout(200);
 

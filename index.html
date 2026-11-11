@@ -7598,6 +7598,9 @@
     requestAnimationFrame(() => {
       const input = document.getElementById('inv-filter-item');
       if (!input) return;
+      // Start from a clean slate: a No Order / Soon filter left on from an
+      // earlier visit would hide the very item that was just clicked.
+      ['inv-noorder-btn', 'inv-soon-btn'].forEach((id) => { const b = document.getElementById(id); if (b?.classList.contains('active')) b.click(); });
       input.value = name;
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
@@ -11420,6 +11423,18 @@
 
   document.getElementById('inv-filter-item')?.addEventListener('input', applyFilters);
 
+  // Enter with nothing matching what was typed is the keyboard route to the
+  // "+ Add [query]" link below: it opens the same New Item dialog.
+  document.getElementById('inv-filter-item')?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    const q = e.target.value.trim();
+    if (!q || (!document.getElementById('inv-add-row') && !document.getElementById('inv-add-card'))) return;
+    const shown = [...document.querySelectorAll('#inv-body tr[data-key], #inv-cards .inv-card[data-key]')].some((el) => el.style.display !== 'none');
+    if (shown) return; // something still matches -- Enter just leaves the list as it is
+    e.preventDefault();
+    openNewItemDialog?.(q);
+  });
+
   // Clearing the search does NOT refocus the input -- on mobile, focusing a
   // text input re-opens the on-screen keyboard and zooms the page right
   // after the user asked to dismiss what they typed, not start typing again.
@@ -11632,10 +11647,11 @@
             <div class="snm-fields">
               <div class="snm-field full"><label>Item Name *</label><input id="snm-name" type="text" placeholder="e.g. KL Support"></div>
               <div class="snm-field"><label>Bottle Size</label><input id="snm-bottle" type="number" min="0" placeholder="120"></div>
-              <div class="snm-field"><label>Daily Dose</label><input id="snm-dose" type="number" min="0" placeholder="2"></div>
+              <div class="snm-field"><label>Daily Dose</label><input id="snm-dose" type="text" inputmode="text" autocomplete="off" placeholder="2" title="Math works here, e.g. 2*3 or 1.5+1"></div>
+              <div class="snm-field"><label>On Hand</label><input id="snm-onhand" type="text" inputmode="text" autocomplete="off" placeholder="Full bottle" title="Caps you already have. Leave blank to start with one full bottle. Math works here too."></div>
               <div class="snm-field"><label>Annual Sale</label><input id="snm-annual" type="text"></div>
               <div class="snm-field"><label>Off-Cycle Sale</label><input id="snm-offcycle" type="text"></div>
-              <div class="snm-field full"><label>Anyday</label><input id="snm-anyday" type="text"></div>
+              <div class="snm-field"><label>Anyday</label><input id="snm-anyday" type="text"></div>
             </div>
           </div>
         </div>
@@ -11961,7 +11977,7 @@
         document.getElementById('snm-confirm-btn').textContent = 'Assign';
       }
       // Clear new-item fields
-      ['snm-name','snm-bottle','snm-dose','snm-annual','snm-offcycle','snm-anyday'].forEach(id => {
+      ['snm-name','snm-bottle','snm-dose','snm-onhand','snm-annual','snm-offcycle','snm-anyday'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
       if (prefillName) document.getElementById('snm-name').value = prefillName;
@@ -12013,17 +12029,47 @@
         } else {
           const name = document.getElementById('snm-name').value.trim();
           if (!name) { document.getElementById('snm-name').focus(); btn.disabled = false; return; }
+          // Daily Dose takes typed formulas ("2*3") like the Inventory table's own
+          // Dose / Day edit; one that doesn't evaluate keeps the dialog open
+          // rather than quietly saving 0.
+          const doseRaw = document.getElementById('snm-dose').value.trim();
+          const doseNum = doseRaw ? evalExpr(doseRaw) : 0;
+          if (isNaN(doseNum) || doseNum < 0) { const di = document.getElementById('snm-dose'); di.focus(); di.select(); btn.disabled = false; return; }
+          const doseVal = doseRaw ? doseNum : '';
+          // On Hand: blank = assume one full bottle (the old behaviour); anything
+          // typed is the caps actually in hand (formulas work, one decimal like the
+          // Inventory table's own On Hand edit).
+          const onHandRaw = document.getElementById('snm-onhand').value.trim();
+          let onHandCaps = null;
+          if (onHandRaw) {
+            const v = evalExpr(onHandRaw);
+            if (isNaN(v) || v < 0) { const oi = document.getElementById('snm-onhand'); oi.focus(); oi.select(); btn.disabled = false; return; }
+            onHandCaps = Math.round(v * 10) / 10;
+          }
           const fields = {
             name,
             bottleSize:   document.getElementById('snm-bottle').value,
-            dose:         document.getElementById('snm-dose').value,
+            dose:         doseVal,
             annualSale:   document.getElementById('snm-annual').value.trim(),
             offCycleSale: document.getElementById('snm-offcycle').value.trim(),
             anyday:       document.getElementById('snm-anyday').value.trim(),
           };
           const key = await window.InventoryWriter.addItemToTurso(fields, _pendingBarcode);
           closeNoMatch();
-          if (Number(fields.bottleSize) > 0) {
+          if (onHandCaps !== null) {
+            // an explicit starting quantity -- logged as a Reset (what editing On Hand does)
+            const today = isoToday();
+            const rr = await fetch('/api/inventory', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ item: name, amount: onHandCaps, type: 'Reset', logged_on: today }),
+            });
+            if (rr.ok) cacheLogRow({ item: name, amount: onHandCaps, type: 'Reset', logged_on: today });
+            else throw new Error('Could not save On Hand (HTTP ' + rr.status + ')');
+            showToast(name, 'Item added — ' + onHandCaps + ' caps on hand');
+            await renderInventory();
+            highlightItem(key);
+          } else if (Number(fields.bottleSize) > 0) {
             await handleMatch(key, _pendingBarcode); // logs Received + shows receipt toast
           } else {
             showToast(name, 'Item added — enter a Bottle Size to log receipts');
