@@ -87,6 +87,8 @@ const ORDERS_BODY = {
     // has an order this month -> not a run-out warning even though it runs out soon
     card('oi_early', 'o_pre', M1, 6, 1, 'Early'),
     card('oi_late', 'o_norm', M1, 7, 1, 'Late'),
+    // runs out on the 3rd of NEXT month, and sits in the preemptive order o_pre (also next month)
+    card('oi_precov', 'o_pre', M1, 6, 2, 'Pre Covered'),
     card('oi_cardpre', 'o_cardpre', M1, 8, 1, 'Card Pre', { autoship_next_date: iso(now) }),
     card('oi_nextearly', 'o_a', M0, 1, 6, 'Next Early', { autoship_next_date: D_NEXT_EARLY }),
     card('oi_nextmid', 'o_a', M0, 1, 7, 'Next Mid', { autoship_next_date: D_NEXT_MID }),
@@ -113,6 +115,7 @@ const INV_ITEMS = [
   { id: 9, name: 'Gap Item', bottle_size: 60, daily_dose: 1 },
   { id: 5, name: 'Early', bottle_size: 60, daily_dose: 1 },
   { id: 6, name: 'Late', bottle_size: 60, daily_dose: 1 },
+  { id: 10, name: 'Pre Covered', bottle_size: 60, daily_dose: 1 },
 ];
 const INV_LOG = [
   { id: 7, item: 'Next Runner', type: 'Reset', amount: NEXT_RUNNER_DAYS, logged_on: iso(now), order_id: null },
@@ -125,6 +128,7 @@ const INV_LOG = [
   { id: 9, item: 'Gap Item', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
   { id: 5, item: 'Early', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
   { id: 6, item: 'Late', type: 'Reset', amount: 2, logged_on: iso(now), order_id: null },
+  { id: 10, item: 'Pre Covered', type: 'Reset', amount: NEXT_RUNNER_DAYS, logged_on: iso(now), order_id: null },
 ];
 
 const dismissed = new Set();
@@ -259,6 +263,7 @@ try {
   check('preemptive: ON automatically when an ITEM in it has an autoship date from before its month', (await pbtn('o_cardpre').getAttribute('class')).includes('is-on'));
   check('preemptive: an ordinary order is off', !(await pbtn('o_norm').getAttribute('class')).includes('is-on'));
   check('needs-attention: an item running out THIS month is NOT covered by a preemptive next-month order', names.includes('Early'));
+  check('needs-attention: an item running out in the preemptive order OWN month (next month 3rd) IS covered by it', !(await page.locator('.month[data-id="' + M0.month + '_' + M0.year + '"] .warn-name').allTextContents()).includes('Pre Covered'));
   check('needs-attention: item in an ordinary next-month order still warns', names.includes('Late'));
   await pbtn('o_norm').click(); await page.waitForTimeout(700);
   check('preemptive: manually turning one on does not cover the current month run-out either', (await rowNames(page)).includes('Late'));

@@ -4645,11 +4645,19 @@
           const c = STATE.cardData[cardEl.dataset.id];
           if (c && c.name !== '__divider__' && Number(c.qty) > 0) ordered.add(String(c.name).trim().toLowerCase());
         });
-        // Only orders that live in THIS month cover a run-out here. A next-month
-        // order flagged Launch Preemptively is still next month's order: it
-        // covers what runs out in that month (its own Needs Attention), not this
-        // one's -- so an item running out now (or in next month's first week)
-        // with only a preemptive order still shows up until it's really ordered.
+        // A next-month order flagged Launch Preemptively is still next month's
+        // order: it covers a run-out that lands in ITS month (12/3 -- the first
+        // week of next month still sits in this window), but nothing earlier
+        // (11/22): an item running out before the preemptive order's month still
+        // shows up until it's really ordered.
+        const preOrdered = new Set();
+        monthEls[mi + 1]?.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
+          if (!isShipPreemptive(shipEl)) return;
+          shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]').forEach((cardEl) => {
+            const c = STATE.cardData[cardEl.dataset.id];
+            if (c && c.name !== '__divider__' && Number(c.qty) > 0) preOrdered.add(String(c.name).trim().toLowerCase());
+          });
+        });
         const before = SEEN_BEFORE_MONTH[mi];
         invs.forEach((inv) => {
           const key = inv.name.trim().toLowerCase();
@@ -4657,6 +4665,7 @@
           const prior = before && before.get(key);
           const runOut = prior ? prior.runOut : SB.calc(inv).curRunOut;
           if (!(runOut instanceof Date) || isNaN(runOut) || !inWindow(runOut, w)) return;
+          if (preOrdered.has(key) && runOut >= w.tailStart) return; // runs out in the preemptive order's own month
           const claim = key + '|' + toISODate(runOut);
           if (claimedRunOuts.has(claim)) return;
           claimedRunOuts.add(claim);
