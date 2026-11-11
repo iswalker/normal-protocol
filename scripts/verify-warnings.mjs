@@ -1092,6 +1092,8 @@ try {
     check('Enter on an empty search does nothing', !(await page.locator('#snm-name').isVisible()));
     check('the New Item dialog has an On Hand field', (await page.locator('#snm-onhand').count()) === 1);
     await addNew('Stocked Thing', { 'snm-bottle': '60', 'snm-dose': '2', 'snm-onhand': '12*2' });
+    const rowsAt = await page.evaluate(() => { const r = (id) => { const b = document.getElementById(id).getBoundingClientRect(); return { top: Math.round(b.top), left: Math.round(b.left) }; }; return { name: r('snm-name'), bottle: r('snm-bottle'), dose: r('snm-dose'), onhand: r('snm-onhand'), annual: r('snm-annual'), off: r('snm-offcycle'), any: r('snm-anyday') }; });
+    check('Add Item layout: Name, then Bottle Size / Daily Dose / On Hand across, then Annual / Off-Cycle / Anyday across', rowsAt.bottle.top === rowsAt.dose.top && rowsAt.dose.top === rowsAt.onhand.top && rowsAt.bottle.left < rowsAt.dose.left && rowsAt.dose.left < rowsAt.onhand.left && rowsAt.annual.top === rowsAt.off.top && rowsAt.off.top === rowsAt.any.top && rowsAt.annual.left < rowsAt.off.left && rowsAt.off.left < rowsAt.any.left && rowsAt.name.top < rowsAt.bottle.top && rowsAt.bottle.top < rowsAt.annual.top, JSON.stringify(rowsAt));
     await page.locator('#snm-confirm-btn').click(); await page.waitForTimeout(600);
     const stockedLog = logPosts.filter((p) => p.item === 'Stocked Thing');
     check('On Hand "12*2" is logged as 24 caps (a Reset), not a full bottle', stockedLog.length === 1 && stockedLog[0].amount === 24 && stockedLog[0].type === 'Reset', JSON.stringify(stockedLog));
@@ -1138,6 +1140,15 @@ try {
   await page.evaluate(() => document.getElementById('scan-close-btn')?.click());
   await page.waitForTimeout(200);
   const sizes = await page.evaluate(() => { const q = (s) => { const e = document.querySelector(s), r = e.getBoundingClientRect(), cs = getComputedStyle(e); return [Math.round(r.height * 10) / 10, cs.borderRadius, cs.borderTopWidth]; }; return { autoship: q('#inv-autoship-btn'), search: q('.global-search-box'), clear: q('#global-search-clear'), noorder: q('#inv-noorder-btn'), soon: q('#inv-soon-btn'), scan: q('#inv-scan-btn') }; });
+  // one "x" only: the native search-field clear is gone and the button is separate, like the board's
+  await page.locator('#inv-filter-item').fill('');
+  const xs = await page.evaluate(() => { const inp = document.getElementById('inv-filter-item'), box = inp.closest('.inv-modal-search'), btn = document.getElementById('inv-search-clear'); const rb = btn.getBoundingClientRect(), rx = box.getBoundingClientRect(), bd = document.getElementById('global-search-clear'); return { type: inp.type, inside: box.contains(btn), right: rb.left >= rx.right - 1, sameRow: Math.abs((rb.top + rb.height / 2) - (rx.top + rx.height / 2)) < 2, h: Math.round(rb.height), w: Math.round(rb.width), radius: getComputedStyle(btn).borderRadius, boardH: Math.round(bd.getBoundingClientRect().height), boardW: Math.round(bd.getBoundingClientRect().width), boardRadius: getComputedStyle(bd).borderRadius, disabled: btn.disabled }; });
+  check('Inventory search has ONE clear x: a plain text field (no native x) with a separate button right of it, sized like the board one', xs.type === 'text' && !xs.inside && xs.right && xs.sameRow && xs.h === xs.boardH && xs.w === xs.boardW && xs.radius === xs.boardRadius, JSON.stringify(xs));
+  check('the x is disabled while the search is empty', xs.disabled === true);
+  await page.locator('#inv-filter-item').fill('abc');
+  check('…enabled once something is typed', (await page.locator('#inv-search-clear').isEnabled()));
+  await page.locator('#inv-search-clear').click();
+  check('…and clicking it empties the search and disables it again', (await page.locator('#inv-filter-item').inputValue()) === '' && !(await page.locator('#inv-search-clear').isEnabled()));
   check("Inventory's No Order / Soon / Scan match the board's top-row controls (30px tall, 7px radius, same border)", Object.values(sizes).every((v) => v[0] === 30 && v[1] === '7px' && v[2] === sizes.search[2]), JSON.stringify(sizes));
   await page.locator('#inv-modal-close').click();
   await page.waitForTimeout(200);

@@ -363,11 +363,8 @@
       flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: none; background: transparent;
       font-family: inherit; font-size: 13px; color: var(--ink); outline: none;
     }
-    .inv-search-clear {
-      flex: none; width: 16px; height: 16px; border: none; background: transparent;
-      color: var(--ink-60); font-size: 14px; line-height: 1; cursor: pointer; padding: 0; border-radius: 4px;
-    }
-    @media (hover: hover) { .inv-search-clear:hover { color: var(--ink); background: var(--accent-tint, rgba(121,189,177,0.15)); } }
+    /* The clear "×" is its own button just right of the box, same as the board's
+       (.global-clear-btn) -- never inside the field. */
 
     /* right side of the top bar — board-only Inventory controls */
     /* flex:0 (not 1 1 0) -- its content (Scan/settings) is fixed-size and
@@ -765,6 +762,7 @@
     }
     .snm-select:focus { border-color: var(--teal); }
     .snm-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .snm-fields.snm-fields--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } /* Add Item: name on its own row, then Bottle Size / Daily Dose / On Hand, then the three sale fields */
     .snm-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
     .snm-field label { font-size: 11px; color: var(--ink-60); font-weight: 500; letter-spacing: .02em; }
     .snm-field input {
@@ -776,6 +774,7 @@
     .snm-field.full { grid-column: 1 / -1; }
     @media (max-width: 480px) {
       .snm-fields { grid-template-columns: 1fr; }
+      .snm-fields.snm-fields--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     .snm-footer {
       display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;
@@ -2405,7 +2404,7 @@
          row and pushing the buttons to a third one. */
       .inv-head-break { flex-basis: 100%; height: 0; order: 2; }
       .inv-modal-search { flex: 1 1 0; min-width: 80px; order: 3; }
-      .inv-noorder-btn, #inv-soon-btn { order: 3; flex: none; }
+      .inv-noorder-btn, #inv-soon-btn, #inv-search-clear { order: 3; flex: none; }
       #inv-cards {
         display: flex !important;
         flex-direction: column;
@@ -2623,9 +2622,9 @@
     <span class="inv-count-badge" id="inv-item-count"></span>
     <div class="inv-modal-search" title="Search inventory">
       <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
-      <input id="inv-filter-item" type="search" placeholder="Search…" autocomplete="off" />
-      <button class="inv-search-clear" id="inv-search-clear" title="Clear search" style="display:none">×</button>
+      <input id="inv-filter-item" type="text" placeholder="Search…" autocomplete="off" />
     </div>
+    <button type="button" class="inv-scan-btn global-clear-btn" id="inv-search-clear" title="Clear search" aria-label="Clear search" disabled>&times;</button>
     <button class="inv-soon-btn inv-noorder-btn" id="inv-noorder-btn" title="Show only items with no upcoming order">No Order</button>
     <button class="inv-soon-btn" id="inv-soon-btn" title="Show only items running out within 30 days">⚠ Soon</button>
     <button class="inv-scan-btn" id="inv-scan-btn" title="Scan a barcode to update inventory"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin-right:5px"><path d="m225 637.5h-150v-75h1050v75h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75v-262.5h-150v262.5h-75zm-112.5-262.5h-75v-187.5c0-62.109 50.391-112.5 112.5-112.5h187.5v75h-187.5c-20.719 0-37.5 16.781-37.5 37.5zm1050 0h-75v-187.5c0-20.719-16.781-37.5-37.5-37.5h-187.5v-75h187.5c62.109 0 112.5 50.391 112.5 112.5zm-300 750v-75h187.5c9.9375 0 19.5-3.9375 26.531-10.969s10.969-16.594 10.969-26.531v-187.5h75v187.5c0 29.859-11.859 58.453-32.953 79.547s-49.688 32.953-79.547 32.953zm-825-300h75v187.5c0 9.9375 3.9375 19.5 10.969 26.531s16.594 10.969 26.531 10.969h187.5v75h-187.5c-29.859 0-58.453-11.859-79.547-32.953s-32.953-49.688-32.953-79.547zm937.5-337.5h-75v-187.5h75zm-675 0h-75v-187.5h75zm225 0h-75v-187.5h75zm225 0h-75v-187.5h75z" fill-rule="evenodd"/></svg> Scan</button>
@@ -11438,7 +11437,7 @@
       deskCount.textContent = String(isMobile ? visibleCardCount : visibleCount);
     }
     const searchClearBtn = document.getElementById('inv-search-clear');
-    if (searchClearBtn) searchClearBtn.style.display = itemQRaw ? 'block' : 'none';
+    if (searchClearBtn) searchClearBtn.disabled = !itemQRaw;
   }
 
   document.getElementById('inv-filter-item')?.addEventListener('input', applyFilters);
@@ -11664,7 +11663,7 @@
         <div class="snm-section" id="snm-new-section">
           <label id="snm-new-radio-label"><input type="radio" name="snm-mode" value="new"> Add as new item</label>
           <div id="snm-new-fields" style="display:none">
-            <div class="snm-fields">
+            <div class="snm-fields snm-fields--3">
               <div class="snm-field full"><label>Item Name *</label><input id="snm-name" type="text" placeholder="e.g. KL Support"></div>
               <div class="snm-field"><label>Bottle Size</label><input id="snm-bottle" type="number" min="0" placeholder="120"></div>
               <div class="snm-field"><label>Daily Dose</label><input id="snm-dose" type="text" inputmode="text" autocomplete="off" placeholder="2" title="Math works here, e.g. 2*3 or 1.5+1"></div>
