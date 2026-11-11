@@ -258,16 +258,16 @@ try {
   check('preemptive: an order whose autoship date is before its month is ON automatically', (await pbtn('o_pre').getAttribute('class')).includes('is-on'));
   check('preemptive: ON automatically when an ITEM in it has an autoship date from before its month', (await pbtn('o_cardpre').getAttribute('class')).includes('is-on'));
   check('preemptive: an ordinary order is off', !(await pbtn('o_norm').getAttribute('class')).includes('is-on'));
-  check('needs-attention: item in a preemptive next-month order counts as ordered now', !names.includes('Early'));
+  check('needs-attention: an item running out THIS month is NOT covered by a preemptive next-month order', names.includes('Early'));
   check('needs-attention: item in an ordinary next-month order still warns', names.includes('Late'));
   await pbtn('o_norm').click(); await page.waitForTimeout(700);
-  check('preemptive: manually turning one on suppresses its item warning', !(await rowNames(page)).includes('Late'));
+  check('preemptive: manually turning one on does not cover the current month run-out either', (await rowNames(page)).includes('Late'));
   check('preemptive: a manual ON is stored as 1', lastOrder('o_norm')?.preemptive === 1, JSON.stringify(lastOrder('o_norm')));
   check('preemptive: the automatic one is stored as automatic (null)', lastOrder('o_pre')?.preemptive == null, JSON.stringify(lastOrder('o_pre')?.preemptive));
   await pbtn('o_pre').click(); await page.waitForTimeout(700);
-  check('preemptive: manually turning an automatic one OFF is stored as 0 and the warning returns', lastOrder('o_pre')?.preemptive === 0 && (await rowNames(page)).includes('Early'), JSON.stringify(lastOrder('o_pre')?.preemptive));
+  check('preemptive: manually turning an automatic one OFF is stored as 0 (the run-out warning is unaffected)', lastOrder('o_pre')?.preemptive === 0 && (await rowNames(page)).includes('Early'), JSON.stringify(lastOrder('o_pre')?.preemptive));
   await pbtn('o_pre').click(); await page.waitForTimeout(700);
-  check('preemptive: turning it back on returns to automatic (null)', lastOrder('o_pre')?.preemptive == null && !(await rowNames(page)).includes('Early'));
+  check('preemptive: turning it back on returns to automatic (null), warning still there', lastOrder('o_pre')?.preemptive == null && (await rowNames(page)).includes('Early'));
   // header filter
   const visibleShips = () => page.evaluate((m) => [...document.querySelectorAll(`.month[data-id="${m}"] .month-list > .shipment:not(.search-hide) .ship-name`)].map((e) => e.textContent), `${M1.month}_${M1.year}`);
   check('the header "Preemptive" filter button is gone', (await page.locator('#inv-preempt-btn').count()) === 0);
