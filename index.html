@@ -3567,6 +3567,27 @@
     });
   }
 
+  // How many months the "Move to" / "Copy to" month pickers offer, from the current month.
+  const MONTH_PICK_COUNT = 18;
+
+  // The board's column for a month, created (in calendar order) if it isn't there yet --
+  // the board only pads a window of months ahead, the pickers reach further.
+  function ensureMonthEl(year, mIdx) {
+    const id = MONTH_NAMES[mIdx] + '_' + year;
+    const have = board.querySelector('.month[data-id="' + id + '"]');
+    if (have) return have;
+    const node = el(monthHTML({ id, name: MONTH_NAMES[mIdx], sub: String(year), notes: '', blocks: [] }));
+    const ord = year * 12 + mIdx;
+    const later = [...board.querySelectorAll('.month')].find((m) => {
+      const y = parseInt(m.querySelector('.msub')?.textContent.trim(), 10) || 0;
+      return y * 12 + MONTH_NAMES.indexOf(m.querySelector('.mname')?.textContent.trim()) > ord;
+    });
+    if (later) board.insertBefore(node, later); else board.appendChild(node);
+    makeMonthSortable(node.querySelector('.month-list'));
+    observeSentinels();
+    return node;
+  }
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -9000,31 +9021,30 @@
     function ctxDivider() {
       const d = document.createElement('div'); d.className = 'ship-ctx-divider'; return d;
     }
-    // A label plus a month dropdown. Starts blank; choosing a month runs the
-    // action against that month straight away and closes the menu.
+    // A label plus a month dropdown: the next MONTH_PICK_COUNT months starting
+    // with the current one ("Nov '26", "Dec '26", "Jan '27", ...), whether or not
+    // the board has a column for them yet -- a month that isn't on the board is
+    // created when it's picked. Starts blank; choosing a month runs the action
+    // against it straight away and closes the menu.
     function ctxMonthPick(label, currentMonthEl, onPick) {
-      const visible = [...board.querySelectorAll('.month')].filter((m) => m.style.display !== 'none');
-      // The item's own current month is a valid target too (most useful for
-      // "Copy to" -- duplicating within the same month) -- kept in, just
-      // moved to the top of the list instead of being excluded.
-      const months = visible.includes(currentMonthEl)
-        ? [currentMonthEl, ...visible.filter((m) => m !== currentMonthEl)]
-        : visible;
+      const now = SB.today();
+      const months = Array.from({ length: MONTH_PICK_COUNT }, (_, i) => {
+        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        return { year: d.getFullYear(), mIdx: d.getMonth(), label: MONTH_NAMES[d.getMonth()] + " '" + String(d.getFullYear()).slice(-2) };
+      });
       const row = document.createElement('div');
-      row.className = 'ship-ctx-pick' + (months.length ? '' : ' ctx-disabled');
+      row.className = 'ship-ctx-pick';
       const cap = document.createElement('span');
       cap.textContent = label;
       const sel = document.createElement('select');
-      sel.innerHTML = '<option value="">Month</option>' + months.map((m, i) =>
-        `<option value="${i}">${m.querySelector('.mname')?.textContent.trim() || ''}</option>`).join('');
-      if (!months.length) sel.disabled = true;
+      sel.innerHTML = '<option value="">Month</option>' + months.map((m, i) => `<option value="${i}">${m.label}</option>`).join('');
       // Keep the context menu from closing when the native dropdown is used
       ['mousedown', 'click'].forEach((t) => sel.addEventListener(t, (ev) => ev.stopPropagation()));
       sel.addEventListener('change', () => {
-        const target = months[Number(sel.value)];
-        if (!target) return;
+        const m = months[Number(sel.value)];
+        if (!m) return;
         closeCtxMenu();
-        onPick(target);
+        onPick(ensureMonthEl(m.year, m.mIdx));
       });
       row.append(cap, sel);
       return row;

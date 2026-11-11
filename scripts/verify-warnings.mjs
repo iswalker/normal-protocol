@@ -850,6 +850,21 @@ try {
   check('both order pickers exist (Move to / Copy to) with several orders to choose from', pickers.length === 2 && pickers.every((p) => p.names.length >= 4), JSON.stringify(pickers));
   check('"Move to" and "Copy to" list the orders alphabetically by shipment name', pickers.every((p) => JSON.stringify(p.names) === JSON.stringify(alpha(p.names))), JSON.stringify(pickers.map((p) => p.names)));
   check('the card\'s own order and completed orders are still left out', pickers.every((p) => !p.names.includes('Pre Auto Co') && !p.names.includes('Locked Nov')));
+  // the month pickers: 18 months with the year, starting with the current month
+  const monthPickers = await page.evaluate(() => [...document.querySelectorAll('.ship-ctx-menu .ship-ctx-pick')]
+    .map((row) => ({ cap: row.querySelector('span').textContent, opts: [...row.querySelectorAll('select option')].map((o) => o.textContent) }))
+    .filter((p) => p.opts[0] === 'Month'));
+  const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const expectMonths = Array.from({ length: 18 }, (_, i) => { const d = new Date(now.getFullYear(), now.getMonth() + i, 1); return MN[d.getMonth()] + " '" + String(d.getFullYear()).slice(-2); });
+  check('"Move to" and "Copy to" month pickers list 18 months, current first, with the year (like Nov 26 as "Nov apostrophe 26")', monthPickers.length === 2 && monthPickers.every((p) => JSON.stringify(p.opts.slice(1)) === JSON.stringify(expectMonths)), JSON.stringify(monthPickers.map((p) => p.opts.slice(1, 4))));
+  // pick the LAST one (beyond the months the board starts with): its column is created and the copy lands in it
+  const lastD = new Date(now.getFullYear(), now.getMonth() + 17, 1);
+  const lastId = MN[lastD.getMonth()] + '_' + lastD.getFullYear();
+  const hadLast = await page.locator('.month[data-id="' + lastId + '"]').count();
+  await page.locator('.ship-ctx-menu .ship-ctx-pick:has(option[value="17"])', { hasText: 'Copy to' }).locator('select').selectOption({ index: 18 });
+  await page.waitForTimeout(600);
+  const landed = await page.evaluate((id) => { const m = document.querySelector('.month[data-id="' + id + '"]'); return m ? [...m.querySelectorAll('.card .card-name')].map((c) => c.textContent.trim()) : null; }, lastId);
+  check('a month the board did not have yet is created when picked (in calendar order), and the copy lands in it', hadLast === 0 && landed && landed.includes('Early') && await page.evaluate((id) => { const ms = [...document.querySelectorAll('#board .month')]; return ms[ms.length - 1].dataset.id === id; }, lastId), JSON.stringify({ hadLast, landed }));
   await page.keyboard.press('Escape');
   await page.mouse.move(5, 5); await page.waitForTimeout(300);
 
