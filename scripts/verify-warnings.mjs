@@ -993,11 +993,11 @@ try {
   check('with 0 items left the entire panel (title and box) is gone', (await panel(page).count()) === 0 && (await panelHead(page).count()) === 0);
   dismissed.clear(); // the mock server's ignore list, so the mobile pass below starts clean
 
-  // ── Inventory table: editing On Hand re-patches the row; "Lasts For" must stay a day count ──
+  // ── Inventory table: editing On Hand re-patches the row; "Lasts For" must stay a month figure ──
   await page.locator('#inv-search-link').click();
   await page.waitForSelector('#inv-body tr[data-key="runner"]');
   const lasts = () => page.locator('#inv-body tr[data-key="runner"] .inv-dpb').textContent();
-  check('Lasts For starts as a day count', /^\d+(\.\d)?d$/.test((await lasts()).trim()), await lasts());
+  check('Lasts For starts as a month figure (#.#m)', /^\d+\.\dm$/.test((await lasts()).trim()), await lasts());
   const visRows = () => page.evaluate(() => [...document.querySelectorAll('#inv-body tr[data-key]')].filter((tr) => tr.style.display !== 'none').map((tr) => ({ key: tr.dataset.key, name: tr.querySelector('.inv-name').textContent.trim(), ro: tr.querySelectorAll('td')[1].textContent })));
   const visCards = () => page.evaluate(() => [...document.querySelectorAll('#inv-cards .inv-card[data-key]')].filter((c) => c.style.display !== 'none').map((c) => ({ name: c.querySelector('.inv-card-name').textContent.trim(), ro: c.querySelector('.inv-card-runout').textContent })));
   const roDays = (txt) => { const m = /\((\d+)d\)/.exec(txt); return m ? Number(m[1]) : (/EMPTY/.test(txt) ? -1 : 1e9); };
@@ -1015,7 +1015,7 @@ try {
   await page.keyboard.press('Enter');
   await page.waitForTimeout(600);
   const todayMD = `${now.getMonth() + 1}/${now.getDate()}`;
-  check('after editing On Hand, Lasts For is still a day count (not the reset date)', /^\d+(\.\d)?d$/.test((await lasts()).trim()), await lasts());
+  check('after editing On Hand, Lasts For is still a month figure (not the reset date)', /^\d+\.\dm$/.test((await lasts()).trim()), await lasts());
   check('…and Last Reset got the date instead', (await page.locator('#inv-body tr[data-key="runner"] .inv-reset').textContent()).trim() === todayMD);
   await page.locator('#inv-modal-close').click();
   await page.waitForTimeout(200);

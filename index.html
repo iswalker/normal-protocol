@@ -10750,6 +10750,8 @@
   // to the nearest tenth first so a value like 8.96 becomes "9", not "9.0",
   // then only append the decimal when what's left after that rounding
   // actually has one.
+  // "Lasts For": how long one bottle lasts, in months (#.#m)
+  const fmtLastsFor = (bs, dose) => bs > 0 && dose > 0 ? (Math.round(bs / dose / (365 / 12) * 10) / 10).toFixed(1) + 'm' : '—';
   function fmtOnHand(n) {
     const rounded = Math.round(n * 10) / 10;
     return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
@@ -10869,7 +10871,7 @@
         '<td class="inv-onhand" data-amount="' + currentAmount + '" data-key="' + key + '" title="Click to edit caps">' + fmtOnHand(currentAmount) + '</td>' +
         '<td class="inv-num inv-bs" data-key="' + key + '" title="Click to edit bottle size">' + (bs || '—') + '</td>' +
         '<td class="inv-num inv-dose" data-key="' + key + '" title="Click to edit daily dose">' + (dose || '—') + '</td>' +
-        '<td class="inv-num inv-dpb">' + (bs > 0 && dose > 0 ? (Math.round(bs / dose * 10) / 10) + 'd' : '—') + '</td>' +
+        '<td class="inv-num inv-dpb">' + fmtLastsFor(bs, dose) + '</td>' +
         '<td class="inv-num inv-reset">' + (amt.loggedOn ? ((d => (d.getMonth()+1)+'/'+d.getDate())(new Date(amt.loggedOn+'T00:00:00'))) : '—') + '</td>' +
         '<td class="inv-supplier inv-supplier-edit" data-key="' + key + '" data-field="annual_sale" title="Click to edit">' + (meta.annualSale   || '—') + '</td>' +
         '<td class="inv-supplier inv-supplier-edit" data-key="' + key + '" data-field="off_cycle_sale" title="Click to edit">' + (meta.offCycleSale || '—') + '</td>' +
@@ -11113,7 +11115,7 @@
       if (tr) {
         const dpbCell = tr.querySelector('.inv-dpb');
         const bs = meta.bottleSize || 0, dose = meta.dose || 0;
-        if (dpbCell) dpbCell.textContent = bs > 0 && dose > 0 ? (Math.round(bs / dose * 10) / 10) + 'd' : '—';
+        if (dpbCell) dpbCell.textContent = fmtLastsFor(bs, dose);
       }
 
       try {
