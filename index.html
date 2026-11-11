@@ -5108,7 +5108,14 @@
   // The mirror is kept structurally identical to the real order (same
   // element tree -- syncMirror morphs it to match), so an element maps to its
   // counterpart by its child-index path from the shipment root.
-  const realShipOf = (host) => board.querySelector(`:scope > .month > .month-list > .shipment[data-id="${host.dataset.preSid}"]`);
+  // The real order a preview stands for. The element is remembered when the
+  // preview is synced (host._real) -- the board never replaces an order's
+  // element in place -- so this is a property read, not a search of the whole
+  // board, which matters: it sits on hot paths (every event replayed from a
+  // preview, every getBoundingClientRect while one is being worked in).
+  const realShipOf = (host) => (host._real && host._real.isConnected
+    ? host._real
+    : (host._real = board.querySelector(`:scope > .month > .month-list > .shipment[data-id="${host.dataset.preSid}"]`)));
   function counterpart(fromRoot, toRoot, el) {
     // Walk up from el until something maps (deep inside a contenteditable
     // being typed into, the two trees can briefly differ).
@@ -5144,6 +5151,7 @@
   }
   function syncMirror(host, shipEl = realShipOf(host)) {
     if (!shipEl) return;
+    host._real = shipEl;
     const fresh = mirrorOf(shipEl);
     const sig = fresh.outerHTML;
     if (host._sig === sig) return;
@@ -5197,26 +5205,90 @@
   }, true));
 
   // ── real order -> mirror ──
-  // Any change to a mirrored order's DOM (or a value typed into it) re-syncs
-  // its mirror on the next frame. Mutations inside the mirrors themselves
-  // aren't seen (shadow DOM), so this can't feed back into itself.
+  // A change to a previewed order's DOM (or a value typed into it) re-syncs
+  // THAT order's preview on the next frame -- nothing else. Mutations inside
+  // the previews themselves aren't seen (shadow DOM), so this can't feed back
+  // into itself.
+  //
+  // This runs on every keystroke anywhere on the board, so it has to cost
+  // nothing when there's nothing to do: mirrorHosts (kept by
+  // renderPreemptMirrors) says which orders have a preview, so with none the
+  // handlers return before touching the DOM, and with some, a keystroke in an
+  // order that isn't one of them is a single Map lookup. (It used to re-run
+  // renderMonthSections -- a re-layout of every month's sections -- on every
+  // keystroke in any order, which on a large board took long enough to make
+  // typing in Notes visibly lag.)
+  const mirrorHosts = new Map();   // real order id -> its .pre-host
+  // order id -> what changed since the last sync: { full } (something
+  // structural, re-sync the whole preview) and/or { edits } (real editable
+  // elements whose TEXT changed)
+  const dirtyMirrors = new Map();
   let mirrorSyncQueued = false;
-  function scheduleMirrorSync() {
+  function queueMirror(sid, editEl) {
+    if (!mirrorHosts.has(sid)) return;
+    let d = dirtyMirrors.get(sid);
+    if (!d) dirtyMirrors.set(sid, (d = { full: false, edits: new Set() }));
+    if (editEl) d.edits.add(editEl); else d.full = true;
     if (mirrorSyncQueued) return;
     mirrorSyncQueued = true;
-    requestAnimationFrame(() => {
-      mirrorSyncQueued = false;
-      if (document.body.classList.contains('sb-dragging')) return; // the drop's own recalc re-renders
-      renderMonthSections();
-    });
+    requestAnimationFrame(flushMirrors);
+  }
+  function flushMirrors() {
+    mirrorSyncQueued = false;
+    const todo = [...dirtyMirrors];
+    dirtyMirrors.clear();
+    if (document.body.classList.contains('sb-dragging')) return; // the drop's own recalc re-renders
+    for (const [sid, d] of todo) {
+      const host = mirrorHosts.get(sid);
+      if (!host || !host.isConnected) continue;
+      if (d.full) { syncMirror(host); continue; }
+      // Text-only changes (typing in Notes, an order's name...): copy just
+      // those fields across instead of re-cloning and re-serializing the whole
+      // order on every keystroke. Anything that doesn't line up falls back to
+      // the full sync, and the snapshot is cleared so that sync can't mistake
+      // the preview for being up to date.
+      const ship = realShipOf(host);
+      let ok = !!(ship && host._mship);
+      for (const el of d.edits) {
+        if (!ok) break;
+        const m = ship.contains(el) ? counterpart(ship, host._mship, el) : null;
+        if (!m || m.tagName !== el.tagName) { ok = false; break; }
+        if (m === host.shadowRoot.activeElement) continue; // being typed in -- it already has it
+        if (m.matches('input, textarea')) { if (m.value !== el.value) m.value = el.value; }
+        else if (m.textContent !== el.textContent) m.textContent = el.textContent;
+      }
+      if (ok) host._sig = null; else syncMirror(host);
+    }
+  }
+  const shipIdOf = (n) => { const el = n && (n.nodeType === 1 ? n : n.parentElement); const ship = el && el.closest('.shipment'); return ship ? ship.dataset.id : null; };
+  // The editable a mutation happened inside, if it only touched its text.
+  const EDITABLE = '[contenteditable]:not([contenteditable="false"])';
+  function textEditOf(r) {
+    if (r.type === 'attributes') return null;
+    const el = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+    const ed = el && el.closest(EDITABLE);
+    if (!ed) return null;
+    if (r.type === 'childList' && ![...r.addedNodes, ...r.removedNodes].every((n) => n.nodeType === 3 || n.nodeName === 'BR')) return null;
+    return ed;
   }
   function onBoardMutations(recs) {
-    if (!board.querySelector('.pre-host')) return;
-    const inShip = (n) => (n.nodeType === 1 ? n : n.parentElement)?.closest('.shipment');
-    if (recs.some((r) => inShip(r.target))) scheduleMirrorSync();
+    if (!mirrorHosts.size) return;
+    for (const r of recs) {
+      const sid = shipIdOf(r.target);
+      if (sid && mirrorHosts.has(sid)) queueMirror(sid, textEditOf(r));
+    }
   }
   mirrorObserver.observe(board, { subtree: true, childList: true, attributes: true, characterData: true });
-  board.addEventListener('input', (e) => { if (e.isTrusted && e.target.closest?.('.shipment')) scheduleMirrorSync(); });
+  // An <input>'s typed value is a property, not a DOM change, so the observer
+  // can't see it -- typing in Price/Qty comes through here instead. (Typing in
+  // a contenteditable DOES change the DOM, so the observer above already has
+  // it; queueing it again here as a full sync is what made Notes typing in a
+  // previewed order cost a whole-order re-clone per keystroke.)
+  board.addEventListener('input', (e) => {
+    if (!mirrorHosts.size || !e.isTrusted || !e.target.matches?.('input, textarea')) return;
+    const sid = shipIdOf(e.target);
+    if (sid && mirrorHosts.has(sid)) queueMirror(sid, e.target);
+  });
 
   // ── mirror -> real order ──
   // Each interaction inside the mirror is replayed on the real order's
@@ -5530,6 +5602,7 @@
       let mh = list.querySelector(':scope > .month-mirror-head');
       if (!items.length) {
         if (wrap && mirrorCtx && wrap.contains(mirrorCtx)) mirrorCtx = null;
+        if (wrap) [...wrap.children].forEach((h) => { if (mirrorHosts.get(h.dataset.preSid) === h) mirrorHosts.delete(h.dataset.preSid); });
         wrap?.remove(); mh?.remove();
         return;
       }
@@ -5548,10 +5621,15 @@
       const hosts = items.map(({ sid, shipEl }) => {
         const host = existing.get(sid) || createMirrorHost(sid);
         existing.delete(sid);
+        mirrorHosts.set(sid, host);
         syncMirror(host, shipEl);
         return host;
       });
-      existing.forEach((h) => { if (mirrorCtx === h) mirrorCtx = null; h.remove(); });
+      existing.forEach((h, sid) => {
+        if (mirrorCtx === h) mirrorCtx = null;
+        if (mirrorHosts.get(sid) === h) mirrorHosts.delete(sid);
+        h.remove();
+      });
       hosts.forEach((h, i) => { if (wrap.children[i] !== h) wrap.insertBefore(h, wrap.children[i] || null); });
     });
   }
@@ -6254,6 +6332,29 @@
     });
   }
 
+  // Typing in a recurring root's Notes (or an untracked item's name) pushes the
+  // text to its ghosts. Doing that per keystroke re-renders every ghost card --
+  // each found by a search of the whole board -- which is the bulk of what a
+  // keystroke costs there, for copies sitting in other months that nobody is
+  // looking at while typing. So it waits for a short pause instead, and
+  // persist() flushes it first, so a save never goes out ahead of it.
+  const ghostTextPending = new Map(); // "sourceId|field" -> { sourceId, field, timer }
+  function propagateTextSoon(sourceId, field) {
+    const key = sourceId + '|' + field;
+    clearTimeout(ghostTextPending.get(key)?.timer);
+    ghostTextPending.set(key, { sourceId, field, timer: setTimeout(() => flushGhostText(key), 200) });
+  }
+  // One pending propagation by key, or (no argument) every pending one.
+  function flushGhostText(key) {
+    if (key === undefined) { [...ghostTextPending.keys()].forEach(flushGhostText); return; }
+    const job = ghostTextPending.get(key);
+    if (!job) return;
+    clearTimeout(job.timer);
+    ghostTextPending.delete(key);
+    const c = STATE.cardData[job.sourceId];
+    if (c && !c.ghostOf && c.recur) propagateFieldToGhosts(job.sourceId, job.field, c[job.field]);
+  }
+
   function cleanGhostsForSource(sourceId) {
     removeCards(unlockedGhostsOf(sourceId));
   }
@@ -6754,7 +6855,7 @@
   }
 
   // ── persistence: serialize the DOM to the /api/orders shape and PUT it ──
-  function pushItem(items, id, orderId, month, year, blockPos, itemPos) {
+  function pushItem(items, id, orderId, month, year, blockPos, itemPos, cardEl) {
     const c = STATE.cardData[id] || {};
     // Read recur/ghostOf/autoship from DOM attributes (stamped at render/
     // create time and on every change -- see cardHTML, the recur-ctl-n
@@ -6764,7 +6865,11 @@
     // alone with no such fallback, which is what let a drifted/empty STATE
     // value silently wipe a real saved link on the next save with nothing
     // to catch it -- same treatment as recur/ghostOf now closes that gap.
-    const cardEl = board.querySelector(`.card[data-id="${id}"]`);
+    // (cardEl is passed in by toApi, which already has it from walking the
+    // board -- looking it up here searched the WHOLE board once per card,
+    // which made every save quadratic in board size: ~half of a save's time
+    // on a board of a few hundred cards.)
+    if (!cardEl) cardEl = board.querySelector(`.card[data-id="${id}"]`);
     const domRecur = cardEl && cardEl.dataset.recur ? Number(cardEl.dataset.recur) : null;
     const domGhostOf = cardEl ? (cardEl.dataset.ghostOf || null) : null;
     const domAutoshipLink = cardEl && cardEl.dataset.autoshipLink ? cardEl.dataset.autoshipLink : null;
@@ -6826,10 +6931,10 @@
             preemptive: typeof s.preemptive === 'boolean' ? (s.preemptive ? 1 : 0) : null,
           });
           [...n.querySelectorAll(':scope .ship-body > .card')].forEach((cardEl, ci) => {
-            pushItem(items, cardEl.dataset.id, oid, month, year, blockPos, ci + 1);
+            pushItem(items, cardEl.dataset.id, oid, month, year, blockPos, ci + 1, cardEl);
           });
         } else {
-          pushItem(items, n.dataset.id, null, month, year, blockPos, 1);
+          pushItem(items, n.dataset.id, null, month, year, blockPos, 1, n);
         }
       });
     });
@@ -6905,6 +7010,7 @@
   // order and put an older value back. Anything edited meanwhile is picked up
   // by the next pass (which diffs against whatever the last pass achieved).
   async function persist() {
+    flushGhostText(); // pending ghost copies of typed text go out with this save, not after it
     // Never touch Turso if the board failed to load (structure would be empty).
     if (!structure || structure.length === 0 || !serverSnap) return;
     if (saving) { saveAgain = true; return; }
@@ -7513,7 +7619,7 @@
       // editing inline here -- see cardHTML's data-act="search-item"),
       // same recurring-root propagation every other editable field here
       // already gets.
-      if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, 'name', c.name);
+      if (!c.ghostOf && c.recur) propagateTextSoon(id, 'name');
       persistSoon();
     } else if (t.matches('.ship-name')) {
       const ship = t.closest('.shipment');
@@ -7533,7 +7639,7 @@
       const id = t.closest('.card').dataset.id;
       const c = STATE.cardData[id];
       c.notes = t.textContent;
-      if (!c.ghostOf && c.recur) propagateFieldToGhosts(id, 'notes', c.notes);
+      if (!c.ghostOf && c.recur) propagateTextSoon(id, 'notes');
       persistSoon();
     } else if (t.matches('.month-notes')) {
       if (!t.textContent.trim()) t.innerHTML = '';
