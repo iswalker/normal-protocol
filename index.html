@@ -1195,6 +1195,9 @@
     /* order month -> jumps to that order; the item name above opens Inventory */
     #tab-board .warn-month { color: var(--accent-deep); font-weight: 500; cursor: pointer; }
     @media (hover: hover) { #tab-board .warn-month:hover { text-decoration: underline; } }
+    /* "runs out 12/3 · 23d" -> opens the item in Inventory */
+    #tab-board .warn-ro-link { color: var(--accent-deep); font-weight: 500; cursor: pointer; }
+    @media (hover: hover) { #tab-board .warn-ro-link:hover { text-decoration: underline; } }
     /* Clickable ship date (opens the Autoship link, same as the date on the card) -- orange like the card's own pending date */
     #tab-board .warn-date { color: var(--soon); font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     @media (hover: hover) { #tab-board .warn-date.has-link:hover { text-decoration: underline; } }
@@ -4739,15 +4742,19 @@
     p.runout.forEach((r) => {
       const days = Math.ceil((r.date - today) / SB.DAY);
       const past = r.date < today;
+      // "runs out 12/3 · 23d" opens the item in Inventory, like its name above
+      const roText = (past ? 'ran out ' : 'runs out ') + df(r.date) + (past ? '' : ' · ' + days + 'd');
+      const roLink = INV_MAP[r.name.trim().toLowerCase()]
+        ? `<span class="warn-ro-link" data-act="warn-inv" data-wname="${escAttr(r.name)}" title="Open in Inventory">${esc(roText)}</span>`
+        : esc(roText);
       const extra = [
-        past ? '' : days + 'd',
         'no ' + w.name + ' order',
         r.next ? 'next order ' + monthLink(monthNames[r.next.mi], { kind: 'card', id: r.next.id }) : '',
       ].filter(Boolean).join(' · ');
       rows.push({ date: r.date, html: `<div class="warn-row" data-wdate="${toISODate(r.date)}">
         <span class="warn-main">
           ${nameHTML(r.name, true)}
-          <span class="warn-detail">${past ? 'ran out' : 'runs out'} ${df(r.date)} · ${extra}</span>
+          <span class="warn-detail">${roLink} · ${extra}</span>
         </span>
         <button type="button" class="warn-btn" data-act="warn-ignore" data-wkey="${escAttr(r.key)}" title="Ignore for ${w.name} (comes back in a later month)">Ignore</button>
       </div>` });

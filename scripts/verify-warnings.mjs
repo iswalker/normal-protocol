@@ -464,6 +464,14 @@ try {
   check('item name opens Inventory filtered to that item', (await page.locator('#inv-filter-item').inputValue()) === 'Runner' && await page.locator('#tab-inventory').isVisible());
   await page.locator('#inv-modal-close').click();
   await page.waitForTimeout(200);
+  // the "runs out 12/3 · 23d" part is a link to the same Inventory item
+  const roLinkEl = rowFor(page, 'Runner').locator('.warn-ro-link[data-act="warn-inv"]');
+  check('run-out row: "runs out <date> · #d" is a link', (await roLinkEl.count()) === 1 && /^runs out \d+\/\d+ · \d+d$/.test((await roLinkEl.textContent()).trim()), await roLinkEl.allTextContents());
+  await roLinkEl.click();
+  await page.waitForTimeout(300);
+  check('clicking the run-out text opens Inventory filtered to that item', (await page.locator('#inv-filter-item').inputValue()) === 'Runner' && await page.locator('#tab-inventory').isVisible());
+  await page.locator('#inv-modal-close').click();
+  await page.waitForTimeout(200);
   await rowFor(page, 'Later Placement').locator('.warn-month').first().click();
   await page.waitForTimeout(250);
   await page.waitForTimeout(900); // let the smooth scroll settle
