@@ -1109,6 +1109,21 @@ try {
     await page.locator('#snm-confirm-btn').click(); await page.waitForTimeout(600);
     const blankLog = logPosts.filter((p) => p.item === 'Blank Thing');
     check('blank On Hand still assumes one full bottle (Received 60)', blankLog.length === 1 && blankLog[0].amount === 60 && blankLog[0].type === 'Received', JSON.stringify(blankLog));
+    // typed math is replaced by its result when leaving the field, in all three numeric fields
+    await addNew('Calc Thing', { 'snm-bottle': '30*3', 'snm-dose': '4/3', 'snm-onhand': '4/7' });
+    await page.locator('#snm-name').focus(); // blur the fields
+    await page.waitForTimeout(100);
+    const shown = await page.evaluate(() => ({ b: document.getElementById('snm-bottle').value, d: document.getElementById('snm-dose').value, o: document.getElementById('snm-onhand').value }));
+    check('leaving Bottle Size / Daily Dose / On Hand turns "30*3" / "4/3" / "4/7" into 90 / 1.33 / 0.6', shown.b === '90' && shown.d === '1.33' && shown.o === '0.6', JSON.stringify(shown));
+    await page.locator('#snm-onhand').fill('18*5+1'); await page.locator('#snm-onhand').press('Enter'); await page.waitForTimeout(600);
+    const calcItem = itemPosts.filter((p) => p.name === 'Calc Thing' || p.item === 'Calc Thing' || JSON.stringify(p).includes('Calc Thing'));
+    const calcLog = logPosts.filter((p) => p.item === 'Calc Thing');
+    check('Bottle Size formula is saved as its result; Enter also computes On Hand (91)', calcItem.length === 1 && /"bottle_size":90/.test(JSON.stringify(calcItem[0])) && calcLog.length === 1 && calcLog[0].amount === 91, JSON.stringify({ calcItem, calcLog }));
+    await addNew('Bad Bottle', { 'snm-bottle': '3*', 'snm-dose': '2' });
+    const postsBeforeBottle = itemPosts.length;
+    await page.locator('#snm-confirm-btn').click(); await page.waitForTimeout(400);
+    check('a Bottle Size that is not a valid formula keeps the dialog open and saves nothing', itemPosts.length === postsBeforeBottle && await page.locator('#snm-bottle').isVisible());
+    await page.locator('#snm-cancel-btn').click();
     await addNew('Bad Thing', { 'snm-bottle': '60', 'snm-onhand': '5+' });
     const postsBefore = itemPosts.length;
     await page.locator('#snm-confirm-btn').click(); await page.waitForTimeout(400);

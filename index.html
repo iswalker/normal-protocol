@@ -11791,7 +11791,7 @@
           <div id="snm-new-fields" style="display:none">
             <div class="snm-fields snm-fields--3">
               <div class="snm-field full"><label>Item Name *</label><input id="snm-name" type="text" placeholder="e.g. KL Support"></div>
-              <div class="snm-field"><label>Bottle Size</label><input id="snm-bottle" type="number" min="0" placeholder="120"></div>
+              <div class="snm-field"><label>Bottle Size</label><input id="snm-bottle" type="text" inputmode="text" autocomplete="off" placeholder="120" title="Math works here, e.g. 30*4"></div>
               <div class="snm-field"><label>Daily Dose</label><input id="snm-dose" type="text" inputmode="text" autocomplete="off" placeholder="2" title="Math works here, e.g. 2*3 or 1.5+1"></div>
               <div class="snm-field"><label>On Hand</label><input id="snm-onhand" type="text" inputmode="text" autocomplete="off" placeholder="450" title="Caps you already have. Leave blank to start with one full bottle. Math works here too."></div>
               <div class="snm-field"><label>Annual Sale</label><input id="snm-annual" type="text"></div>
@@ -12151,6 +12151,25 @@
       if (!btn.disabled) btn.click();
     });
 
+    // Bottle Size, Daily Dose and On Hand take typed math ("4/7", "18*5+1"). Leaving
+    // the field (or pressing Enter) replaces the expression with its result, rounded
+    // the way it is saved, so what's shown is what gets stored. Text that doesn't
+    // evaluate is left alone (the Add Item button then refuses it and refocuses).
+    const NM_CALC = { 'snm-bottle': 1, 'snm-dose': 2, 'snm-onhand': 1 }; // decimals kept
+    function calcField(inp) {
+      const raw = inp.value.trim();
+      if (!raw) return;
+      const v = evalExpr(raw);
+      if (isNaN(v) || v < 0) return;
+      const f = Math.pow(10, NM_CALC[inp.id]);
+      inp.value = String(Math.round(v * f) / f);
+    }
+    Object.keys(NM_CALC).forEach((id) => {
+      const inp = document.getElementById(id);
+      inp.addEventListener('blur', () => calcField(inp));
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') calcField(inp); });
+    });
+
     nmOv.querySelectorAll('input[name="snm-mode"]').forEach(radio => {
       radio.addEventListener('change', () => {
         const isNew = radio.value === 'new' && radio.checked;
@@ -12180,7 +12199,11 @@
           const doseRaw = document.getElementById('snm-dose').value.trim();
           const doseNum = doseRaw ? evalExpr(doseRaw) : 0;
           if (isNaN(doseNum) || doseNum < 0) { const di = document.getElementById('snm-dose'); di.focus(); di.select(); btn.disabled = false; return; }
-          const doseVal = doseRaw ? doseNum : '';
+          const doseVal = doseRaw ? Math.round(doseNum * 100) / 100 : '';
+          // Bottle Size: same -- formulas work, blank means none yet
+          const bottleRaw = document.getElementById('snm-bottle').value.trim();
+          const bottleNum = bottleRaw ? evalExpr(bottleRaw) : 0;
+          if (isNaN(bottleNum) || bottleNum < 0) { const bi = document.getElementById('snm-bottle'); bi.focus(); bi.select(); btn.disabled = false; return; }
           // On Hand: blank = assume one full bottle (the old behaviour); anything
           // typed is the caps actually in hand (formulas work, one decimal like the
           // Inventory table's own On Hand edit).
@@ -12193,7 +12216,7 @@
           }
           const fields = {
             name,
-            bottleSize:   document.getElementById('snm-bottle').value,
+            bottleSize:   bottleRaw ? Math.round(bottleNum * 10) / 10 : '',
             dose:         doseVal,
             annualSale:   document.getElementById('snm-annual').value.trim(),
             offCycleSale: document.getElementById('snm-offcycle').value.trim(),
