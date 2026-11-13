@@ -472,6 +472,22 @@ try {
   check('clicking the run-out text opens Inventory filtered to that item', (await page.locator('#inv-filter-item').inputValue()) === 'Runner' && await page.locator('#tab-inventory').isVisible());
   await page.locator('#inv-modal-close').click();
   await page.waitForTimeout(200);
+  // typing a very long note must not scroll the card sideways (the item name slid off the left edge)
+  {
+    const nCard = page.locator('.month .card[data-id="oi_runner"], .month .card:has(.card-notes)').first();
+    const nId = await nCard.getAttribute('data-id');
+    const nNotes = nCard.locator('.card-notes');
+    await nNotes.scrollIntoViewIfNeeded();
+    const before = await nCard.locator('.card-name').first().evaluate((e) => e.getBoundingClientRect().left - e.closest('.card').getBoundingClientRect().left);
+    await nNotes.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('x '.repeat(300) + 'the very end', { delay: 0 });
+    await page.waitForTimeout(150);
+    const after = await nCard.locator('.card-name').first().evaluate((e) => { const c = e.closest('.card'); return { gap: e.getBoundingClientRect().left - c.getBoundingClientRect().left, scroll: c.scrollLeft }; });
+    check('typing a long note leaves the card (and the item name) where it was', after.scroll === 0 && Math.abs(after.gap - before) < 1, JSON.stringify({ before, after, nId }));
+    await page.keyboard.press('Control+z'); // keep the fixture's note as it was (undo isn't reliable in contenteditable; the page is reloaded below anyway)
+    await nNotes.evaluate((e) => { e.textContent = ''; e.blur(); });
+  }
   await rowFor(page, 'Later Placement').locator('.warn-month').first().click();
   await page.waitForTimeout(250);
   await page.waitForTimeout(900); // let the smooth scroll settle

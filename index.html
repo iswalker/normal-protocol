@@ -1837,7 +1837,9 @@
        max-width:680px block) since .card-end unwraps via display:contents
        there and the grip needs an explicit order to land back where it
        used to (top-right, by the name) instead of between recur/notes. */
-    #tab-board .board.layout-compact .card { position: relative; padding: 3px 6px; overflow: hidden; }
+    /* overflow:clip, not just hidden: a hidden box can still be scrolled sideways by the
+       browser (caret-into-view while typing a long note), a clipped one never moves */
+    #tab-board .board.layout-compact .card { position: relative; padding: 3px 6px; overflow: hidden; overflow: clip; }
     #tab-board .board.layout-compact .card-body {
       display: grid;
       grid-template-columns: 155px 155px 94px 39px 1fr;
@@ -1941,7 +1943,11 @@
     /* Desktop: field stays inline and always visible, same as before -- the
        toggle icon is a mobile-only affordance. See max-width:680px block. */
     #tab-board .notes-toggle { display: none; }
-    #tab-board .card-notes:focus { color: var(--fg); overflow: visible; text-overflow: clip; }
+    /* Focused: stays overflow:hidden so a long single-line note scrolls INSIDE its own
+       field. (overflow:visible here let the text run out past the card, and the
+       browser then scrolled the card itself sideways to follow the caret -- pushing
+       the item name off the left edge.) */
+    #tab-board .card-notes:focus { color: var(--fg); text-overflow: clip; }
 
     /* ── shipment stage toggle ──
        The 3-way button row this used to be is gone -- one control (this
