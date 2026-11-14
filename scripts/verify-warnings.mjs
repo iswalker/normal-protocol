@@ -268,6 +268,16 @@ try {
   await pbtn('o_norm').click(); await page.waitForTimeout(700);
   check('preemptive: manually turning one on does not cover the current month run-out either', (await rowNames(page)).includes('Late'));
   check('preemptive: a manual ON is stored as 1', lastOrder('o_norm')?.preemptive === 1, JSON.stringify(lastOrder('o_norm')));
+  // turning Preemptive ON jumps the order to the TOP of the Preemptive group and scrolls to it
+  await page.waitForTimeout(900); // smooth scroll
+  const normPos = await page.evaluate(() => {
+    const sh = document.querySelector('.shipment[data-id="o_norm"]');
+    const ships = [...sh.parentElement.querySelectorAll(':scope > .shipment')];
+    const pre = ships.filter((s) => s.querySelector(':scope > .ship-head > .ship-preempt.is-on') && !s.classList.contains('is-locked') && !s.classList.contains('is-approved'));
+    const sc = document.getElementById('tab-board').getBoundingClientRect(), r = sh.getBoundingClientRect();
+    return { firstPre: pre[0] === sh, preCount: pre.length, inView: r.top >= sc.top - 2 && r.top < sc.bottom - 40, top: Math.round(r.top - sc.top) };
+  });
+  check('preemptive: turning one ON puts it first in the Preemptive Orders list and scrolls to it', normPos.firstPre && normPos.preCount >= 2 && normPos.inView, JSON.stringify(normPos));
   check('preemptive: the automatic one is stored as automatic (null)', lastOrder('o_pre')?.preemptive == null, JSON.stringify(lastOrder('o_pre')?.preemptive));
   await pbtn('o_pre').click(); await page.waitForTimeout(700);
   check('preemptive: manually turning an automatic one OFF is stored as 0 (the run-out warning is unaffected)', lastOrder('o_pre')?.preemptive === 0 && (await rowNames(page)).includes('Early'), JSON.stringify(lastOrder('o_pre')?.preemptive));

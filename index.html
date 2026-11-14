@@ -4440,8 +4440,24 @@
     const next = !isShipPreemptive(shipEl);
     // Back to automatic whenever the choice just matches what the date implies
     s.preemptive = next === shipAutoPreemptive(shipEl) ? null : next;
+    // Turning it ON puts the order at the TOP of the Preemptive Orders list (the
+    // sections keep each group's own order, so it would otherwise land wherever it
+    // sat among the month's orders -- usually the bottom) and takes you to it.
+    if (next && isShipPreemptive(shipEl)) {
+      const list = shipEl.parentElement;
+      if (list && list.classList.contains('month-list') && list.firstElementChild !== shipEl) list.insertBefore(shipEl, list.firstElementChild);
+    }
     recalcAll();
     persist();
+    if (next && isShipPreemptive(shipEl)) {
+      requestAnimationFrame(() => {
+        scrollElementIntoBoardView(shipEl);
+        shipEl.classList.remove('warn-flash');
+        void shipEl.offsetWidth; // restart the animation if it's mid-flight
+        shipEl.classList.add('warn-flash');
+        setTimeout(() => shipEl.classList.remove('warn-flash'), 1500);
+      });
+    }
   }
 
   // Bumped by every recalc: the Needs Attention rows are a pure function of the
