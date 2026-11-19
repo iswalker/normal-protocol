@@ -9562,24 +9562,38 @@
       // the card's own current order (nothing to move "to" there) and any
       // locked/completed one (same restriction "+ Item" already applies --
       // an order that's Ordered/Entered/Received doesn't take new items).
+      // "New Order" (always the second entry) makes a sibling of this card's own order -- same
+      // name, status and notes -- right after it, and does the move/copy into that: the way to split
+      // one order that shipped in two parts (even a completed one) so each part is received on its own.
+      function newOrderLikeCurrent() {
+        const curShipEl = container.closest('.shipment') || null;
+        const src = curShipEl ? (STATE.shipmentData[curShipEl.dataset.id] || {}) : {};
+        const sid = uid('s_');
+        STATE.shipmentData[sid] = { name: src.name || '', notes: src.notes || '', ...(src.stage ? { stage: src.stage } : {}) };
+        const newEl = el(shipmentHTML({ type: 'shipment', id: sid, cards: [] }));
+        const list = monthEl.querySelector(':scope > .month-list');
+        if (curShipEl) curShipEl.after(newEl); else list.prepend(newEl);
+        makeShipSortable(newEl.querySelector('.ship-body'));
+        if (src.stage) { applyShipmentStage(newEl, src.stage); newEl.classList.remove('is-collapsed'); } // open, so the moved item is in view
+        return newEl;
+      }
       function ctxOrderPickRow(caption = 'Move to', action = moveCardToOrder) {
         const currentShipEl = container.closest('.shipment') || null;
         const ships = sortShipsByName(monthEl.querySelectorAll(':scope > .month-list > .shipment'))
           .filter((s) => s !== currentShipEl && !s.classList.contains('is-locked'));
         const row = document.createElement('div');
-        row.className = 'ship-ctx-pick' + (ships.length ? '' : ' ctx-disabled');
+        row.className = 'ship-ctx-pick';
         const cap = document.createElement('span');
         cap.textContent = caption;
         const sel = document.createElement('select');
-        sel.innerHTML = '<option value="">Order</option>' + ships.map((s, i) =>
+        sel.innerHTML = '<option value="">Order</option><option value="new">New Order</option>' + ships.map((s, i) =>
           `<option value="${i}">${esc(formatOrderSummary(s))}</option>`).join('');
-        if (!ships.length) sel.disabled = true;
         ['mousedown', 'click'].forEach((t) => sel.addEventListener(t, (ev) => ev.stopPropagation()));
         sel.addEventListener('change', () => {
-          const target = ships[Number(sel.value)];
+          const target = sel.value === 'new' ? 'new' : ships[Number(sel.value)];
           if (!target) return;
           closeCtxMenu();
-          action(target);
+          action(target === 'new' ? newOrderLikeCurrent() : target);
         });
         row.append(cap, sel);
         return row;

@@ -191,8 +191,9 @@ const base = `http://localhost:${server.address().port}`;
 const browser = await chromium.launch();
 const errors = [];
 
-async function openBoard(viewport) {
+async function openBoard(viewport, setup) {
   const ctx = await browser.newContext({ viewport });
+  if (setup) await setup(ctx);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(base, { waitUntil: 'load' });
@@ -879,9 +880,10 @@ try {
   const pickers = await page.evaluate(() => [...document.querySelectorAll('.ship-ctx-menu .ship-ctx-pick')]
     .map((row) => ({ cap: row.querySelector('span').textContent, opts: [...row.querySelectorAll('select option')].map((o) => o.textContent) }))
     .filter((p) => p.opts[0] === 'Order')
-    .map((p) => ({ cap: p.cap, names: p.opts.slice(1).map((x) => x.replace(/ \(\d+\).*$/, '')) })));
+    .map((p) => ({ cap: p.cap, names: p.opts.slice(2).map((x) => x.replace(/ \(\d+\).*$/, '')), second: p.opts[1] })));
   const alpha = (n) => [...n].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
   check('both order pickers exist (Move to / Copy to) with several orders to choose from', pickers.length === 2 && pickers.every((p) => p.names.length >= 4), JSON.stringify(pickers));
+  check('"New Order" is the second entry of both order pickers', pickers.every((p) => p.second === 'New Order'), JSON.stringify(pickers.map((p) => p.second)));
   check('"Move to" and "Copy to" list the orders alphabetically by shipment name', pickers.every((p) => JSON.stringify(p.names) === JSON.stringify(alpha(p.names))), JSON.stringify(pickers.map((p) => p.names)));
   check('the card\'s own order and completed orders are still left out', pickers.every((p) => !p.names.includes('Pre Auto Co') && !p.names.includes('Locked Nov')));
   // the month pickers: 18 months with the year, starting with the current month
@@ -1058,6 +1060,40 @@ try {
     await page.locator(lc + ' input[data-field="qty"]').fill('1');
     await page.waitForTimeout(300);
   }
+  // ── "New Order" in the card menu's Move to / Copy to Order: a sibling order (same name / status / notes) + the move or copy into it ──
+  {
+    // saves go nowhere: this page must not change the shared mock (the main page would show its "data changed on another device" banner)
+    const { ctx: nctx, page } = await openBoard({ width: 1400, height: 900 }, (c) => c.route((u) => new URL(u).pathname === '/api/orders', (r) => (r.request().method() === 'GET' ? r.fallback() : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, updated_at: 'x', prev_updated_at: 'x' }) }))));
+    const mid = monthIdOf(M0);
+    const shipsNamed = () => page.evaluate(({ mid, name }) => [...document.querySelectorAll('.month[data-id="' + mid + '"] > .month-list > .shipment')]
+      .filter((s) => s.querySelector('.ship-name').textContent.trim() === name)
+      .map((s) => ({ id: s.dataset.id, locked: s.classList.contains('is-locked'), stage: s.querySelector(':scope > .ship-head > .ship-stage-select').textContent.trim(), notes: s.querySelector(':scope > .ship-head > .ship-notes').textContent, cards: [...s.querySelectorAll(':scope > .ship-body > .card .card-name')].map((n) => n.textContent.trim()) })), { mid, name: 'Locked Co' });
+    await page.evaluate(() => { const n = document.querySelector('.shipment[data-id="o_locked"] > .ship-head > .ship-notes'); n.textContent = 'part one'; n.dispatchEvent(new Event('input', { bubbles: true })); });
+    const openMenu = async () => {
+      await page.evaluate(() => document.querySelector('.card[data-id="oi_locked"] [data-act="open-card-menu"]').click());
+      await page.waitForSelector('.ship-ctx-menu');
+    };
+    const orderOpts = await (async () => { await openMenu(); const o = await page.evaluate(() => [...document.querySelectorAll('.ship-ctx-menu .ship-ctx-pick')].filter((r) => /New Order/.test(r.textContent)).map((r) => [...r.querySelectorAll('option')].slice(0, 2).map((x) => x.textContent)));
+      await page.keyboard.press('Escape'); await page.mouse.click(5, 5); await page.waitForTimeout(200); return o; })();
+    check('Move to / Copy to Order: "New Order" is the second entry, under the default "Order"', orderOpts.length === 2 && orderOpts.every((o) => o[0] === 'Order' && o[1] === 'New Order'), JSON.stringify(orderOpts));
+    const before = await shipsNamed();
+    await openMenu();
+    await page.locator('.ship-ctx-menu .ship-ctx-pick', { hasText: 'New Order' }).last().locator('select').selectOption({ label: 'New Order' }); // Copy to > New Order
+    await page.waitForTimeout(500);
+    const afterCopy = await shipsNamed();
+    const created = afterCopy.find((s) => !before.some((b) => b.id === s.id));
+    check('Copy to > New Order: a new order with the same name, status (Ordered) and notes appears, holding a copy of the item', afterCopy.length === before.length + 1 && created && created.locked && created.stage === 'Ordered' && created.notes === 'part one' && created.cards.includes('Locked One'), JSON.stringify({ before, afterCopy }));
+    check('…and the original keeps its item', afterCopy.find((s) => s.id === 'o_locked').cards.includes('Locked One'));
+    await openMenu();
+    await page.locator('.ship-ctx-menu .ship-ctx-pick', { hasText: 'New Order' }).first().locator('select').selectOption({ label: 'New Order' }); // Move to > New Order
+    await page.waitForTimeout(500);
+    const afterMove = await shipsNamed();
+    const moved = afterMove.find((s) => !afterCopy.some((b) => b.id === s.id));
+    check('Move to > New Order: another sibling order takes the item, and the original no longer has it', afterMove.length === afterCopy.length + 1 && moved && moved.stage === 'Ordered' && moved.cards.includes('Locked One') && !afterMove.find((s) => s.id === 'o_locked').cards.includes('Locked One'), JSON.stringify(afterMove));
+    check('…each completed sibling is its own order (own id), independently receivable', new Set(afterMove.map((s) => s.id)).size === afterMove.length);
+    await nctx.close();
+  }
+
 
   // ── at 0 left to act on, the whole panel goes away ──
   for (let i = 0; i < 40; i++) {
