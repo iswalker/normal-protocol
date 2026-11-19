@@ -511,6 +511,7 @@
        Cells clip with ellipsis; headers still wrap freely.
        Cols map 1-to-1 with <col> elements in <colgroup> below.          */
     #inv-table col.ci-item     { width: 160px; }
+    #inv-table col.ci-sb       { width:  76px; }
     #inv-table col.ci-runout   { width: 180px; }
     #inv-table col.ci-nextorder { width: 90px; }
     #inv-table col.ci-bottles  { width:  130px; }
@@ -537,8 +538,8 @@
     /* "Track via Separate Budget": a small checkbox at the right end of the Item cell / beside the card's name */
     .inv-sb { float: right; display: inline-flex; align-items: center; margin-left: 8px; cursor: pointer; }
     .inv-sb input { margin: 0; width: 14px; height: 14px; accent-color: var(--teal); cursor: pointer; }
-    #inv-table td.inv-name { position: relative; padding-right: 34px; }
-    #inv-table td.inv-name .inv-sb { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); float: none; margin: 0; }
+    #inv-table td.inv-sb-cell, #inv-table th.inv-th-sb { text-align: center; }
+    #inv-table .inv-sb { float: none; margin: 0; }
     .inv-card-name-group .inv-sb { float: none; margin-left: 8px; vertical-align: middle; }
     .snm-name-row { display: flex; align-items: center; gap: 10px; }
     .snm-name-row > input { flex: 1 1 auto; min-width: 0; }
@@ -2682,6 +2683,7 @@
     <table id="inv-table">
       <colgroup>
         <col class="ci-item">
+        <col class="ci-sb">
         <col class="ci-runout">
         <col class="ci-nextorder">
         <col class="ci-bottles">
@@ -2698,6 +2700,7 @@
       <thead>
         <tr>
           <th>Item</th>
+          <th class="inv-th-sb" title="Track via Separate Budget">Separate Budget</th>
           <th>Est. Run-Out</th>
           <th>Next Order</th>
           <th>Bottles</th>
@@ -8970,13 +8973,14 @@
   // List" tag for something that already has an upcoming occurrence.
   function nextBoardMonth(matchesMonth) {
     const today = SB.today();
-    const curMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const curKey = today.getFullYear() * 12 + today.getMonth();
     for (const m of board.querySelectorAll('.month')) {
       const mname = m.querySelector('.mname')?.textContent.trim();
       const year = parseInt(m.querySelector('.msub')?.textContent.trim(), 10);
-      const mIdx = mname ? MONTH_NAMES.indexOf(mname) : -1;
-      if (mIdx < 0 || !year) continue;
-      if (new Date(year, mIdx, 1) < curMonthStart) continue;
+      // (Black Friday / Prime Day count too: they are columns of the board, between Nov/Dec and Jun/Jul)
+      const key = mname && year ? monthSortKey(mname, year) : NaN;
+      if (!(key >= 0)) continue;
+      if (key < curKey) continue;
       if (matchesMonth(m)) return mname;
     }
     return null;
@@ -11365,20 +11369,29 @@
   // too (not just the month name) so a click can jump straight to it --
   // see wireNextOrderClick.
   const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // Where a board column sits on the timeline (year*12 + month), the pseudo-months half a step after
+  // the month they follow -- so "Black Friday" and "Prime Day" count as upcoming orders too.
+  const PSEUDO_AFTER = { 'Black Friday': 10, 'Prime Day': 5 };
+  function boardMonthKey(mname, year) {
+    if (!mname || !year) return NaN;
+    if (Object.prototype.hasOwnProperty.call(PSEUDO_AFTER, mname)) return year * 12 + PSEUDO_AFTER[mname] + 0.5;
+    const i = MONTH_ABBR.indexOf(mname);
+    return i < 0 ? NaN : year * 12 + i;
+  }
   // nextOrderMonth for every item at once: one walk over the board's cards
   // instead of one per item (70 items x every month x every card name was most
   // of what building the list cost on a big board).
   function buildNextOrderMap() {
     const today = new Date(isoToday() + 'T00:00:00');
-    const curMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const curKey = today.getFullYear() * 12 + today.getMonth();
     const map = new Map();
     for (const m of document.querySelectorAll('#board .month')) {
       const head = m.querySelector('.month-head');
       const mname = head?.querySelector('.mname')?.textContent.trim();
       const year = parseInt(head?.querySelector('.msub')?.textContent.trim(), 10);
-      const mIdx = mname ? MONTH_ABBR.indexOf(mname) : -1;
-      if (mIdx < 0 || !year) continue;
-      if (new Date(year, mIdx, 1) < curMonthStart) continue;
+      const key = boardMonthKey(mname, year);
+      if (!(key >= 0)) continue;
+      if (key < curKey) continue;
       m.querySelectorAll('.card-name').forEach((el) => {
         const k = el.textContent.trim().toLowerCase();
         if (map.has(k)) return;
@@ -11390,14 +11403,14 @@
   }
   function nextOrderMonth(key) {
     const today = new Date(isoToday() + 'T00:00:00');
-    const curMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const curKey = today.getFullYear() * 12 + today.getMonth();
     for (const m of document.querySelectorAll('#board .month')) {
       const head = m.querySelector('.month-head');
       const mname = head?.querySelector('.mname')?.textContent.trim();
       const year = parseInt(head?.querySelector('.msub')?.textContent.trim(), 10);
-      const mIdx = mname ? MONTH_ABBR.indexOf(mname) : -1;
-      if (mIdx < 0 || !year) continue;
-      if (new Date(year, mIdx, 1) < curMonthStart) continue;
+      const mKey = boardMonthKey(mname, year);
+      if (!(mKey >= 0)) continue;
+      if (mKey < curKey) continue;
       const cardEl = [...m.querySelectorAll('.card-name')]
         .find((el) => el.textContent.trim().toLowerCase() === key)
         ?.closest('.card[data-id]');
@@ -11549,7 +11562,8 @@
       tr.dataset.ord = String(ordIdx++);
       if (meta._id) tr.dataset.id = meta._id;
       tr.innerHTML =
-        '<td class="inv-name" data-key="' + key + '"><span class="inv-name-text inv-name-edit" data-key="' + key + '" title="Click to rename">' + escHtml(name) + '</span>' + sbBox(key, meta) + '</td>' +
+        '<td class="inv-name" data-key="' + key + '"><span class="inv-name-text inv-name-edit" data-key="' + key + '" title="Click to rename">' + escHtml(name) + '</span></td>' +
+        '<td class="inv-sb-cell" data-key="' + key + '">' + sbBox(key, meta) + '</td>' +
         '<td class="inv-runout'     + (ro ? (' ' + ro.cls) : ' inv-no-data') + '">' + (ro ? ro.text : '—') + roBars + '</td>' +
         '<td class="inv-next-order' + (nextOrder ? ' inv-clickable' : ' inv-no-data') + '"'
           + (nextOrder ? ' data-card-id="' + nextOrder.cardId + '" title="Jump to this order"' : '') + '>'
@@ -11629,7 +11643,8 @@
       meta.separateBudget = want;
       window._INV_DIRTY = true; // see closeInventory
       document.querySelectorAll('.inv-sb-chk[data-key="' + cb.dataset.key + '"]').forEach((o) => { o.checked = want; });
-      await fetchLogAndApply();
+      // (the board's data lives in the other script block: re-read items + log and re-apply, which also repaints this list)
+      await window.InventoryWriter?.run();
     } catch (e) {
       console.error('Separate budget save failed:', e);
       cb.checked = !want;
@@ -11684,7 +11699,7 @@
     if (tr) {
       const capsCell     = tr.querySelector('.inv-onhand');
       const bottlesCell  = tr.querySelector('.inv-bottles');
-      const runoutCell   = tr.querySelector('td:nth-child(2)');
+      const runoutCell   = tr.querySelector('td.inv-runout');
       // By class, not column position: this used to be td:nth-child(8), which
       // stopped being "Last Reset" once Next Order / Lasts For were added and
       // quietly overwrote the Lasts For cell with the reset date.
@@ -12020,7 +12035,7 @@
   // required to match at once; now one box, OR'd across all of them).
   // Indices shifted by 1 once "Next Order" was inserted after "Est.
   // Run-Out" -- these were [0,8,9,10] before that column existed.
-  const SEARCH_COL_IDXS = [0, 9, 10, 11]; // Item, Annual Sale, Off-Cycle, Anyday
+  const SEARCH_COL_IDXS = [0, 10, 11, 12]; // Item, Annual Sale, Off-Cycle, Anyday (the cells' positions)
 
   // One shared match rule for both the desktop table and the mobile card
   // list (see applyFilters below) -- desktop used to check these 4 columns
@@ -12071,8 +12086,9 @@
       const cells = tr.querySelectorAll('td');
       if (!cells.length) return;
       const passesText = matchesInvSearch(SEARCH_COL_IDXS.map((colIdx) => cells[colIdx]?.textContent), q);
-      const passesSoon = !soonOnly || (cells[1] && (cells[1].classList.contains('inv-soon') || cells[1].classList.contains('inv-empty')));
-      const passesNoOrder = !noOrderOnly || (cells[2] && cells[2].classList.contains('inv-no-data'));
+      const roCell = tr.querySelector('td.inv-runout'), noCell = tr.querySelector('td.inv-next-order');
+      const passesSoon = !soonOnly || (roCell && (roCell.classList.contains('inv-soon') || roCell.classList.contains('inv-empty')));
+      const passesNoOrder = !noOrderOnly || (noCell && noCell.classList.contains('inv-no-data'));
       const show = passesText && passesSoon && passesNoOrder;
       tr.style.display = show ? '' : 'none';
       if (show) visibleCount++;
@@ -12087,7 +12103,7 @@
       items.sort((a, b) => { const ka = keyOf(a), kb = keyOf(b); return ka[0] - kb[0] || ka[1] - kb[1]; });
       items.forEach((el) => container.appendChild(el));
     };
-    orderRows(body, 'tr[data-key]', (tr) => tr.querySelectorAll('td')[1]?.textContent);
+    orderRows(body, 'tr[data-key]', (tr) => tr.querySelector('td.inv-runout')?.textContent);
 
     // "+ Add [query]" when the Item filter doesn't exactly match an existing
     // item — the same affordance as the "+ Item" and scan search pickers, so a

@@ -1684,14 +1684,15 @@ try {
     const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
     const cardRow = (id, orderId, name, price, bp, ip) => ({ order_item_id: id, order_id: orderId, month: 'Nov', year: 2026, block_position: bp, item_position: ip, supplement: name, price_per_bottle: price, order_qty_bottles: 1, include_in_total: 1 });
     const board = {
-      months: [['Nov', 2026], ['Dec', 2026]].map(([m, y], p) => ({ month: m, year: y, position: p + 1, notes: '' })),
+      months: [['Nov', 2026], ['Black Friday', 2026], ['Dec', 2026]].map(([m, y], p) => ({ month: m, year: y, position: p + 1, notes: '' })),
       orders: [
         { order_id: 'sb_o1', month: 'Nov', year: 2026, merchant: 'Mixed Co', position: 1, status: 'Staged', notes: null },
         { order_id: 'sb_o2', month: 'Nov', year: 2026, merchant: 'Placed Co', position: 2, status: 'Ordered', notes: null },
       ],
-      items: [cardRow('sb_a', 'sb_o1', 'Sep Item', 50, 1, 1), cardRow('sb_b', 'sb_o1', 'Plain Item', 30, 1, 2), cardRow('sb_c', null, 'Sep Item', 20, 3, 1), cardRow('sb_d', 'sb_o2', 'Sep Item', 40, 2, 1), cardRow('sb_e', 'sb_o2', 'Plain Item', 10, 2, 2)],
+      items: [cardRow('sb_a', 'sb_o1', 'Sep Item', 50, 1, 1), cardRow('sb_b', 'sb_o1', 'Plain Item', 30, 1, 2), cardRow('sb_c', null, 'Sep Item', 20, 3, 1), cardRow('sb_d', 'sb_o2', 'Sep Item', 40, 2, 1), cardRow('sb_e', 'sb_o2', 'Plain Item', 10, 2, 2),
+        { ...cardRow('sb_f', null, 'Bf Only Item', 15, 1, 1), month: 'Black Friday' }],
     };
-    const invItems = [{ id: 71, name: 'Sep Item', bottle_size: 60, daily_dose: 1, separate_budget: 1 }, { id: 72, name: 'Plain Item', bottle_size: 60, daily_dose: 1, separate_budget: 0 }];
+    const invItems = [{ id: 71, name: 'Sep Item', bottle_size: 60, daily_dose: 1, separate_budget: 1 }, { id: 72, name: 'Plain Item', bottle_size: 60, daily_dose: 1, separate_budget: 0 }, { id: 73, name: 'Bf Only Item', bottle_size: 60, daily_dose: 1, separate_budget: 0 }];
     const itemPatches = [], itemPosts = [];
     await sp.route('**/api/orders', (r) => jf(r, r.request().method() === 'GET' ? board : { ok: true, updated_at: 'x', prev_updated_at: 'x' }));
     await sp.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
@@ -1721,11 +1722,19 @@ try {
     // the Inventory table: a checkbox right of the name
     await sp.locator('#inv-search-link').click();
     await sp.waitForSelector('#inv-modal-ov.open'); await sp.waitForTimeout(700);
-    const boxes = await sp.evaluate(() => { const row = (k) => document.querySelector('#inv-body tr[data-key="' + k + '"]'); const sepRow = row('sep item'), plainRow = row('plain item'); const nm = sepRow.querySelector('.inv-name-text').getBoundingClientRect(), cb = sepRow.querySelector('.inv-sb-chk').getBoundingClientRect(); return { sep: sepRow.querySelector('.inv-sb-chk').checked, plain: plainRow.querySelector('.inv-sb-chk').checked, rightOfName: cb.left > nm.right, sameCell: !!sepRow.querySelector('td.inv-name .inv-sb-chk') }; });
-    check('Inventory: each item has a "Track via Separate Budget" checkbox in the Item cell, to the right of the name, reflecting its setting', boxes.sep === true && boxes.plain === false && boxes.rightOfName && boxes.sameCell, JSON.stringify(boxes));
+    const boxes = await sp.evaluate(() => { const row = (k) => document.querySelector('#inv-body tr[data-key="' + k + '"]'); const sepRow = row('sep item'), plainRow = row('plain item'); const nm = sepRow.querySelector('.inv-name-text').getBoundingClientRect(), cb = sepRow.querySelector('.inv-sb-chk').getBoundingClientRect(); return { sep: sepRow.querySelector('.inv-sb-chk').checked, plain: plainRow.querySelector('.inv-sb-chk').checked, rightOfName: cb.left > nm.right, ownColumn: !!sepRow.querySelector('td.inv-sb-cell .inv-sb-chk') && sepRow.querySelector('td.inv-sb-cell').previousElementSibling.classList.contains('inv-name'), header: [...document.querySelectorAll('#inv-table thead th')].slice(0, 2).map((h) => h.textContent.trim()) }; });
+    check('Inventory: a "Separate Budget" column (with its header) right after Item holds each item\'s checkbox, reflecting its setting', boxes.sep === true && boxes.plain === false && boxes.rightOfName && boxes.ownColumn && boxes.header[1] === 'Separate Budget', JSON.stringify(boxes));
+    const nextCells = await sp.evaluate(() => Object.fromEntries(['sep item', 'plain item', 'bf only item'].map((k) => [k, document.querySelector('#inv-body tr[data-key="' + k + '"] .inv-next-order').textContent.trim()])));
+    check('Inventory "Next Order" counts Black Friday / Prime Day columns (an item ordered only in Black Friday shows it), and the earlier real month still wins', nextCells['bf only item'] === 'Black Friday' && nextCells['plain item'] === 'Nov' && nextCells['sep item'] === 'Nov', JSON.stringify(nextCells));
     await sp.locator('#inv-body tr[data-key="plain item"] .inv-sb-chk').click();
     await sp.waitForTimeout(900);
     check('Inventory: ticking it saves separate_budget = 1 for that item', itemPatches.length === 1 && itemPatches[0].id === '72' && itemPatches[0].body.separate_budget === 1, JSON.stringify(itemPatches));
+    check('Inventory: …and the box STAYS ticked (it used to flip straight back)', await sp.evaluate(() => document.querySelector('#inv-body tr[data-key="plain item"] .inv-sb-chk').checked), 'reverted');
+    await sp.locator('#inv-body tr[data-key="plain item"] .inv-sb-chk').click();
+    await sp.waitForTimeout(900);
+    check('Inventory: unticking saves 0 and it stays unticked', itemPatches.length === 2 && itemPatches[1].body.separate_budget === 0 && !(await sp.evaluate(() => document.querySelector('#inv-body tr[data-key="plain item"] .inv-sb-chk').checked)), JSON.stringify(itemPatches));
+    await sp.locator('#inv-body tr[data-key="plain item"] .inv-sb-chk').click();
+    await sp.waitForTimeout(900);
     await sp.locator('#inv-modal-close').click(); await sp.waitForTimeout(500);
     f = await figs();
     check('…and the board follows at once: both items are out of Planned now ($0 / $80), Max unchanged', num(f.shipTot) === 0 && num(f.shipMax) === 80, JSON.stringify(f));
