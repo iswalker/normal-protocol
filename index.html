@@ -4337,9 +4337,19 @@
           // hand the next month a baseline as if this order never happened. Carry forward
           // the card's own post-order number, which is right for either stage.
           const r = calcForCard(c);
-          seen.set(key, c._preOrderAmount !== undefined
-            ? { daysLeft: r.newDaysLeft, runOut: r.newRunOut }
-            : { daysLeft: r.curDaysLeft, runOut: r.curRunOut });
+          const shipStage = (STATE.shipmentData[cardEl.closest('.shipment')?.dataset.id] || {}).stage;
+          if (c._preOrderAmount !== undefined) {
+            seen.set(key, { daysLeft: r.newDaysLeft, runOut: r.newRunOut });
+          } else if (shipStage === 'received') {
+            seen.set(key, { daysLeft: r.curDaysLeft, runOut: r.curRunOut }); // (the receipt is already in On Hand)
+          } else if (!seen.has(key)) {
+            // An Ordered / Entered order the inventory log has no row for (so On Hand does not include
+            // it yet): its bottle is on the way, so the next order starts after it ...
+            seen.set(key, { daysLeft: r.newDaysLeft, runOut: r.newRunOut });
+          }
+          // ... and when an earlier order already set the baseline, an unlogged card is left out of it
+          // rather than resetting it to "before any of these orders" (that made the next month restart
+          // from the old run-out date).
         }
       } else {
         delete c._preOrderAmount; // clear stale value if shipment was unlocked
@@ -6439,6 +6449,8 @@
   }
 
   // Find the first shipment in a target month whose name matches (case-insensitive).
+  // (A completed order -- Ordered / Entered / Received -- is never a match: a recurring series adding its
+  // projection to one would put an item in an order that was already placed, with no inventory behind it.)
   function findShipByName(targetMonthIdx, name) {
     const lc = name.trim().toLowerCase();
     // DOM first
@@ -6446,6 +6458,7 @@
     if (monthEls[targetMonthIdx]) {
       let found = null;
       monthEls[targetMonthIdx].querySelectorAll('.month-list > .shipment').forEach(s => {
+        if (s.classList.contains('is-locked')) return;
         if (!found && (STATE.shipmentData[s.dataset.id]?.name || '').trim().toLowerCase() === lc) found = s.dataset.id;
       });
       if (found) return found;
@@ -6454,7 +6467,7 @@
     const m = structure[targetMonthIdx];
     if (!m) return null;
     for (const b of m.blocks) {
-      if (b.type === 'shipment' && (STATE.shipmentData[b.id]?.name || '').trim().toLowerCase() === lc) return b.id;
+      if (b.type === 'shipment' && !STATE.shipmentData[b.id]?.stage && (STATE.shipmentData[b.id]?.name || '').trim().toLowerCase() === lc) return b.id;
     }
     return null;
   }

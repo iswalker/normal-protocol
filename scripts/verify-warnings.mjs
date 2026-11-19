@@ -1761,6 +1761,41 @@ try {
     await sc.close();
   }
 
+  // ── carry-forward: the next month starts after a completed order's bottle -- logged or not ──
+  {
+    const cc = await browser.newContext({ viewport: { width: 1500, height: 800 } });
+    await cc.clock.setFixedTime(new Date(2026, 10, 19, 12, 0, 0)); // Nov 19, 2026
+    const cp = await cc.newPage();
+    cp.on('pageerror', (e) => errors.push('carry-forward test: ' + String(e)));
+    const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    const it = (id, oid, month, price) => ({ order_item_id: id, order_id: oid, month, year: 2026, block_position: 1, item_position: 1, supplement: 'Cand', price_per_bottle: price, order_qty_bottles: 1, include_in_total: 1 });
+    const run = async (orders, items, log) => {
+      const pg = await cc.newPage();
+      await pg.route('**/api/orders', (r) => jf(r, r.request().method() === 'GET' ? { months: [{ month: 'Nov', year: 2026, position: 1 }, { month: 'Black Friday', year: 2026, position: 2 }], orders, items } : { ok: true, updated_at: 'x', prev_updated_at: 'x' }));
+      await pg.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
+      await pg.route('**/api/board-settings', (r) => jf(r, { pinnedMerchants: [], dismissedWarnings: [] }));
+      await pg.route('**/api/inventory-items**', (r) => jf(r, [{ id: 1, name: 'Cand', bottle_size: 120, daily_dose: 1 }]));
+      await pg.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, r.request().method() === 'GET' ? log : { ok: true }));
+      await pg.goto(base, { waitUntil: 'load' });
+      await pg.waitForSelector('.card[data-id="c_bf"]', { state: 'attached' });
+      await pg.waitForTimeout(1800);
+      const txt = await pg.evaluate((id) => (document.querySelector('.card[data-id="' + id + '"] .proj')?.textContent || '').replace(/\s+/g, ' '), 'c_bf');
+      await pg.close();
+      return txt;
+    };
+    const nov = (id, name, status) => ({ order_id: id, month: 'Nov', year: 2026, merchant: name, position: 1, status });
+    const bf = { order_id: 'o_bf', month: 'Black Friday', year: 2026, merchant: 'iHerb', position: 1, status: 'Staged' };
+    const reset = { id: 1, item: 'Cand', type: 'Reset', amount: 6, logged_on: '2026-11-19', order_id: null };
+    const ordered = (oid) => ({ id: 2, item: 'Cand', type: 'Ordered', amount: 120, logged_on: '2026-11-19', order_id: oid });
+    // one logged Entered order, plus a second Entered order that holds the same item with no inventory row
+    const both = await run([nov('o_a', 'Blue Sky', 'Entered'), nov('o_b', 'iHerb', 'Entered'), bf], [it('c_a', 'o_a', 'Nov', 95), it('c_b', 'o_b', 'Nov', 71), it('c_bf', 'o_bf', 'Black Friday', 71)], [reset, ordered('o_a')]);
+    check('carry-forward: Black Friday starts from the completed November order (3/25/27), not the old 11/25 -- even with a second, unlogged completed order of the item', /126d/.test(both) && /3\/25\/27/.test(both), both);
+    // only an unlogged Entered order
+    const solo = await run([nov('o_b', 'iHerb', 'Entered'), bf], [it('c_b', 'o_b', 'Nov', 71), it('c_bf', 'o_bf', 'Black Friday', 71)], [reset]);
+    check('carry-forward: an Entered order with no inventory row still counts for the next month (starts after its bottle)', /126d/.test(solo) && /3\/25\/27/.test(solo), solo);
+    await cc.close();
+  }
+
   // ── saving writes only what changed; a stale tab can't undo another device ──
   {
     const wc = await browser.newContext({ viewport: { width: 1400, height: 900 } });

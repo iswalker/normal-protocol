@@ -371,6 +371,24 @@ try {
     check('duplicating an order of projections adds no stray duplicate ghosts', JSON.stringify(await perMonth(page)) === JSON.stringify(before), JSON.stringify(await perMonth(page)));
     await ctx.close();
   }
+  {
+    // a recurring series never adds its projection to an order that is already placed (it gets its own order)
+    serverBoard = FIXTURE();
+    const next = monthAt(1);
+    serverBoard.orders.push({ order_id: 'o_done', month: next.month, year: next.year, merchant: 'Root Shop', position: 1, status: 'Entered', notes: null });
+    serverBoard.items.push(card('oi_done', 'o_done', next, 1, 1, 'Something Else'));
+    patches.length = 0;
+    const { ctx, page } = await openBoard();
+    await settle(page);
+    const where = await page.evaluate(({ mid }) => {
+      const m = document.querySelector('.month[data-id="' + mid + '"]');
+      const g = [...m.querySelectorAll('.card[data-id]')].find((c) => c.querySelector('.card-name').textContent.trim() === 'Rooty');
+      const done = m.querySelector('.shipment[data-id="o_done"]');
+      return { ghostShip: g ? (g.closest('.shipment')?.dataset.id || '(loose)') : null, doneCards: [...done.querySelectorAll('.card .card-name')].map((n) => n.textContent.trim()) };
+    }, { mid: monthId(1) });
+    check('a recurring projection does not go into a completed (Entered) order of the same name -- it gets an order of its own', where.ghostShip && where.ghostShip !== 'o_done' && JSON.stringify(where.doneCards) === JSON.stringify(['Something Else']), JSON.stringify(where));
+    await ctx.close();
+  }
   // ── pseudo-months: Black Friday (counts as Dec) and Prime Day (counts as Jun) ──
   {
     const Y = now.getMonth() <= 10 ? now.getFullYear() : now.getFullYear() + 1; // year of the next Nov
