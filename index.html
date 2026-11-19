@@ -2054,9 +2054,9 @@
     #tab-board .shipment.is-locked.is-collapsed > .ship-head > .ship-names:not(:empty) {
       display: block; flex: 0 1 auto; min-width: 0; max-width: 300px; margin-left: 8px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      font-size: 12px; color: var(--ink-3); cursor: pointer;
+      font-size: 12px; color: #222; cursor: pointer;
     }
-    @media (hover: hover) { #tab-board .shipment.is-locked.is-collapsed > .ship-head > .ship-names:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; } }
+    @media (hover: hover) { #tab-board .shipment.is-locked.is-collapsed > .ship-head > .ship-names:hover { text-decoration: underline; text-underline-offset: 2px; } }
     /* A completed order's Preemptive flag stays stored (it comes back if the status is cleared) but isn't shown */
     #tab-board .shipment.is-locked > .ship-head > .ship-preempt { display: none; }
     /* "Approved" (every item an approved autoship): tucked away like a completed
