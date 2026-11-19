@@ -6786,6 +6786,67 @@
   // source still wants is left alone, so re-running this (on load, or after a
   // promote) neither churns ghost ids nor rewrites the whole board to Turso.
   const MAX_RECUR_MONTHS = 60; // longest "ev N mo" interval
+  // A recurring projection ("ghost") that sits inside an order that is already PLACED, but that order's
+  // inventory log has no row for it, and whose series' active root is a LATER, not-yet-placed month's:
+  // it was never ordered -- a projection can't precede the item it projects -- it got into the
+  // completed order afterwards (the series' own sync did, before projections were kept out of placed
+  // orders). It would sit in that order's total and run-out math next to the real root, so it is removed.
+  // (A placed order's own items always have log rows, so a genuinely placed copy is never touched.)
+  function purgeStrayProjections(invMap) {
+    const rows = window._INV_LOG_ROWS;
+    if (!window._INV_CACHE_OK || !Array.isArray(rows)) return 0;
+    const key = (n) => String(n || '').trim().toLowerCase();
+    const loggedBy = new Map(); // order id -> Map(item name -> total caps logged for it)
+    rows.forEach((r) => {
+      if (!r.order_id) return;
+      if (!loggedBy.has(r.order_id)) loggedBy.set(r.order_id, new Map());
+      const m = loggedBy.get(r.order_id), k = key(r.item);
+      m.set(k, (m.get(k) || 0) + (Number(r.amount) || 0));
+    });
+    const doomed = [];
+    board.querySelectorAll('.shipment.is-locked').forEach((shipEl) => {
+      const logged = loggedBy.get(shipEl.dataset.id);
+      if (!logged) return; // never logged at all (an older order): nothing to judge by
+      // per item name: the cards of that name in this order, the caps they should have logged, the caps that were
+      const byName = new Map();
+      shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]').forEach((cardEl) => {
+        const id = cardEl.dataset.id, c = STATE.cardData[id];
+        if (!c || c.name === '__divider__') return;
+        const k = key(c.name);
+        if (!byName.has(k)) byName.set(k, []);
+        byName.get(k).push({ id, c });
+      });
+      byName.forEach((cards, k) => {
+        const bottle = Number((invMap && invMap[k] && invMap[k].bottleSize) || cards[0].c.bottleSize) || 0;
+        const have = logged.get(k);
+        // candidates: projections (g_ ids) of a later, unplaced root -- earlier than it, which a real projection never is
+        const strays = cards.filter(({ id, c }) => {
+          if (!id.startsWith('g_') || !c.ghostOf) return false;
+          const root = STATE.cardData[c.ghostOf];
+          if (!root || root.ghostOf || isCardLocked(c.ghostOf)) return false; // the root must be the series' live, unplaced one
+          const gMi = findCardLocation(id).monthIdx, rMi = findCardLocation(c.ghostOf).monthIdx;
+          const go = gMi >= 0 ? monthOrd(gMi) : null, ro = rMi >= 0 ? monthOrd(rMi) : null;
+          return go != null && ro != null && go < ro;
+        });
+        if (!strays.length) return;
+        if (have == null) { strays.forEach(({ id }) => doomed.push(id)); return; } // no row at all for this item in this order
+        if (!(bottle > 0)) return; // can't compare quantities: leave it
+        // the item IS logged: keep as many cards as the log covers (real ones first), drop the surplus projections
+        let needed = cards.reduce((s, { c }) => s + (Number(c.qty) || 0) * bottle, 0);
+        for (const { id } of strays) {
+          if (needed <= have + 1e-6) break;
+          doomed.push(id);
+          needed -= (Number(STATE.cardData[id].qty) || 0) * bottle;
+        }
+      });
+    });
+    if (!doomed.length) return 0;
+    removeCards(doomed);
+    dropEmptyGhostShipments();
+    persistSoon();
+    return doomed.length;
+  }
+
   function syncGhosts(sourceId, skipRecalc) {
     const src = STATE.cardData[sourceId];
     if (!src || !src.recur || src.recur < 1) { cleanGhostsForSource(sourceId); if (!skipRecalc) recalcAll(); return; }
@@ -10168,6 +10229,7 @@
     applyInventory(invMap, preOrderMap) {
       if (!STATE || !STATE.cardData) return 0;
       INV_MAP = invMap; // keep for the add-item picker
+      purgeStrayProjections(invMap);
       let matched = 0;
       Object.entries(STATE.cardData).forEach(([id, c]) => {
         const inv = invMap[String(c.name || '').trim().toLowerCase()];

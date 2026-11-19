@@ -1796,6 +1796,45 @@ try {
     await cc.close();
   }
 
+  // ── projections stuck in a completed order (never ordered, no inventory row, earlier than their root) are removed ──
+  {
+    const gc = await browser.newContext({ viewport: { width: 1500, height: 800 } });
+    await gc.clock.setFixedTime(new Date(2026, 10, 19, 12, 0, 0));
+    const gp = await gc.newPage();
+    gp.on('pageerror', (e) => errors.push('stray projection test: ' + String(e)));
+    const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    const row = (id, oid, month, name, extra = {}) => ({ order_item_id: id, order_id: oid, month, year: 2026, block_position: 1, item_position: 1, supplement: name, price_per_bottle: 10, order_qty_bottles: 1, include_in_total: 1, ...extra });
+    const gModel = {
+      months: [{ month: 'Nov', year: 2026, position: 1 }, { month: 'Black Friday', year: 2026, position: 2 }],
+      orders: [{ order_id: 'g_nov', month: 'Nov', year: 2026, merchant: 'iHerb', position: 1, status: 'Entered' }, { order_id: 'g_bf', month: 'Black Friday', year: 2026, merchant: 'iHerb', position: 1, status: 'Staged' }],
+      items: [
+        row('c_k2', 'g_nov', 'Nov', 'K2'),
+        row('g_legit', 'g_nov', 'Nov', 'Legit', { recur: 6, recur_source: 'c_boron' }), // placed with the order (has a log row)
+        row('g_stray', 'g_nov', 'Nov', 'Boron', { recur: 6, recur_source: 'c_boron' }), // never ordered, no log row, earlier than its root
+        row('c_boron', 'g_bf', 'Black Friday', 'Boron', { recur: 6 }),
+        row('c_k2root', 'g_bf', 'Black Friday', 'K2', { recur: 6 }),
+        row('g_k2x', 'g_nov', 'Nov', 'K2', { recur: 6, recur_source: 'c_k2root', order_qty_bottles: 3 }), // the same item as a logged real line, but 3 more bottles the log never saw
+      ],
+    };
+    const gPatches = [];
+    await gp.route('**/api/orders', (r) => { if (r.request().method() === 'GET') return jf(r, gModel); const b = JSON.parse(r.request().postData() || '{}'); gPatches.push(b); applyPatch(gModel, b); return jf(r, { ok: true, updated_at: 'x', prev_updated_at: 'x' }); });
+    await gp.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
+    await gp.route('**/api/board-settings', (r) => jf(r, { pinnedMerchants: [], dismissedWarnings: [] }));
+    await gp.route('**/api/inventory-items**', (r) => jf(r, [{ id: 1, name: 'K2', bottle_size: 60, daily_dose: 1 }, { id: 2, name: 'Boron', bottle_size: 60, daily_dose: 1 }, { id: 3, name: 'Legit', bottle_size: 60, daily_dose: 1 }]));
+    await gp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, r.request().method() === 'GET' ? [
+      { id: 1, item: 'K2', type: 'Reset', amount: 30, logged_on: '2026-11-10', order_id: null }, { id: 2, item: 'Boron', type: 'Reset', amount: 30, logged_on: '2026-11-10', order_id: null }, { id: 3, item: 'Legit', type: 'Reset', amount: 30, logged_on: '2026-11-10', order_id: null },
+      { id: 4, item: 'K2', type: 'Ordered', amount: 60, logged_on: '2026-11-19', order_id: 'g_nov' }, { id: 5, item: 'Legit', type: 'Ordered', amount: 60, logged_on: '2026-11-19', order_id: 'g_nov' },
+    ] : { ok: true }));
+    await gp.goto(base, { waitUntil: 'load' });
+    await gp.waitForSelector('.card[data-id="c_k2"]', { state: 'attached', timeout: 15000 });
+    await gp.waitForTimeout(2500);
+    const left = await gp.evaluate(() => [...document.querySelectorAll('.shipment[data-id="g_nov"] > .ship-body > .card .card-name')].map((n) => n.textContent.trim()).sort());
+    check('completed order: a projection that was never ordered (no inventory row, earlier than its root) is removed, what was actually ordered stays (an extra projection of an item that IS logged goes too: only what the log covers stays)', JSON.stringify(left) === JSON.stringify(['K2', 'Legit']), JSON.stringify(left));
+    check('…and the removal is saved', !gModel.items.some((i) => i.order_item_id === 'g_stray') && gModel.items.some((i) => i.order_item_id === 'g_legit'), JSON.stringify(gModel.items.filter((i) => i.order_id === 'g_nov').map((i) => i.order_item_id)));
+    check('…while the real Black Friday item is untouched', await gp.evaluate(() => !!document.querySelector('.month[data-id="Black Friday_2026"] .card[data-id="c_boron"]')));
+    await gc.close();
+  }
+
   // ── saving writes only what changed; a stale tab can't undo another device ──
   {
     const wc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
