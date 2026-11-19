@@ -38,19 +38,30 @@ function toItem(row) {
     anyday:        cell(row[6]) || '',
     barcode:       cell(row[7]) || '',
     sort_order:    cell(row[8]) != null ? Number(cell(row[8])) : 0,
+    // "Track via Separate Budget": orders of this item stay out of Planned / Spent (but count in Max)
+    separate_budget: cell(row[9]) != null ? Number(cell(row[9])) : 0,
   };
 }
 
-const SEL = 'SELECT id,name,bottle_size,daily_dose,annual_sale,off_cycle_sale,anyday,barcode,sort_order FROM inventory_items';
+let colEnsured = false;
+async function ensureCols(env) {
+  if (colEnsured) return;
+  try { await pipeline(env, [{ type: 'execute', stmt: { sql: 'ALTER TABLE inventory_items ADD COLUMN separate_budget INTEGER DEFAULT 0' } }, { type: 'close' }]); } catch { /* already there */ }
+  colEnsured = true;
+}
+
+const SEL = 'SELECT id,name,bottle_size,daily_dose,annual_sale,off_cycle_sale,anyday,barcode,sort_order,separate_budget FROM inventory_items';
+// (separate_budget is only written when the row is first created; changing it later is a PATCH)
 const UPSERT = `
-  INSERT INTO inventory_items (name,bottle_size,daily_dose,annual_sale,off_cycle_sale,anyday,barcode,sort_order)
-  VALUES (?,?,?,?,?,?,?,?)
+  INSERT INTO inventory_items (name,bottle_size,daily_dose,annual_sale,off_cycle_sale,anyday,barcode,sort_order,separate_budget)
+  VALUES (?,?,?,?,?,?,?,?,?)
   ON CONFLICT(name) DO UPDATE SET
     bottle_size=excluded.bottle_size, daily_dose=excluded.daily_dose,
     annual_sale=excluded.annual_sale, off_cycle_sale=excluded.off_cycle_sale,
     anyday=excluded.anyday, barcode=excluded.barcode, sort_order=excluded.sort_order`;
 
 export async function onRequestGet({ env }) {
+  await ensureCols(env);
   const r = await pipeline(env, [
     { type: 'execute', stmt: { sql: SEL + ' ORDER BY sort_order, name COLLATE NOCASE' } },
     { type: 'close' },
@@ -59,6 +70,7 @@ export async function onRequestGet({ env }) {
 }
 
 export async function onRequestPost({ request, env }) {
+  await ensureCols(env);
   const url  = new URL(request.url);
   const body = await request.json();
 
@@ -71,7 +83,7 @@ export async function onRequestPost({ request, env }) {
         sql: UPSERT,
         args: [T(item.name), F(item.bottle_size), F(item.daily_dose),
                T(item.annual_sale), T(item.off_cycle_sale), T(item.anyday),
-               T(item.barcode), I(item.sort_order ?? i)],
+               T(item.barcode), I(item.sort_order ?? i), I(item.separate_budget ? 1 : 0)],
       },
     }));
     await pipeline(env, [...stmts, { type: 'close' }]);
@@ -79,9 +91,9 @@ export async function onRequestPost({ request, env }) {
     return Response.json({ ok: true, count: items.length, updated_at });
   }
 
-  const { name, bottle_size, daily_dose, annual_sale, off_cycle_sale, anyday, barcode, sort_order } = body;
+  const { name, bottle_size, daily_dose, annual_sale, off_cycle_sale, anyday, barcode, sort_order, separate_budget } = body;
   await pipeline(env, [
-    { type: 'execute', stmt: { sql: UPSERT, args: [T(name), F(bottle_size), F(daily_dose), T(annual_sale), T(off_cycle_sale), T(anyday), T(barcode), I(sort_order ?? 0)] } },
+    { type: 'execute', stmt: { sql: UPSERT, args: [T(name), F(bottle_size), F(daily_dose), T(annual_sale), T(off_cycle_sale), T(anyday), T(barcode), I(sort_order ?? 0), I(separate_budget ? 1 : 0)] } },
     { type: 'close' },
   ]);
   const updated_at = await touchSyncMeta(env);
@@ -89,12 +101,13 @@ export async function onRequestPost({ request, env }) {
 }
 
 export async function onRequestPatch({ request, env }) {
+  await ensureCols(env);
   const url = new URL(request.url);
   const id  = url.searchParams.get('id');
   if (!id) return Response.json({ error: 'id required' }, { status: 400 });
 
   const body    = await request.json();
-  const allowed = ['name','bottle_size','daily_dose','annual_sale','off_cycle_sale','anyday','barcode','sort_order'];
+  const allowed = ['name','bottle_size','daily_dose','annual_sale','off_cycle_sale','anyday','barcode','sort_order','separate_budget'];
   const entries = Object.entries(body).filter(([k]) => allowed.includes(k));
   if (!entries.length) return Response.json({ error: 'no valid fields' }, { status: 400 });
 
@@ -102,7 +115,7 @@ export async function onRequestPatch({ request, env }) {
   const args = [
     ...entries.map(([k, v]) =>
       ['bottle_size','daily_dose'].includes(k) ? F(v) :
-      k === 'sort_order' ? I(v) : T(v)
+      (k === 'sort_order' || k === 'separate_budget') ? I(v ? v : 0) : T(v)
     ),
     I(id),
   ];

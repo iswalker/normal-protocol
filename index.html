@@ -532,8 +532,18 @@
     #inv-table td { font-size: 13px; white-space: nowrap; overflow: hidden; max-width: 0; }
     #inv-table th { white-space: normal; }
     #inv-table .inv-name { font-weight: 500; }
-    #inv-table td.inv-name-edit { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
-    @media (hover: hover) { #inv-table td.inv-name-edit:hover { background: rgba(112,196,187,0.12); color: #3f8f87; } }
+    #inv-table .inv-name-edit { cursor: pointer; border-radius: 4px; transition: background 0.12s; }
+    @media (hover: hover) { #inv-table .inv-name-edit:hover { background: rgba(112,196,187,0.12); color: #3f8f87; } }
+    /* "Track via Separate Budget": a small checkbox at the right end of the Item cell / beside the card's name */
+    .inv-sb { float: right; display: inline-flex; align-items: center; margin-left: 8px; cursor: pointer; }
+    .inv-sb input { margin: 0; width: 14px; height: 14px; accent-color: var(--teal); cursor: pointer; }
+    #inv-table td.inv-name { position: relative; padding-right: 34px; }
+    #inv-table td.inv-name .inv-sb { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); float: none; margin: 0; }
+    .inv-card-name-group .inv-sb { float: none; margin-left: 8px; vertical-align: middle; }
+    .snm-name-row { display: flex; align-items: center; gap: 10px; }
+    .snm-name-row > input { flex: 1 1 auto; min-width: 0; }
+    .snm-sb { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-60); cursor: pointer; white-space: nowrap; }
+    .snm-sb input { margin: 0; width: 14px; height: 14px; accent-color: var(--teal); }
     #inv-table .inv-onhand {
       font-variant-numeric: tabular-nums; cursor: pointer;
       border-radius: 4px; transition: background 0.12s;
@@ -1535,6 +1545,9 @@
     }
     @media (hover: hover) { #tab-board .incl-toggle:hover .sw { background: #c3ccce; } }
     #tab-board .card.counted .incl-toggle .sw { background: var(--accent); }
+    /* a Separate Budget item's toggle (when on) is grey, not the accent: it is not in Planned / Spent */
+    #tab-board .card.counted.separate-budget .incl-toggle .sw { background: #999; }
+    @media (hover: hover) { #tab-board .card.counted.separate-budget .incl-toggle:hover .sw { background: #888; } }
     @media (hover: hover) { #tab-board .card.counted .incl-toggle:hover .sw { background: var(--accent-deep); } }
     #tab-board .card.counted .incl-toggle .sw i { transform: translateX(13px); }
     #tab-board .month-list > .card .badge.loose-tag { display: inline-block; }
@@ -4032,6 +4045,7 @@
     cardEl.classList.toggle('tier-out', tier === 'out');
     cardEl.classList.toggle('has-order', (hasInv && r.hasOrder) || (isQtyMode && rq.delta !== 0));
     cardEl.classList.toggle('counted', !!c.includeInMonthTotal);
+    cardEl.classList.toggle('separate-budget', isSepBudget(c));
     // No Inventory match (no projected run-out to show) -- hide the whole
     // Supply/run-out column instead of a "—, —" placeholder, freeing up the
     // space for everything else. Driven off the same live hasInv check that
@@ -4221,7 +4235,7 @@
           // with some items toggled off still added their full price*qty
           // to Spent, inflating it past what the shipment's own badge
           // (and the Confirm Receive preview) ever showed.
-          if (c && c.includeInMonthTotal) base += (Number(c.price) || 0) * (Number(c.qty) || 0);
+          if (countsTowardPlanned(c)) base += (Number(c.price) || 0) * (Number(c.qty) || 0);
         });
       }
     });
@@ -4572,6 +4586,10 @@
   // board's data (the filter only chooses which to show), so renderWarnings can
   // reuse its last computation until this moves (see renderWarnings(reuse)).
   let warnRev = 0, warnCache = null;
+  // An item whose Inventory record says "Track via Separate Budget": its orders count toward Max but
+  // never toward Planned or Spent (shipment, section and month totals alike).
+  const isSepBudget = (c) => !!(c && INV_MAP[String(c.name || '').trim().toLowerCase()]?.separateBudget);
+  const countsTowardPlanned = (c) => !!(c && c.includeInMonthTotal && !isSepBudget(c));
   function recalcAll() { warnRev++; return withPreemptMemo(recalcAllImpl); }
   function recalcAllImpl() {
     applyShortNames();
@@ -4594,16 +4612,19 @@
             const cost = updateCard(cardEl);
             const c = STATE.cardData[cardEl.dataset.id];
             const inc = c && c.includeInMonthTotal;
+            const plan = countsTowardPlanned(c); // (not for a Separate Budget item -- it still counts in Max)
             const hiddenBySearch = cardEl.classList.contains('search-hide');
             if (!hiddenBySearch) sMax += cost;
             if (!shipLocked) {
               if (!hiddenBySearch) {
                 maxItems += cost;
-                if (inc) plannedItems += cost;
+                if (plan) plannedItems += cost;
               }
-              if (inc) { sTot += cost; sCount++; }
+              if (inc) sCount++;
+              if (plan) sTot += cost;
             } else {
-              if (inc) { sTot += cost; sCount++; }
+              if (inc) sCount++;
+              if (plan) sTot += cost;
             }
             // track min new run-out across all ordered cards (needs Inventory data)
             if (!shipLocked && c && c.dose && c.loggedOn) {
@@ -4628,10 +4649,10 @@
           itemCount += sCount;
         } else if (node.classList.contains('card')) {
           const cost = updateCard(node);
-          node._max = cost; node._planned = STATE.cardData[node.dataset.id]?.includeInMonthTotal ? cost : 0;
+          node._max = cost; node._planned = countsTowardPlanned(STATE.cardData[node.dataset.id]) ? cost : 0;
           if (!node.classList.contains('search-hide')) {
             maxItems += cost;
-            if (STATE.cardData[node.dataset.id] && STATE.cardData[node.dataset.id].includeInMonthTotal) plannedItems += cost;
+            if (countsTowardPlanned(STATE.cardData[node.dataset.id])) plannedItems += cost;
           }
           itemCount++;
         }
@@ -7897,13 +7918,13 @@
           if (!shipLocked) {
             if (!hiddenBySearch) {
               maxItems += cost;
-              if (c && c.includeInMonthTotal) plannedItems += cost;
+              if (countsTowardPlanned(c)) plannedItems += cost;
             }
-            if (c && c.includeInMonthTotal) sTot += cost;
+            if (countsTowardPlanned(c)) sTot += cost;
             if (c && c.dose && c.loggedOn && r && r.hasOrder && isFinite(r.newRunOut)) {
               if (!minRunOut || r.newRunOut < minRunOut) minRunOut = r.newRunOut;
             }
-          } else if (c && c.includeInMonthTotal) { sTot += cost; }
+          } else if (countsTowardPlanned(c)) { sTot += cost; }
         });
         n.querySelector('.ship-total .amt').textContent = SB.fmtMoney(sTot);
         n.querySelector('.ship-total .ship-max').textContent = ' / ' + SB.fmtMoney(sMax);
@@ -7914,9 +7935,9 @@
         if (n.classList.contains('search-hide')) return;
         const c = STATE.cardData[n.dataset.id];
         const cost = c ? calcForCard(c).cost : 0;
-        n._max = cost; n._planned = c && c.includeInMonthTotal ? cost : 0;
+        n._max = cost; n._planned = countsTowardPlanned(c) ? cost : 0;
         maxItems += cost;
-        if (c && c.includeInMonthTotal) plannedItems += cost;
+        if (countsTowardPlanned(c)) plannedItems += cost;
       }
     });
     // While searching, monthSpent drops the unattributable YNAB base but
@@ -10772,6 +10793,7 @@
         amount: amt.amount || 0, loggedOn: amt.loggedOn || null,
         froms: [item.annualSale, item.offCycleSale, item.anyday].filter(Boolean),
         annualSale: item.annualSale, offCycleSale: item.offCycleSale, anyday: item.anyday,
+        separateBudget: !!item.separateBudget,
       };
     }
     return merged;
@@ -10849,6 +10871,7 @@
         offCycleSale: item.off_cycle_sale || '',
         anyday:       item.anyday        || '',
         barcode:      item.barcode       || '',
+        separateBudget: !!Number(item.separate_budget),
         _id:          item.id,
       };
       if (item.barcode) barcodeMap[item.barcode.trim()] = key;
@@ -10911,6 +10934,7 @@
         off_cycle_sale: fields.offCycleSale        || '',
         anyday:        fields.anyday               || '',
         barcode:       barcode                     || '',
+        separate_budget: fields.separateBudget ? 1 : 0,
       }),
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -11517,13 +11541,15 @@
       const name   = meta.name || amt.name || key;
       const nextOrder = nextOrders.get(key) || null;
 
+      // "Track via Separate Budget" checkbox, shown to the right of the item name
+      const sbBox = (k, m) => '<label class="inv-sb" title="Track via Separate Budget (orders of this item stay out of Planned / Spent, but count toward Max)"><input type="checkbox" class="inv-sb-chk" data-key="' + k + '"' + (m && m.separateBudget ? ' checked' : '') + ' aria-label="Track via Separate Budget"></label>';
       // Table row (desktop)
       const tr = document.createElement('tr');
       tr.dataset.key = key;
       tr.dataset.ord = String(ordIdx++);
       if (meta._id) tr.dataset.id = meta._id;
       tr.innerHTML =
-        '<td class="inv-name inv-name-edit" data-key="' + key + '" title="Click to rename">' + escHtml(name) + '</td>' +
+        '<td class="inv-name" data-key="' + key + '"><span class="inv-name-text inv-name-edit" data-key="' + key + '" title="Click to rename">' + escHtml(name) + '</span>' + sbBox(key, meta) + '</td>' +
         '<td class="inv-runout'     + (ro ? (' ' + ro.cls) : ' inv-no-data') + '">' + (ro ? ro.text : '—') + roBars + '</td>' +
         '<td class="inv-next-order' + (nextOrder ? ' inv-clickable' : ' inv-no-data') + '"'
           + (nextOrder ? ' data-card-id="' + nextOrder.cardId + '" title="Jump to this order"' : '') + '>'
@@ -11560,7 +11586,7 @@
           '<button class="inv-card-del-btn" data-key="' + key + '" data-id="' + (meta._id || '') + '" data-name="' + name.replace(/"/g, '&quot;') + '" title="Delete item" aria-label="Delete item">✕</button>' +
           '<div class="inv-card-header">' +
             '<div class="inv-card-name-group">' +
-              '<span class="inv-card-name inv-name-edit" data-key="' + key + '" title="Tap to rename">' + escHtml(name) + '</span>' +
+              '<span class="inv-card-name inv-name-edit" data-key="' + key + '" title="Tap to rename">' + escHtml(name) + '</span>' + sbBox(key, meta) +
               '<span class="inv-card-runout ' + (ro ? ro.cls : 'inv-no-data') + '">' + (ro ? ro.text + roBars : 'No data') + '</span>' +
             '</div>' +
             (nextOrder ? '<span class="inv-card-nextorder" data-card-id="' + nextOrder.cardId + '" title="Tap to jump to this order">' + escHtml(nextOrder.month) + '</span>' : '') +
@@ -11587,6 +11613,30 @@
     applyFilters();
   }
 
+  // The "Track via Separate Budget" checkbox: saved straight away, and the board re-read so its
+  // totals follow (orders of this item leave Planned / Spent, but stay in Max).
+  async function saveSeparateBudget(cb, itemMap) {
+    const meta = itemMap[cb.dataset.key] || {};
+    const want = cb.checked;
+    if (!meta._id) { cb.checked = !want; return; } // not in the catalog yet (nothing to save it on)
+    cb.disabled = true;
+    try {
+      const r = await fetch('/api/inventory-items?id=' + encodeURIComponent(meta._id), {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ separate_budget: want ? 1 : 0 }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      meta.separateBudget = want;
+      window._INV_DIRTY = true; // see closeInventory
+      document.querySelectorAll('.inv-sb-chk[data-key="' + cb.dataset.key + '"]').forEach((o) => { o.checked = want; });
+      await fetchLogAndApply();
+    } catch (e) {
+      console.error('Separate budget save failed:', e);
+      cb.checked = !want;
+    } finally {
+      cb.disabled = false;
+    }
+  }
   function attachEditHandlers(itemMap) {
     const wireContainer = (el) => {
       if (!el) return;
@@ -11596,6 +11646,7 @@
       el.querySelectorAll('.inv-dose').forEach((cell) => { cell.onclick = () => startMetaEdit(cell, itemMap, 'daily_dose'); });
       el.querySelectorAll('.inv-supplier-edit').forEach((cell) => { cell.onclick = () => startSupplierEdit(cell, itemMap); });
       el.querySelectorAll('.inv-name-edit').forEach((cell) => { cell.onclick = () => startNameEdit(cell, itemMap); });
+      el.querySelectorAll('.inv-sb-chk').forEach((cb) => { cb.onchange = () => saveSeparateBudget(cb, itemMap); });
     };
     wireContainer(body);
     wireContainer(document.getElementById('inv-cards'));
@@ -12316,7 +12367,7 @@
           <label id="snm-new-radio-label"><input type="radio" name="snm-mode" value="new"> Add as new item</label>
           <div id="snm-new-fields" style="display:none">
             <div class="snm-fields snm-fields--3">
-              <div class="snm-field full"><label>Item Name *</label><input id="snm-name" type="text" placeholder="e.g. KL Support"></div>
+              <div class="snm-field full"><label>Item Name *</label><div class="snm-name-row"><input id="snm-name" type="text" placeholder="e.g. KL Support"><label class="snm-sb" title="Track via Separate Budget: orders of this item stay out of Planned / Spent, but count toward Max"><input type="checkbox" id="snm-sb"> Separate Budget</label></div></div>
               <div class="snm-field"><label>Bottle Size</label><input id="snm-bottle" type="text" inputmode="text" autocomplete="off" placeholder="120" title="Math works here, e.g. 30*4"></div>
               <div class="snm-field"><label>Daily Dose</label><input id="snm-dose" type="text" inputmode="text" autocomplete="off" placeholder="2" title="Math works here, e.g. 2*3 or 1.5+1"></div>
               <div class="snm-field"><label>On Hand</label><input id="snm-onhand" type="text" inputmode="text" autocomplete="off" placeholder="450" title="Caps you already have. Leave blank to start with one full bottle. Math works here too."></div>
@@ -12651,6 +12702,7 @@
       ['snm-name','snm-bottle','snm-dose','snm-onhand','snm-annual','snm-offcycle','snm-anyday'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
+      { const sb = document.getElementById('snm-sb'); if (sb) sb.checked = false; }
       if (prefillName) document.getElementById('snm-name').value = prefillName;
       nmOv.style.display = 'flex';
       if (startNew) setTimeout(() => {
@@ -12747,6 +12799,7 @@
             annualSale:   document.getElementById('snm-annual').value.trim(),
             offCycleSale: document.getElementById('snm-offcycle').value.trim(),
             anyday:       document.getElementById('snm-anyday').value.trim(),
+            separateBudget: !!document.getElementById('snm-sb')?.checked,
           };
           const key = await window.InventoryWriter.addItemToTurso(fields, _pendingBarcode);
           closeNoMatch();

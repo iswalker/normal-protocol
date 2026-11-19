@@ -1227,7 +1227,7 @@ try {
   const allKeys = (await visRows()).map((r) => r.key);
   check('switching "Soon" off restores the alphabetical list', allKeys.length > soonRows.length && allKeys.every((k, i) => i === 0 || allKeys[i - 1] <= k), allKeys.join());
   await page.locator('#inv-body tr[data-key="runner"] .inv-onhand').click();
-  await page.locator('#inv-body tr[data-key="runner"] input').fill('30');
+  await page.locator('#inv-body tr[data-key="runner"] input.inv-edit-input').fill('30');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(600);
   const todayMD = `${now.getMonth() + 1}/${now.getDate()}`;
@@ -1673,6 +1673,74 @@ try {
     st = await state();
     check('…and a later sync does not move it again', st.m_a1.label === 'Ordered' && !st.m_a1.link && model.orders.find((o) => o.order_id === 'm_a1').ynab_txn_id === 'n/a', JSON.stringify(st.m_a1));
     await mc.close();
+  }
+
+  // ── Inventory "Track via Separate Budget": out of Planned / Spent, still in Max ──
+  {
+    const sc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    await sc.clock.setFixedTime(new Date(2026, 10, 12, 12, 0, 0));
+    const sp = await sc.newPage();
+    sp.on('pageerror', (e) => errors.push('separate budget test: ' + String(e)));
+    const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    const cardRow = (id, orderId, name, price, bp, ip) => ({ order_item_id: id, order_id: orderId, month: 'Nov', year: 2026, block_position: bp, item_position: ip, supplement: name, price_per_bottle: price, order_qty_bottles: 1, include_in_total: 1 });
+    const board = {
+      months: [['Nov', 2026], ['Dec', 2026]].map(([m, y], p) => ({ month: m, year: y, position: p + 1, notes: '' })),
+      orders: [
+        { order_id: 'sb_o1', month: 'Nov', year: 2026, merchant: 'Mixed Co', position: 1, status: 'Staged', notes: null },
+        { order_id: 'sb_o2', month: 'Nov', year: 2026, merchant: 'Placed Co', position: 2, status: 'Ordered', notes: null },
+      ],
+      items: [cardRow('sb_a', 'sb_o1', 'Sep Item', 50, 1, 1), cardRow('sb_b', 'sb_o1', 'Plain Item', 30, 1, 2), cardRow('sb_c', null, 'Sep Item', 20, 3, 1), cardRow('sb_d', 'sb_o2', 'Sep Item', 40, 2, 1), cardRow('sb_e', 'sb_o2', 'Plain Item', 10, 2, 2)],
+    };
+    const invItems = [{ id: 71, name: 'Sep Item', bottle_size: 60, daily_dose: 1, separate_budget: 1 }, { id: 72, name: 'Plain Item', bottle_size: 60, daily_dose: 1, separate_budget: 0 }];
+    const itemPatches = [], itemPosts = [];
+    await sp.route('**/api/orders', (r) => jf(r, r.request().method() === 'GET' ? board : { ok: true, updated_at: 'x', prev_updated_at: 'x' }));
+    await sp.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
+    await sp.route('**/api/board-settings', (r) => jf(r, { pinnedMerchants: [], dismissedWarnings: [] }));
+    await sp.route('**/api/inventory-items**', (r) => {
+      const m = r.request().method();
+      if (m === 'PATCH') { const id = new URL(r.request().url()).searchParams.get('id'); const body = JSON.parse(r.request().postData() || '{}'); itemPatches.push({ id, body }); const it = invItems.find((x) => String(x.id) === id); if (it) Object.assign(it, body); return jf(r, { ok: true }); }
+      if (m === 'POST') { const body = JSON.parse(r.request().postData() || '{}'); itemPosts.push(body); invItems.push({ id: 90 + itemPosts.length, ...body }); return jf(r, { ok: true }); }
+      return jf(r, invItems);
+    });
+    await sp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, r.request().method() === 'GET' ? [] : { ok: true }));
+    await sp.goto(base, { waitUntil: 'load' });
+    await sp.waitForSelector('.card[data-id="sb_a"]', { state: 'attached', timeout: 15000 });
+    await sp.waitForTimeout(1800);
+    const num = (s) => parseFloat(String(s).replace(/[^0-9.-]/g, ''));
+    const figs = () => sp.evaluate(() => {
+      const m = document.querySelector('.month[data-id="Nov_2026"]');
+      const ship = m.querySelector('.shipment[data-id="sb_o1"]');
+      return { shipTot: ship.querySelector('.ship-total .amt').textContent, shipMax: ship.querySelector('.ship-total .ship-max').textContent, spent: m.querySelector('.spentv').textContent, planned: m.querySelector('.plannedv').textContent, max: m.querySelector('.maxv').textContent };
+    });
+    let f = await figs();
+    check('Separate Budget: the order\'s Planned total leaves the item out, its Max keeps it ($30 / $80)', num(f.shipTot) === 30 && num(f.shipMax) === 80, JSON.stringify(f));
+    check('Separate Budget: Spent (an Ordered order) leaves it out too -- only the $10 plain item', num(f.spent) === 10, JSON.stringify(f));
+    check('Separate Budget: the month\'s Planned leaves the items out ($10 + $30) while Max keeps them ($10 + 80 + 20 loose)', num(f.planned) === 40 && num(f.max) === 110, JSON.stringify(f));
+    const grey = await sp.evaluate(() => { const bg = (id) => getComputedStyle(document.querySelector('.card[data-id="' + id + '"] .incl-toggle .sw')).backgroundColor; return { sep: bg('sb_a'), plain: bg('sb_b'), sepClass: document.querySelector('.card[data-id="sb_a"]').classList.contains('separate-budget') }; });
+    check('Separate Budget: its enabled toggle is grey (#999), an ordinary item\'s keeps the accent colour', grey.sepClass && grey.sep === 'rgb(153, 153, 153)' && grey.plain !== 'rgb(153, 153, 153)', JSON.stringify(grey));
+    // the Inventory table: a checkbox right of the name
+    await sp.locator('#inv-search-link').click();
+    await sp.waitForSelector('#inv-modal-ov.open'); await sp.waitForTimeout(700);
+    const boxes = await sp.evaluate(() => { const row = (k) => document.querySelector('#inv-body tr[data-key="' + k + '"]'); const sepRow = row('sep item'), plainRow = row('plain item'); const nm = sepRow.querySelector('.inv-name-text').getBoundingClientRect(), cb = sepRow.querySelector('.inv-sb-chk').getBoundingClientRect(); return { sep: sepRow.querySelector('.inv-sb-chk').checked, plain: plainRow.querySelector('.inv-sb-chk').checked, rightOfName: cb.left > nm.right, sameCell: !!sepRow.querySelector('td.inv-name .inv-sb-chk') }; });
+    check('Inventory: each item has a "Track via Separate Budget" checkbox in the Item cell, to the right of the name, reflecting its setting', boxes.sep === true && boxes.plain === false && boxes.rightOfName && boxes.sameCell, JSON.stringify(boxes));
+    await sp.locator('#inv-body tr[data-key="plain item"] .inv-sb-chk').click();
+    await sp.waitForTimeout(900);
+    check('Inventory: ticking it saves separate_budget = 1 for that item', itemPatches.length === 1 && itemPatches[0].id === '72' && itemPatches[0].body.separate_budget === 1, JSON.stringify(itemPatches));
+    await sp.locator('#inv-modal-close').click(); await sp.waitForTimeout(500);
+    f = await figs();
+    check('…and the board follows at once: both items are out of Planned now ($0 / $80), Max unchanged', num(f.shipTot) === 0 && num(f.shipMax) === 80, JSON.stringify(f));
+    // Add Item: the checkbox right of the Item Name
+    await sp.locator('#inv-search-link').click();
+    await sp.waitForSelector('#inv-modal-ov.open'); await sp.waitForTimeout(500);
+    await sp.locator('#inv-filter-item').fill('Brand New Thing');
+    await sp.locator('#inv-filter-item').press('Enter');
+    await sp.waitForSelector('#snm-name', { state: 'visible' }); await sp.waitForTimeout(250);
+    const dlg = await sp.evaluate(() => { const n = document.getElementById('snm-name').getBoundingClientRect(), c = document.getElementById('snm-sb').getBoundingClientRect(); return { rightOf: c.left >= n.right - 1, sameRow: Math.abs((c.top + c.height / 2) - (n.top + n.height / 2)) < 12, unchecked: !document.getElementById('snm-sb').checked }; });
+    check('Add Item: the Separate Budget checkbox is on the right of Item Name (unchecked by default)', dlg.rightOf && dlg.sameRow && dlg.unchecked, JSON.stringify(dlg));
+    await sp.locator('#snm-sb').check();
+    await sp.locator('#snm-confirm-btn').click(); await sp.waitForTimeout(900);
+    check('Add Item: the new item is saved with separate_budget = 1', itemPosts.length === 1 && itemPosts[0].name === 'Brand New Thing' && itemPosts[0].separate_budget === 1, JSON.stringify(itemPosts));
+    await sc.close();
   }
 
   // ── saving writes only what changed; a stale tab can't undo another device ──
@@ -2282,7 +2350,7 @@ try {
     await p4.locator('#inv-search-link').click();
     await p4.waitForSelector('#inv-body tr[data-key="runner"]');
     await p4.locator('#inv-body tr[data-key="runner"] .inv-onhand').click();
-    await p4.locator('#inv-body tr[data-key="runner"] input').fill('30');
+    await p4.locator('#inv-body tr[data-key="runner"] input.inv-edit-input').fill('30');
     await p4.keyboard.press('Enter');
     await p4.waitForTimeout(800);
     check('an evening On Hand edit logs the LOCAL date (10/24), not tomorrow\'s UTC date', resetBody && resetBody.logged_on === '2026-10-24', JSON.stringify(resetBody));
