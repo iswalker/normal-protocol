@@ -598,6 +598,8 @@
        same on/active treatment as .inv-soon-btn.active, teal instead of
        orange since it's a board filter, not an Inventory run-out warning. */
     .inv-scan-btn.active { background: var(--teal); border-color: var(--teal); color: #fff; }
+    /* Phones fold the Autoship and Attention filters into this one button's menu (see the mobile header block) */
+    #filters-btn { display: none; }
     @media (hover: hover) { .inv-scan-btn.active:hover { color: #fff; } }
 
     /* Filters every month at once (see the 'global-search-input' input
@@ -933,10 +935,12 @@
          the search box is the one flexible item absorbing whatever's left
          before .header-right's own fixed-size Scan/gear. */
       .brand { flex: 1 1 0; order: 1; min-width: 0; }
-      .brand img, .brand #inv-autoship-btn, .brand #warn-only-btn, .brand .global-clear-btn { flex: none; }
+      .brand img, .brand #inv-autoship-btn, .brand #warn-only-btn, .brand #filters-btn, .brand .global-clear-btn { flex: none; }
+      #inv-autoship-btn, #warn-only-btn { display: none; }
+      #filters-btn { display: inline-flex; }
       /* While the search box is focused on a phone, the Autoship button
          steps aside so it gets the whole row (it's squeezed to a stub otherwise) */
-      .brand:has(.global-search-box:focus-within) #inv-autoship-btn, .brand:has(.global-search-box:focus-within) #warn-only-btn { display: none; }
+      .brand:has(.global-search-box:focus-within) #filters-btn { display: none; }
       .header-right { flex: 0 0 auto; order: 2; }
 
       /* Brought back as its own full-width row under the primary toolbar,
@@ -1024,6 +1028,7 @@
     .mob-inv-fab {
       position: fixed; bottom: 24px; right: 16px;
       display: none; z-index: 100;
+      flex-direction: column; gap: 12px; /* the Receive button sits above Inventory */
     }
     @media (max-width: 680px) {
       .mob-inv-fab { display: flex; }
@@ -1038,6 +1043,10 @@
     }
     .mob-fab-primary svg { width: 40px; height: 40px; margin: 0; }
     .mob-fab-primary:active { filter: brightness(0.9); }
+    .mob-fab-primary.active { background: var(--ink); }
+    /* Receive (header) while its filter is on -- same on state as the other header filters */
+    .inv-search-link.active { background: var(--teal); border-color: var(--teal); color: #fff; }
+    @media (hover: hover) { .inv-search-link.active:hover { color: #fff; background: var(--teal); } }
   </style>
 
   <!-- ── Next Orders styles (compact layout, scoped to #tab-board) ── -->
@@ -2012,13 +2021,6 @@
        completed order); everything else stays the standard teal. See
        shipHasAutoship. Applies to preemptive previews too -- they're copies. */
     #tab-board .shipment.is-autoship { background: #f3f4f4; border-color: #d4d8d8; }
-    /* Dimmed (can't drag once locked -- see makeMonthSortable's filter
-       function and makeShipSortable's Sortable .option('disabled') toggle
-       in applyShipmentStage) but NOT pointer-events:none: the same button
-       still opens the menu, and Delete inside it needs to keep working on
-       a locked/received shipment or line item same as the old × always did. */
-    #tab-board .shipment.is-locked > .ship-head > .ship-grip,
-    #tab-board .shipment.is-locked .ship-body .card-grip { opacity: 0.5; cursor: default; }
     #tab-board .shipment.is-locked .ship-add { display: none; }
     /* Completed orders default to just their header row -- clicking the
        item-count pill (scount) expands/collapses the items underneath.
@@ -2026,6 +2028,15 @@
        commitStageChange), so this never hides an open order's own body. */
     #tab-board .shipment.is-locked .ship-id .scount { cursor: pointer; }
     #tab-board .shipment.is-locked.is-collapsed > .ship-body { display: none; }
+    /* A collapsed completed order also lists its item names, comma-separated, under the header
+       (not the full item detail); clicking the list opens the order, like the count pill does,
+       and opening it hides the list */
+    #tab-board .ship-names { display: none; }
+    #tab-board .shipment.is-locked.is-collapsed > .ship-names:not(:empty) {
+      display: block; padding: 0 14px 8px 14px; margin-top: -2px;
+      font-size: 12px; line-height: 1.4; color: var(--ink-3); cursor: pointer;
+    }
+    @media (hover: hover) { #tab-board .shipment.is-locked.is-collapsed > .ship-names:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; } }
     /* "Approved" (every item an approved autoship): tucked away like a completed
        order -- header row only until the count pill is clicked -- but NOT
        locked, so nothing else about the order changes. */
@@ -2057,7 +2068,6 @@
     }
 
     /* compact mode: hide notes/min-date on locked ships so the toggle fits */
-    #tab-board .board.layout-compact .shipment.is-locked .ship-notes { display: none; }
     #tab-board .board.layout-compact .shipment.is-locked .ship-min-date { display: none; }
     /* in compact, unlocked ships: stage toggle sits between add-btn and del */
     #tab-board .board.layout-compact .ship-stage { font-size: 9.5px; }
@@ -2564,8 +2574,10 @@
     <img src="Logos/logo.png" alt="Normal Protocol" />
     <h1>Normal Protocol</h1>
     <button class="inv-search-link" id="inv-search-link" title="Open Inventory"><svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg><span class="inv-search-label">Inventory</span></button>
+    <button class="inv-search-link" id="recv-btn" type="button" aria-pressed="false" title="Receive: show only orders with a Status"><svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m599.95 105.19h-1.875c-11.062 0.28125-22.078 3.1406-32.062 8.6719l-361.55 200.44c-18.281 10.125-33.422 24.984-43.875 43.078l-68.391 117.8c-13.641 23.531-5.8594 54.375 17.391 68.578l60.609 36.984v241.69c0 24.469 13.312 47.109 34.734 58.969l361.08 200.39c5.5781 3.0938 11.438 5.3906 17.484 6.8438h-0.046875c4.5938 3.9844 10.453 6.1875 16.547 6.1875 6.0469 0 11.906-2.2031 16.5-6.1875 6.0469-1.4531 11.953-3.75 17.531-6.8438l361.08-200.39c21.375-11.859 34.688-34.547 34.688-59.016v-235.74c0-1.875-0.1875-3.75-0.60938-5.5781l61.172-37.312c23.25-14.203 31.078-45.047 17.438-68.578l-68.344-117.8c-10.5-18.094-25.688-32.953-43.969-43.078l-361.5-200.39c-9.9844-5.5312-21-8.3906-32.109-8.7188h-1.875zm-24.984 60.984v364.36l-328.45-182.29zm50.016 0 328.45 182.06-328.45 182.29zm-420.89 215.76 364.82 202.4c-1.0781 1.4062-2.0156 2.9062-2.8594 4.5469l-70.969 131.44-358.87-218.86-0.32812-1.9688 67.828-116.95c0-0.23438 0.23438-0.42188 0.32812-0.60938zm791.76 0c0 0.23438 0.23438 0.375 0.32812 0.5625l67.922 117.05-0.28125 1.7812-359.02 218.95-70.969-131.44c-0.84375-1.5938-1.8281-3.0938-2.8594-4.5zm-775.69 229.26 250.13 152.48c23.531 14.344 55.172 5.8125 68.25-18.422l36.422-67.547v351.84l-345.79-191.86c-5.5781-3.0938-9-8.8594-9-15.281zm759.61 0v211.22c0 6.375-3.375 12.188-9 15.281l-345.79 191.9v-351.94l36.469 67.594c13.078 24.234 44.719 32.812 68.25 18.469z"/></svg><span class="inv-search-label">Receive</span></button>
     <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin:0px 2px 2px -1px"><path d="m1087.2 506.4c-12-12-31.199-12-43.199 0l-144 146.4c0-16.801 2.3984-31.199 2.3984-45.602 0-225.6-182.4-408-408-408-225.6 0-408 182.4-408 408 0 225.6 182.4 408 408 408 108 0 211.2-43.199 288-120 12-12 12-31.199 0-43.199s-31.199-12-43.199 0c-64.801 64.801-153.6 100.8-244.8 100.8-192 0-348-156-348-348s156-348 348-348 348 156 348 348c0 16.801-2.3984 38.398-2.3984 60l-163.2-160.8c-12-12-31.199-12-43.199 0s-12 31.199 0 43.199l208.8 208.8c2.3984 0 2.3984 2.3984 4.8008 2.3984 2.3984 0 4.8008 2.3984 4.8008 2.3984h4.8008 2.3984 2.3984 4.8008 4.8008c2.3984 0 4.8008-2.3984 4.8008-2.3984 2.3984 0 2.3984-2.3984 4.8008-2.3984h2.3984l204-204c12-14.395 12-33.598 0-45.598z"/></svg> Autoship</button>
     <button class="inv-scan-btn" id="warn-only-btn" type="button" aria-pressed="false" title="Show only the Needs Attention sections, across all months"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:middle;margin:0 4px 1px -1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Attention</button>
+    <button class="inv-scan-btn" id="filters-btn" type="button" aria-haspopup="true" title="Filters"><svg width="17" height="17" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin:0 3px 0 -3px"><path d="m342.59 718.08h-49.594c-13.035 0-23.617 10.578-23.617 23.617 0 13.035 10.582 23.613 23.617 23.613h49.594c10.957 53.871 58.641 94.465 115.72 94.465 57.082 0 104.76-40.594 115.72-94.465h332.99c13.035 0 23.613-10.578 23.613-23.613 0-13.039-10.578-23.617-23.613-23.617h-332.99c-10.957-53.867-58.637-94.465-115.72-94.465-57.078 0-104.76 40.598-115.72 94.465zm115.72-47.23c39.109 0 70.848 31.738 70.848 70.848 0 39.105-31.738 70.848-70.848 70.848-39.109 0-70.848-31.742-70.848-70.848 0-39.109 31.738-70.848 70.848-70.848zm167.68-236.16h-332.99c-13.035 0-23.617 10.582-23.617 23.617 0 13.035 10.582 23.617 23.617 23.617h332.99c10.957 53.867 58.637 94.465 115.72 94.465 57.078 0 104.76-40.598 115.72-94.465h49.594c13.035 0 23.613-10.582 23.613-23.617 0-13.035-10.578-23.617-23.613-23.617h-49.594c-10.957-53.867-58.641-94.461-115.72-94.461-57.082 0-104.76 40.594-115.72 94.461zm115.72-47.23c39.105 0 70.848 31.738 70.848 70.848 0 39.109-31.742 70.848-70.848 70.848-39.109 0-70.848-31.738-70.848-70.848 0-39.109 31.738-70.848 70.848-70.848z"/></svg>Filters</button>
     <div class="global-search-box" data-act="focus-global-search" title="Search every month">
       <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
       <input type="text" id="global-search-input" class="global-search-input" placeholder="Search…" autocomplete="off" />
@@ -2607,6 +2619,7 @@
 
 <!-- Inventory FAB — always on screen, bottom-right -->
 <div class="mob-inv-fab" id="mob-inv-fab">
+  <button class="mob-fab-primary" id="recv-fab-btn" type="button" aria-pressed="false" title="Receive: show only orders with a Status" aria-label="Receive: show only orders with a Status"><svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m599.95 105.19h-1.875c-11.062 0.28125-22.078 3.1406-32.062 8.6719l-361.55 200.44c-18.281 10.125-33.422 24.984-43.875 43.078l-68.391 117.8c-13.641 23.531-5.8594 54.375 17.391 68.578l60.609 36.984v241.69c0 24.469 13.312 47.109 34.734 58.969l361.08 200.39c5.5781 3.0938 11.438 5.3906 17.484 6.8438h-0.046875c4.5938 3.9844 10.453 6.1875 16.547 6.1875 6.0469 0 11.906-2.2031 16.5-6.1875 6.0469-1.4531 11.953-3.75 17.531-6.8438l361.08-200.39c21.375-11.859 34.688-34.547 34.688-59.016v-235.74c0-1.875-0.1875-3.75-0.60938-5.5781l61.172-37.312c23.25-14.203 31.078-45.047 17.438-68.578l-68.344-117.8c-10.5-18.094-25.688-32.953-43.969-43.078l-361.5-200.39c-9.9844-5.5312-21-8.3906-32.109-8.7188h-1.875zm-24.984 60.984v364.36l-328.45-182.29zm50.016 0 328.45 182.06-328.45 182.29zm-420.89 215.76 364.82 202.4c-1.0781 1.4062-2.0156 2.9062-2.8594 4.5469l-70.969 131.44-358.87-218.86-0.32812-1.9688 67.828-116.95c0-0.23438 0.23438-0.42188 0.32812-0.60938zm791.76 0c0 0.23438 0.23438 0.375 0.32812 0.5625l67.922 117.05-0.28125 1.7812-359.02 218.95-70.969-131.44c-0.84375-1.5938-1.8281-3.0938-2.8594-4.5zm-775.69 229.26 250.13 152.48c23.531 14.344 55.172 5.8125 68.25-18.422l36.422-67.547v351.84l-345.79-191.86c-5.5781-3.0938-9-8.8594-9-15.281zm759.61 0v211.22c0 6.375-3.375 12.188-9 15.281l-345.79 191.9v-351.94l36.469 67.594c13.078 24.234 44.719 32.812 68.25 18.469z"/></svg></button>
   <button class="mob-fab-primary" id="inv-fab-btn" title="Open Inventory" aria-label="Open Inventory"><svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg></button>
 </div>
 
@@ -3299,6 +3312,8 @@
   // Header "Attention" button: hide every order and item, leaving just each month's
   // Needs Attention sections (and only the months that have one)
   let globalAttentionOnly = false;
+  // Header "Receive" button: only orders that have a Status (Approved / Ordered / Entered / Received)
+  let globalReceiveOnly = false;
   // Shipment names pinned via "Pin Merchant" (context menu) -- synced via
   // /api/board-settings (Turso) so a merchant pinned on one device shows up
   // on every other one, not just localStorage on whichever device pinned it.
@@ -3679,13 +3694,11 @@
     shipEl.querySelectorAll('.ship-body .incl-toggle').forEach((btn) => {
       btn.disabled = false;
     });
-    // Reordering is off-limits once locked, but the grip button that used
-    // to ALSO be the drag handle now doubles as the menu opener (Delete
-    // included) -- disabling it via Sortable's own option keeps drag off
-    // without the pointer-events:none that used to block clicks/hover too.
+    // A completed order's items drag like any other's (the handles look and act normal);
+    // the Sortable on its body is never switched off.
     const shipBody = shipEl.querySelector(':scope > .ship-body');
     const sortableInst = shipBody && window.Sortable?.get(shipBody);
-    if (sortableInst) sortableInst.option('disabled', locked);
+    if (sortableInst) sortableInst.option('disabled', false);
   }
 
   function isoToday() {
@@ -3825,6 +3838,7 @@
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
         <button type="button" class="ship-grip block-grip" data-act="open-ship-menu" title="Drag to reorder, or open menu" aria-label="Shipment menu">${ICON.menu}</button>
       </div>
+      <div class="ship-names" data-act="toggle-ship-collapse" title="Show the items"></div>
       <div class="ship-body" data-list="shipment">${cards}</div>
     </div>`;
   }
@@ -4464,6 +4478,15 @@
       return !!(root.autoshipLink || root.autoshipNextDate);
     });
   }
+  // The comma-separated item names a collapsed completed order shows under its header.
+  function updateShipNames(shipEl) {
+    const box = shipEl.querySelector(':scope > .ship-names');
+    if (!box) return;
+    const text = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
+      .map((el) => String((STATE.cardData[el.dataset.id] || {}).name || '').trim())
+      .filter((n) => n && n !== '__divider__').join(', ');
+    if (box.textContent !== text) box.textContent = text;
+  }
   function updateShipPreempt(shipEl) {
     const btn = shipEl.querySelector(':scope > .ship-head > .ship-preempt');
     if (!btn) return;
@@ -4518,7 +4541,7 @@
       // unrelated to which items happen to match the query) would mix an
       // always-present figure into a number that's supposed to represent
       // only the filtered results.
-      const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || !!globalPinnedMerchant;
+      const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || !!globalPinnedMerchant;
       let plannedItems = 0, maxItems = 0, itemCount = 0;
 
       [...list.children].forEach((node) => {
@@ -4552,6 +4575,7 @@
           node.querySelector('.ship-total .ship-max').textContent = ' / ' + SB.fmtMoney(sMax);
           node._planned = sTot; node._max = sMax; // read by the section headers' totals (renderSectionTotals)
           node.querySelector('.scount').textContent = sCount;
+          updateShipNames(node);
           const md = node.querySelector('.ship-min-date');
           if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
           updateShipAutoship(node);
@@ -4872,6 +4896,7 @@
   function warnRowVisible(kind, name, where, link, preemptive) {
     const isRunout = kind === 'runout';
     const merchant = (kind === 'ship' ? name : where) || '';
+    if (globalReceiveOnly) return false;
     if (globalAutoshipOnly) return !isRunout && !!link;
     const pm = globalPinnedMerchant.toLowerCase();
     if (pm && (isRunout || merchant.toLowerCase() !== pm)) return false;
@@ -5680,7 +5705,7 @@
     const monthEls = [...board.querySelectorAll('.month')];
     const today = SB.today();
     const curStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const filterActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || !!globalPinnedMerchant;
+    const filterActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || !!globalPinnedMerchant;
     monthEls.forEach((monthEl, mi) => {
       const list = monthEl.querySelector(':scope > .month-list');
       if (!list) return;
@@ -7267,7 +7292,6 @@
         const t = evt.target;
         if (t.closest('input,select,[contenteditable]')) return true;
         if (t.closest('button') && !t.closest('.card-grip,.ship-grip')) return true;
-        if (t.closest('.shipment.is-locked')) return true;
         return false;
       },
     }));
@@ -7851,7 +7875,7 @@
     // While searching, monthSpent drops the unattributable YNAB base but
     // keeps matching "Ordered" shipment totals -- a completed order that
     // matches the search still counts toward Spent.
-    const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || !!globalPinnedMerchant;
+    const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || !!globalPinnedMerchant;
     const spent = monthSpent(monthEl, searchActive);
     const spentEl = monthEl.querySelector('.spentv');
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
@@ -8423,11 +8447,17 @@
     // same action was redundant. The × still shows for text/Autoship,
     // since those have no other "tap to clear" control of their own.
     // Enabled whenever ANY filter is on: text search, Autoship, or a pinned merchant
-    if (clearBtn) clearBtn.disabled = !(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalPinnedMerchant);
+    if (clearBtn) clearBtn.disabled = !(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || globalPinnedMerchant);
     autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
     const attnBtn = document.getElementById('warn-only-btn');
     attnBtn?.classList.toggle('active', globalAttentionOnly);
     attnBtn?.setAttribute('aria-pressed', globalAttentionOnly ? 'true' : 'false');
+    document.getElementById('filters-btn')?.classList.toggle('active', globalAutoshipOnly || globalAttentionOnly);
+    ['recv-btn', 'recv-fab-btn'].forEach((id) => {
+      const b = document.getElementById(id);
+      b?.classList.toggle('active', globalReceiveOnly);
+      b?.setAttribute('aria-pressed', globalReceiveOnly ? 'true' : 'false');
+    });
     renderPinnedMerchants();
     const firstShown = [...board.querySelectorAll('.month')].find((m) => m.style.display !== 'none' && !m.classList.contains('search-hide'));
     if (toStart === true && firstShown) anchorId = firstShown.dataset.id;
@@ -8453,7 +8483,7 @@
     const isActive = globalPinnedMerchant.toLowerCase() === name.toLowerCase();
     globalPinnedMerchant = isActive ? '' : name;
     globalAutoshipOnly = false;
-    globalAttentionOnly = false;
+    globalAttentionOnly = false; globalReceiveOnly = false;
     // Typed search text and a pinned merchant are one-or-the-other (typing
     // already drops the pin), so picking a chip empties the search box too.
     globalSearchQuery = '';
@@ -8577,6 +8607,11 @@
     const s = STATE.shipmentData[shipEl.dataset.id];
     return !!s && !!s.autoshipLink;
   }
+  // An order with a Status (Ordered / Entered / Received, or the derived Approved): what the header "Receive" filter keeps
+  function shipHasStatus(shipEl) {
+    const s = STATE.shipmentData[shipEl.dataset.id];
+    return !!(s && s.stage) || shipEl.classList.contains('is-approved');
+  }
   function applyMonthSearch(monthEl, q) {
     const lq = q.trim().toLowerCase();
     // A pinned merchant stacks with the text query (AND), not an alternate
@@ -8585,7 +8620,7 @@
     // exact name (case-insensitive), matching what was actually pinned.
     const merchantActive = !!globalPinnedMerchant;
     const lpm = globalPinnedMerchant.toLowerCase();
-    const filterActive = globalAutoshipOnly || globalAttentionOnly || !!lq || merchantActive;
+    const filterActive = globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || !!lq || merchantActive;
     const list = monthEl.querySelector('.month-list');
     if (!list) return;
     // search-hide on/off, noting what was hidden and is now shown (for the fade-in)
@@ -8614,12 +8649,12 @@
           node.classList.add('search-hide');
           return;
         }
-        const shipMatches = globalAutoshipOnly ? shipMatchesAutoshipFilter(node) : (!lq || shipName.includes(lq));
+        const shipMatches = globalReceiveOnly ? shipHasStatus(node) : globalAutoshipOnly ? shipMatchesAutoshipFilter(node) : (!lq || shipName.includes(lq));
         let anyItemMatches = false;
         node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
           const itemName = cardEl.querySelector('.card-name')?.textContent || '';
           const itemMatches = !filterActive || shipMatches
-            || (globalAutoshipOnly ? cardMatchesAutoshipFilter(cardEl) : itemName.toLowerCase().includes(lq));
+            || (globalReceiveOnly ? false : globalAutoshipOnly ? cardMatchesAutoshipFilter(cardEl) : itemName.toLowerCase().includes(lq));
           setHide(cardEl, !itemMatches);
           if (itemMatches) anyItemMatches = true;
         });
@@ -8634,7 +8669,7 @@
         if (merchantActive) { node.classList.add('search-hide'); return; }
         const itemName = node.querySelector('.card-name')?.textContent || '';
         const itemMatches = !filterActive
-          || (globalAutoshipOnly ? cardMatchesAutoshipFilter(node) : itemName.toLowerCase().includes(lq));
+          || (globalReceiveOnly ? false : globalAutoshipOnly ? cardMatchesAutoshipFilter(node) : itemName.toLowerCase().includes(lq));
         setHide(node, !itemMatches);
       }
     });
@@ -8665,7 +8700,7 @@
   // touched -- a no-op when no filter is active.
   function reapplySearchTo(monthEl) {
     if (!monthEl) return;
-    if (!globalAutoshipOnly && !globalAttentionOnly && !globalSearchQuery.trim() && !globalPinnedMerchant) return;
+    if (!globalAutoshipOnly && !globalAttentionOnly && !globalReceiveOnly && !globalSearchQuery.trim() && !globalPinnedMerchant) return;
     applyMonthSearch(monthEl, globalSearchQuery);
   }
 
@@ -8687,10 +8722,10 @@
     // freeform text search, rather than stacking "pinned merchant AND
     // text" the way it used to -- the pin chip itself stays pinned, just
     // deselected (same as unpinning-by-tap already does).
-    function applyToAllMonths(q, wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalPinnedMerchant)) {
+    function applyToAllMonths(q, wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || globalPinnedMerchant)) {
       globalSearchQuery = q;
       globalAutoshipOnly = false;
-      globalAttentionOnly = false;
+      globalAttentionOnly = false; globalReceiveOnly = false;
       globalPinnedMerchant = '';
       // Clearing a filter returns to the root of the board (first month)
       refresh(!q.trim() && wasFiltered);
@@ -8704,7 +8739,7 @@
     // an active pinned-merchant selection all reset together (the pinned
     // chips themselves stay pinned, just deselected -- see globalPinnedMerchant).
     clearBtn.addEventListener('click', () => {
-      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalPinnedMerchant);
+      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || globalPinnedMerchant);
       input.value = '';
       globalPinnedMerchant = '';
       applyToAllMonths('', wasFiltered);
@@ -8715,7 +8750,7 @@
     // Toggles: clicking again while already active turns it back off.
     autoshipBtn?.addEventListener('click', () => {
       globalAutoshipOnly = !globalAutoshipOnly;
-      globalAttentionOnly = false;
+      globalAttentionOnly = false; globalReceiveOnly = false;
       input.value = '';
       globalSearchQuery = '';
       globalPinnedMerchant = '';
@@ -8724,14 +8759,55 @@
     // Header "Attention" button -- only the Needs Attention sections, in every month that
     // has one. Another board-wide filter: toggling it clears the others (and vice versa).
     document.getElementById('warn-only-btn')?.addEventListener('click', () => {
-      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalPinnedMerchant);
+      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || globalPinnedMerchant);
       globalAttentionOnly = !globalAttentionOnly;
+      globalReceiveOnly = false;
       globalAutoshipOnly = false;
       globalPinnedMerchant = '';
       globalSearchQuery = '';
       input.value = '';
       refresh(!globalAttentionOnly && wasFiltered); // turning it off returns to the first month, like clearing a search
     });
+    // Phones: one "Filters" button whose menu holds Autoship and Needs Attention (the two buttons
+    // themselves are hidden there; the menu items just press them, so both paths do the same thing)
+    document.getElementById('filters-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation(); // (a document click closes any open menu)
+      const btn = e.currentTarget;
+      if (activeCtxMenu && activeCtxMenu._filtersMenu) { closeCtxMenu(); return; }
+      closeCtxMenu();
+      const menu = document.createElement('div');
+      menu.className = 'ship-ctx-menu';
+      menu._filtersMenu = true;
+      [['Autoship', globalAutoshipOnly, 'inv-autoship-btn'], ['Needs Attention', globalAttentionOnly, 'warn-only-btn']].forEach(([label, on, id]) => {
+        const item = document.createElement('div');
+        item.className = 'ship-ctx-item' + (on ? ' ctx-active' : '');
+        item.dataset.filter = id;
+        item.textContent = label;
+        item.addEventListener('click', () => { closeCtxMenu(); document.getElementById(id)?.click(); });
+        menu.appendChild(item);
+      });
+      const r = btn.getBoundingClientRect();
+      menu.style.left = r.left + 'px';
+      menu.style.top = (r.bottom + 4) + 'px';
+      document.body.appendChild(menu);
+      activeCtxMenu = menu;
+      requestAnimationFrame(() => {
+        const mr = menu.getBoundingClientRect();
+        if (mr.right > window.innerWidth - 8) menu.style.left = Math.max(8, window.innerWidth - mr.width - 8) + 'px';
+      });
+    });
+    // Header "Receive" button (and the round one above Inventory on a phone): only orders with a
+    // Status. Another board-wide filter, exclusive with the rest.
+    ['recv-btn', 'recv-fab-btn'].forEach((id) => document.getElementById(id)?.addEventListener('click', () => {
+      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || globalPinnedMerchant);
+      globalReceiveOnly = !globalReceiveOnly;
+      globalAttentionOnly = false;
+      globalAutoshipOnly = false;
+      globalPinnedMerchant = '';
+      globalSearchQuery = '';
+      input.value = '';
+      refresh(!globalReceiveOnly && wasFiltered);
+    }));
     // "/" jumps to the search box, same convention as GitHub/Slack/etc --
     // only when nothing else is already capturing keystrokes (typing "/"
     // into a notes field or an item name shouldn't get hijacked).

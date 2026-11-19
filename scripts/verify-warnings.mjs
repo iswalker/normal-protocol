@@ -1085,6 +1085,18 @@ try {
     const spentAfter = await page.locator('.month[data-id="' + monthIdOf(M0) + '"] .spentv').first().textContent();
     check('completed order: editing Price / Qty updates the line total ($50) and still counts toward Spent', parseFloat(after.replace(/[^0-9.-]/g, '')) === 50 && spentAfter !== spentBefore, JSON.stringify({ after, spentBefore, spentAfter }));
     check('completed order: it stays locked (still in its section) after the edit', await page.evaluate((sel) => !!document.querySelector(sel).closest('.shipment.is-locked'), lc));
+    const grips = await page.evaluate(() => {
+      const ship = document.querySelector('.shipment[data-id="o_locked"]');
+      const list = ship.parentElement, body = ship.querySelector(':scope > .ship-body');
+      const shipGrip = ship.querySelector(':scope > .ship-head > .ship-grip'), cardGrip = ship.querySelector('.card-grip');
+      return {
+        opacity: [shipGrip, cardGrip].map((g) => getComputedStyle(g).opacity),
+        cursor: [shipGrip, cardGrip].map((g) => getComputedStyle(g).cursor),
+        bodyDisabled: window.Sortable.get(body).option('disabled'),
+        monthFilterBlocks: window.Sortable.get(list).options.filter({ target: shipGrip }),
+      };
+    });
+    check('completed order: the drag handles look normal (not dimmed) and are live, same as any open order', grips.opacity.every((o) => o === '1') && grips.bodyDisabled === false && grips.monthFilterBlocks === false && grips.cursor.every((c) => c !== 'default'), JSON.stringify(grips));
     await page.locator(lc + ' input[data-field="price"]').fill('10');
     await page.locator(lc + ' input[data-field="qty"]').fill('1');
     await page.waitForTimeout(300);
@@ -1094,6 +1106,55 @@ try {
     // saves go nowhere: this page must not change the shared mock (the main page would show its "data changed on another device" banner)
     const { ctx: nctx, page } = await openBoard({ width: 1400, height: 900 }, (c) => c.route((u) => new URL(u).pathname === '/api/orders', (r) => (r.request().method() === 'GET' ? r.fallback() : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, updated_at: 'x', prev_updated_at: 'x' }) }))));
     const mid = monthIdOf(M0);
+    // notes on a completed order are shown and editable
+    const lockedNotes = await page.evaluate(() => { const n = document.querySelector('.shipment[data-id="o_locked"] > .ship-head > .ship-notes'); const cs = getComputedStyle(n); return { display: cs.display, editable: n.isContentEditable, w: Math.round(n.getBoundingClientRect().width) }; });
+    check('completed order: its Notes field is shown and editable (not hidden / disabled)', lockedNotes.display !== 'none' && lockedNotes.editable && lockedNotes.w > 20, JSON.stringify(lockedNotes));
+    // a collapsed completed order lists its item names under the header; opening it hides the list
+    const names = () => page.evaluate(() => { const s = document.querySelector('.shipment[data-id="o_locked"]'); const n = s.querySelector(':scope > .ship-names'); return { collapsed: s.classList.contains('is-collapsed'), shown: getComputedStyle(n).display !== 'none', text: n.textContent }; });
+    const n0 = await names();
+    check('collapsed completed order: the item names are listed under the header (comma-separated)', n0.collapsed && n0.shown && n0.text === 'Locked One', JSON.stringify(n0));
+    await page.locator('.shipment[data-id="o_locked"] > .ship-names').click(); await page.waitForTimeout(200);
+    const n1 = await names();
+    check('clicking the name list expands the order and hides the list', !n1.collapsed && !n1.shown, JSON.stringify(n1));
+    await page.evaluate(() => document.querySelector('.shipment[data-id="o_locked"] .scount').click()); await page.waitForTimeout(200);
+    const n2 = await names();
+    check('collapsing again (the count pill) shows the list again', n2.collapsed && n2.shown, JSON.stringify(n2));
+    await page.evaluate(() => document.querySelector('.shipment[data-id="o_locked"] .scount').click()); await page.waitForTimeout(200);
+    check('…and expanding with the count pill hides it too', !(await names()).shown);
+    await page.evaluate(() => document.querySelector('.shipment[data-id="o_locked"] .scount').click()); await page.waitForTimeout(200); // back to collapsed
+    // Receive: only orders with a Status
+    await page.locator('#recv-btn').click(); await page.waitForTimeout(500);
+    const rv = await page.evaluate(() => {
+      const shown = [...document.querySelectorAll('.shipment:not(.search-hide)')].filter((s) => !s.closest('.search-hide'));
+      return {
+        active: document.getElementById('recv-btn').classList.contains('active'),
+        ships: shown.length,
+        allStatus: shown.every((s) => s.classList.contains('is-locked') || s.classList.contains('is-approved')),
+        looseShown: [...document.querySelectorAll('.month-list > .card:not(.search-hide)')].length,
+        warnRows: [...document.querySelectorAll('.warn-row')].filter((r) => r.offsetParent).length,
+      };
+    });
+    check('Receive filter: only orders with a Status stay (loose items and Needs Attention rows go)', rv.active && rv.ships > 0 && rv.allStatus && rv.looseShown === 0 && rv.warnRows === 0, JSON.stringify(rv));
+    await page.locator('#warn-only-btn').click(); await page.waitForTimeout(300);
+    check('Receive and Attention are exclusive', await page.evaluate(() => !document.getElementById('recv-btn').classList.contains('active') && document.getElementById('warn-only-btn').classList.contains('active')));
+    await page.locator('#recv-btn').click(); await page.waitForTimeout(300);
+    await page.locator('#recv-btn').click(); await page.waitForTimeout(400);
+    check('Receive filter: clicking again turns it off and every order is back', await page.evaluate(() => !document.getElementById('recv-btn').classList.contains('active') && document.querySelectorAll('.shipment.search-hide').length === 0));
+    // phone: Receive is a second round button above Inventory; Autoship / Attention fold into one Filters menu
+    await page.setViewportSize({ width: 420, height: 900 }); await page.waitForTimeout(300);
+    const ph = await page.evaluate(() => { const r = document.getElementById('recv-fab-btn').getBoundingClientRect(), i = document.getElementById('inv-fab-btn').getBoundingClientRect(); const vis = (id) => getComputedStyle(document.getElementById(id)).display !== 'none'; return { recvAboveInv: r.bottom <= i.top + 1 && Math.abs((r.left + r.width / 2) - (i.left + i.width / 2)) < 2 && r.width > 40, headerRecvHidden: !vis('recv-btn'), filters: vis('filters-btn'), autoship: vis('inv-autoship-btn'), attention: vis('warn-only-btn') }; });
+    check('phone: Receive is a round button directly above Inventory; the header buttons Receive / Autoship / Attention are hidden', ph.recvAboveInv && ph.headerRecvHidden && !ph.autoship && !ph.attention, JSON.stringify(ph));
+    check('phone: one "Filters" button takes Autoship\'s place in the top bar', ph.filters);
+    await page.locator('#filters-btn').click(); await page.waitForTimeout(200);
+    const menuItems = await page.evaluate(() => [...document.querySelectorAll('.ship-ctx-menu .ship-ctx-item')].map((e) => e.textContent));
+    check('phone: the Filters menu offers Autoship and Needs Attention', JSON.stringify(menuItems) === JSON.stringify(['Autoship', 'Needs Attention']), JSON.stringify(menuItems));
+    await page.locator('.ship-ctx-menu .ship-ctx-item', { hasText: 'Needs Attention' }).click(); await page.waitForTimeout(500);
+    check('phone: choosing Needs Attention applies that filter, closes the menu, and lights up Filters', await page.evaluate(() => document.getElementById('warn-only-btn').classList.contains('active') && document.getElementById('filters-btn').classList.contains('active') && !document.querySelector('.ship-ctx-menu')));
+    await page.locator('#filters-btn').click(); await page.waitForTimeout(200);
+    check('phone: the menu marks the filter that is on', await page.evaluate(() => [...document.querySelectorAll('.ship-ctx-menu .ship-ctx-item.ctx-active')].map((e) => e.textContent).join() === 'Needs Attention'));
+    await page.locator('.ship-ctx-menu .ship-ctx-item', { hasText: 'Needs Attention' }).click(); await page.waitForTimeout(400);
+    check('phone: choosing it again turns it off', await page.evaluate(() => !document.getElementById('warn-only-btn').classList.contains('active') && !document.getElementById('filters-btn').classList.contains('active')));
+    await page.setViewportSize({ width: 1400, height: 900 }); await page.waitForTimeout(300);
     const shipsNamed = () => page.evaluate(({ mid, name }) => [...document.querySelectorAll('.month[data-id="' + mid + '"] > .month-list > .shipment')]
       .filter((s) => s.querySelector('.ship-name').textContent.trim() === name)
       .map((s) => ({ id: s.dataset.id, locked: s.classList.contains('is-locked'), stage: s.querySelector(':scope > .ship-head > .ship-stage-select').textContent.trim(), notes: s.querySelector(':scope > .ship-head > .ship-notes').textContent, cards: [...s.querySelectorAll(':scope > .ship-body > .card .card-name')].map((n) => n.textContent.trim()) })), { mid, name: 'Locked Co' });
@@ -1265,7 +1326,8 @@ try {
   await page.waitForTimeout(200);
 
   // ── Inventory is a round button bottom-right; Scan lives in the Inventory window; one "clear all filters" button ──
-  check('desktop: Inventory is a labelled button in the header, immediately left of Autoship', await page.evaluate(() => { const b = document.querySelector('header #inv-search-link'); return !!b && b.textContent.trim() === 'Inventory' && b.nextElementSibling === document.getElementById('inv-autoship-btn') && b.getBoundingClientRect().width > 60 && !document.querySelector('header #inv-scan-btn'); }));
+  check('desktop: Inventory is a labelled button in the header, with Receive right after it and then Autoship', await page.evaluate(() => { const b = document.querySelector('header #inv-search-link'); const r = document.getElementById('recv-btn'); return !!b && b.textContent.trim() === 'Inventory' && b.nextElementSibling === r && r.textContent.trim() === 'Receive' && r.nextElementSibling === document.getElementById('inv-autoship-btn') && b.getBoundingClientRect().width > 60 && !document.querySelector('header #inv-scan-btn'); }));
+  check('desktop: the Filters menu button is hidden (Autoship and Attention show as buttons)', await page.evaluate(() => getComputedStyle(document.getElementById('filters-btn')).display === 'none' && getComputedStyle(document.getElementById('inv-autoship-btn')).display !== 'none' && getComputedStyle(document.getElementById('warn-only-btn')).display !== 'none'));
   check('desktop: the header button matches Autoship (same height, 7px radius) and the round phone button is hidden', await page.evaluate(() => { const b = document.getElementById('inv-search-link'), a = document.getElementById('inv-autoship-btn'); const rb = b.getBoundingClientRect(), ra = a.getBoundingClientRect(); return Math.abs(rb.height - ra.height) <= 1 && getComputedStyle(b).borderRadius === '7px' && getComputedStyle(document.getElementById('mob-inv-fab')).display === 'none'; }));
   check('there is no "Show Scan Button" setting any more', (await page.locator('#show-scan-toggle').count()) === 0);
   await page.locator('#inv-search-link').click();
@@ -1901,15 +1963,20 @@ try {
     const gearAfter = await hot('#settings-btn');
     check('tapping Settings opens it, and the gear does not stay teal or focused', (await tp.evaluate(() => document.getElementById('settings-panel').classList.contains('open'))) && gearAfter.border === gearBase.border && !gearAfter.focused, JSON.stringify({ gearBase, gearAfter }));
     await tp.tap('#settings-btn'); // close it again
-    const autoBase = await hot('#inv-autoship-btn');
-    await tp.tap('#inv-autoship-btn');
+    // (on a phone Autoship lives in the Filters menu)
+    const filtBase = await hot('#filters-btn');
+    await tp.tap('#filters-btn');
+    await tp.waitForTimeout(200);
+    await tp.tap('.ship-ctx-menu .ship-ctx-item:has-text("Autoship")');
     await tp.waitForTimeout(250);
-    const autoOn = await hot('#inv-autoship-btn');
-    check('tapping Autoship filters, and the button does not stay focused', (await tp.evaluate(() => document.getElementById('inv-autoship-btn').classList.contains('active'))) && !autoOn.focused, JSON.stringify(autoOn));
-    await tp.tap('#inv-autoship-btn');
+    const filtOn = await hot('#filters-btn');
+    check('tapping Filters > Autoship filters, and the Filters button does not stay focused', (await tp.evaluate(() => document.getElementById('inv-autoship-btn').classList.contains('active') && document.getElementById('filters-btn').classList.contains('active'))) && !filtOn.focused, JSON.stringify(filtOn));
+    await tp.tap('#filters-btn');
+    await tp.waitForTimeout(200);
+    await tp.tap('.ship-ctx-menu .ship-ctx-item:has-text("Autoship")');
     await tp.waitForTimeout(250);
-    const autoOff = await hot('#inv-autoship-btn');
-    check('…and once it is switched off it is back to its normal outline (no sticky hover teal)', autoOff.border === autoBase.border && !autoOff.focused, JSON.stringify({ autoBase, autoOff }));
+    const filtOff = await hot('#filters-btn');
+    check('…and once it is switched off Filters is back to its normal outline (no sticky hover teal)', filtOff.border === filtBase.border && !filtOff.focused, JSON.stringify({ filtBase, filtOff }));
     // Inventory: a sheet that rides up from the bottom...
     await tp.tap('#inv-fab-btn');
     const sheetIn = await tp.evaluate(() => getComputedStyle(document.getElementById('tab-inventory')).animationName);
