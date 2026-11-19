@@ -97,7 +97,7 @@ const settle = (page) => page.waitForTimeout(700);
 
 // every card of the series, in month order: { id, month: offset from M0, ghost, ev (the "ev N mo" value shown), notes }
 const series = (page, name = 'Rooty') => page.evaluate(({ name }) => {
-  const months = [...document.querySelectorAll('#board > .month')];
+  const months = [...document.querySelectorAll('#board > .month:not(.month--pseudo)')];
   const out = [];
   months.forEach((m, mi) => {
     m.querySelectorAll('.card[data-id]').forEach((c) => {
@@ -335,7 +335,7 @@ try {
     await ctx.close();
   }
   // ── duplicating a recurring item / its order: the copy gets its OWN future ghosts ──
-  const perMonth = (page, name = 'Rooty') => page.evaluate((name) => [...document.querySelectorAll('#board > .month')].map((m) => [...m.querySelectorAll('.card[data-id] .card-name')].filter((n) => n.textContent.trim() === name).length), name);
+  const perMonth = (page, name = 'Rooty') => page.evaluate((name) => [...document.querySelectorAll('#board > .month:not(.month--pseudo)')].map((m) => [...m.querySelectorAll('.card[data-id] .card-name')].filter((n) => n.textContent.trim() === name).length), name);
   const dupMenu = async (page, sel) => clickMenu(page, sel, 'Duplicate');
   {
     const { ctx, page } = await fresh();
@@ -369,6 +369,50 @@ try {
     const before = await perMonth(page);
     await dupMenu(page, `.shipment[data-id="${shipId}"] [data-act="open-ship-menu"]`);
     check('duplicating an order of projections adds no stray duplicate ghosts', JSON.stringify(await perMonth(page)) === JSON.stringify(before), JSON.stringify(await perMonth(page)));
+    await ctx.close();
+  }
+  // ── pseudo-months: Black Friday (counts as Dec) and Prime Day (counts as Jun) ──
+  {
+    const Y = now.getMonth() <= 10 ? now.getFullYear() : now.getFullYear() + 1; // year of the next Nov
+    const months = [];
+    for (let k = 0; k < 28; k++) { // Oct Y .. Jan Y+3, a Black Friday after every Nov and a Prime Day after every Jun
+      const d = new Date(Y, 9 + k, 1);
+      months.push({ month: MON[d.getMonth()], year: d.getFullYear() });
+      if (d.getMonth() === 10) months.push({ month: 'Black Friday', year: d.getFullYear() });
+      if (d.getMonth() === 5) months.push({ month: 'Prime Day', year: d.getFullYear() });
+    }
+    serverBoard = {
+      months: months.map((m, p) => ({ ...m, position: p + 1, notes: '' })),
+      orders: [],
+      items: [
+        card('oi_bf', null, { month: 'Black Friday', year: Y }, 1, 1, 'BFRoot', { recur: 6 }),
+        card('oi_nov', null, { month: 'Nov', year: Y }, 1, 1, 'NovRoot', { recur: 1 }),
+        card('oi_may', null, { month: 'May', year: Y + 1 }, 1, 1, 'MayRoot', { recur: 1 }),
+        card('oi_pd', null, { month: 'Prime Day', year: Y + 1 }, 1, 1, 'PDRoot', { recur: 1 }),
+      ],
+    };
+    patches.length = 0;
+    const { ctx, page } = await openBoard();
+    await settle(page);
+    const idsOf = (name) => page.evaluate((name) => [...document.querySelectorAll('#board > .month')]
+      .filter((m) => [...m.querySelectorAll('.card[data-id] .card-name')].some((n) => n.textContent.trim() === name)).map((m) => m.dataset.id), name);
+    const order = await page.evaluate(() => [...document.querySelectorAll('#board > .month')].map((m) => m.dataset.id));
+    const ix = (id) => order.indexOf(id);
+    check('Black Friday sits between Nov and Dec, Prime Day between Jun and Jul', ix('Black Friday_' + Y) === ix('Nov_' + Y) + 1 && ix('Dec_' + Y) === ix('Black Friday_' + Y) + 1 && ix('Prime Day_' + (Y + 1)) === ix('Jun_' + (Y + 1)) + 1 && ix('Jul_' + (Y + 1)) === ix('Prime Day_' + (Y + 1)) + 1, order.join(' '));
+    check('they are marked as pseudo-months', (await page.locator('.month--pseudo').count()) >= 2 && (await page.locator('.month[data-id="Black Friday_' + Y + '"]').evaluate((m) => m.classList.contains('month--pseudo'))));
+    const bf = await idsOf('BFRoot');
+    check('every 6 months from Black Friday (Dec): Prime Day, Black Friday, Prime Day, Black Friday -- never the plain Jun / Dec',
+      JSON.stringify(bf) === JSON.stringify(['Black Friday_' + Y, 'Prime Day_' + (Y + 1), 'Black Friday_' + (Y + 1), 'Prime Day_' + (Y + 2), 'Black Friday_' + (Y + 2)]), JSON.stringify(bf));
+    const nov = await idsOf('NovRoot');
+    check('every month from a normal Nov: Dec next (not Black Friday), then Jan ... -- the pseudo-months are skipped',
+      nov[0] === 'Nov_' + Y && nov[1] === 'Dec_' + Y && nov[2] === 'Jan_' + (Y + 1) && !nov.some((id) => id.startsWith('Black Friday') || id.startsWith('Prime Day')), JSON.stringify(nov));
+    const may = await idsOf('MayRoot');
+    check('every month from May: Jun next, never Prime Day', may[0] === 'May_' + (Y + 1) && may[1] === 'Jun_' + (Y + 1) && !may.some((id) => id.startsWith('Prime Day')), JSON.stringify(may.slice(0, 4)));
+    const pd = await idsOf('PDRoot');
+    check('every month from Prime Day (Jun): Jul next, then Aug (a pseudo-month is only chosen when its timing matches)', pd[0] === 'Prime Day_' + (Y + 1) && pd[1] === 'Jul_' + (Y + 1) && pd[2] === 'Aug_' + (Y + 1), JSON.stringify(pd.slice(0, 4)));
+    const saved = serverBoard.items.filter((it) => it.supplement === 'BFRoot').map((it) => it.month + '_' + it.year);
+    check('the ghosts are saved against the pseudo-month names', saved.includes('Prime Day_' + (Y + 1)) && saved.includes('Black Friday_' + (Y + 1)), JSON.stringify(saved));
+    check('the pseudo-months are saved as months of their own', patches.some((p) => ((p.months || {}).add || []).some((m) => m.month === 'Black Friday')) || serverBoard.months.some((m) => m.month === 'Black Friday'));
     await ctx.close();
   }
 } catch (e) {

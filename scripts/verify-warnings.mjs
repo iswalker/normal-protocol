@@ -889,13 +889,13 @@ try {
     .map((row) => ({ cap: row.querySelector('span').textContent, opts: [...row.querySelectorAll('select option')].map((o) => o.textContent) }))
     .filter((p) => p.opts[0] === 'Month'));
   const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const expectMonths = Array.from({ length: 18 }, (_, i) => { const d = new Date(now.getFullYear(), now.getMonth() + i, 1); return MN[d.getMonth()] + " '" + String(d.getFullYear()).slice(-2); });
-  check('"Move to" and "Copy to" month pickers list 18 months, current first, with the year (like Nov 26 as "Nov apostrophe 26")', monthPickers.length === 2 && monthPickers.every((p) => JSON.stringify(p.opts.slice(1)) === JSON.stringify(expectMonths)), JSON.stringify(monthPickers.map((p) => p.opts.slice(1, 4))));
+  const expectMonths = Array.from({ length: 18 }, (_, i) => { const d = new Date(now.getFullYear(), now.getMonth() + i, 1); const yy = " '" + String(d.getFullYear()).slice(-2); return [MN[d.getMonth()] + yy, ...(d.getMonth() === 10 ? ['Black Friday' + yy] : []), ...(d.getMonth() === 5 ? ['Prime Day' + yy] : [])]; }).flat();
+  check('"Move to" and "Copy to" month pickers list 18 months (plus Black Friday / Prime Day after Nov / Jun), current first, with the year (like Nov 26 as "Nov apostrophe 26")', monthPickers.length === 2 && monthPickers.every((p) => JSON.stringify(p.opts.slice(1)) === JSON.stringify(expectMonths)), JSON.stringify(monthPickers.map((p) => p.opts.slice(1, 4))));
   // pick the LAST one (beyond the months the board starts with): its column is created and the copy lands in it
-  const lastD = new Date(now.getFullYear(), now.getMonth() + 17, 1);
+  const lastD = new Date(now.getFullYear(), now.getMonth() + 17, 1); // (the last real month; selectOption below picks the last entry of the list)
   const lastId = MN[lastD.getMonth()] + '_' + lastD.getFullYear();
   const hadLast = await page.locator('.month[data-id="' + lastId + '"]').count();
-  await page.locator('.ship-ctx-menu .ship-ctx-pick:has(option[value="17"])', { hasText: 'Copy to' }).locator('select').selectOption({ index: 18 });
+  await page.locator('.ship-ctx-menu .ship-ctx-pick:has(option[value="17"])', { hasText: 'Copy to' }).locator('select').selectOption({ label: MN[lastD.getMonth()] + " '" + String(lastD.getFullYear()).slice(-2) });
   await page.waitForTimeout(600);
   const landed = await page.evaluate((id) => { const m = document.querySelector('.month[data-id="' + id + '"]'); return m ? [...m.querySelectorAll('.card .card-name')].map((c) => c.textContent.trim()) : null; }, lastId);
   check('a month the board did not have yet is created when picked (in calendar order), and the copy lands in it', hadLast === 0 && landed && landed.includes('Early') && await page.evaluate((id) => { const ms = [...document.querySelectorAll('#board .month')]; return ms[ms.length - 1].dataset.id === id; }, lastId), JSON.stringify({ hadLast, landed }));
@@ -1292,13 +1292,76 @@ try {
     await rc.close();
   }
 
+  // ── Black Friday / Prime Day: Spent comes from YNAB memo tags, and the settings dialog controls them ──
+  {
+    const Y = now.getMonth() <= 10 ? now.getFullYear() : now.getFullYear() + 1; // year of the next Nov
+    const MON3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const yc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    await yc.addInitScript(() => { localStorage.setItem('np_ynab_token', 'tok'); localStorage.setItem('np_ynab_budget_id', 'b1'); });
+    const yp = await yc.newPage();
+    const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    const ymMonths = [];
+    for (let k = 0; k < 6; k++) { const d = new Date(Y, 9 + k, 1); ymMonths.push({ month: MON3[d.getMonth()], year: d.getFullYear() }); if (d.getMonth() === 10) ymMonths.push({ month: 'Black Friday', year: d.getFullYear() }); }
+    await yp.route('**/api/orders', (r) => jf(r, r.request().method() === 'GET' ? { months: ymMonths.map((m, p) => ({ ...m, position: p + 1, notes: '' })), orders: [], items: [] } : { ok: true, updated_at: 'x', prev_updated_at: 'x' }));
+    await yp.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
+    await yp.route('**/api/board-settings', (r) => jf(r, { pinnedMerchants: [], dismissedWarnings: [] }));
+    await yp.route('**/api/inventory-items', (r) => jf(r, []));
+    await yp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, []));
+    const p2 = (n) => String(n).padStart(2, '0');
+    const d = (y, m, day) => y + '-' + p2(m) + '-' + p2(day);
+    const txns = [
+      { date: d(Y, 11, 25), amount: -100000, memo: 'Supplements #blackFriday sale', category_id: 'c_h' },
+      { date: d(Y, 11, 5),  amount: -200000, memo: 'regular order', category_id: 'c_h' },
+      { date: d(Y, 12, 3),  amount: -50000,  memo: 'late one #BLACKFRIDAY', category_id: 'c_h' },
+      { date: d(Y, 12, 9),  amount: -100000, memo: 'regular again', category_id: 'c_h' },
+      { date: d(Y + 1, 1, 5), amount: -20000, memo: '#blackFriday', category_id: 'c_h' },
+      { date: d(Y, 11, 26), amount: -999000, memo: '#blackFriday but not Health', category_id: 'c_f' },
+      { date: d(Y, 11, 27), amount: -77000,  memo: '#blackFridayNope not the tag', category_id: 'c_h' },
+      { date: d(Y + 1, 2, 5), amount: -40000, memo: '#blackFriday outside the three months', category_id: 'c_h' },
+    ];
+    const activity = { [d(Y, 11, 1)]: -100000 - 200000 - 77000, [d(Y, 12, 1)]: -150000, [d(Y + 1, 1, 1)]: -20000 };
+    let sinceDates = [], syncs = 0;
+    await yp.route('https://api.ynab.com/v1/**', (r) => {
+      const u = new URL(r.request().url()), path = u.pathname.replace('/v1', '');
+      if (path === '/budgets/b1/categories') return jf(r, { data: { category_groups: [{ name: 'Health', categories: [{ id: 'c_h' }] }, { name: 'Fun', categories: [{ id: 'c_f' }] }] } });
+      if (path === '/budgets/b1/scheduled_transactions') return jf(r, { data: { scheduled_transactions: [{ date_next: d(Y, 11, 28), amount: -30000, memo: '#blackFriday scheduled', category_id: 'c_h' }] } });
+      if (path === '/budgets/b1/transactions') { sinceDates.push(u.searchParams.get('since_date')); syncs++; return jf(r, { data: { transactions: txns } }); }
+      const mm = /^\/budgets\/b1\/months\/(\d{4}-\d{2}-\d{2})$/.exec(path);
+      if (mm) return jf(r, { data: { month: { categories: [{ category_group_name: 'Health', deleted: false, activity: activity[mm[1]] || 0 }, { category_group_name: 'Fun', deleted: false, activity: -5000 }] } } });
+      return r.fulfill({ status: 404, body: '{}' });
+    });
+    await yp.goto(base, { waitUntil: 'load' });
+    await yp.waitForSelector('.month[data-id="Black Friday_' + Y + '"]', { state: 'attached', timeout: 15000 });
+    await yp.waitForTimeout(1500);
+    const spent = (id) => yp.locator('.month[data-id="' + id + '"] .spentv').first().textContent().then((s) => parseFloat(s.replace(/[^0-9.-]/g, '')));
+    const nov = await spent('Nov_' + Y), bfv = await spent('Black Friday_' + Y), dec = await spent('Dec_' + Y), jan = await spent('Jan_' + (Y + 1));
+    check('YNAB: Black Friday = Health transactions tagged #blackFriday in Nov / Dec / Jan (any case) plus the tagged scheduled one -- $200', bfv === 200, String(bfv));
+    check('YNAB: tagged transactions leave the ordinary month they were dated in (Nov $277, Dec $100, Jan $0)', nov === 277 && dec === 100 && jan === 0, JSON.stringify({ nov, dec, jan }));
+    check('YNAB: the transactions request starts at the first window (Nov 1)', sinceDates.length > 0 && sinceDates.every((s) => s === d(Y, 11, 1)), JSON.stringify(sinceDates));
+    // the settings dialog
+    await yp.locator('#settings-btn').click();
+    await yp.locator('#config-ynab').click();
+    await yp.waitForSelector('#ynab-cfg-group', { state: 'visible' });
+    const cfgVals = await yp.evaluate(() => ({ g: document.getElementById('ynab-cfg-group').value, bf: document.getElementById('ynab-cfg-bf').value, pd: document.getElementById('ynab-cfg-pd').value }));
+    check('Settings > Configure YNAB Matching: defaults are Health / #blackFriday / #primeDay', cfgVals.g === 'Health' && cfgVals.bf === '#blackFriday' && cfgVals.pd === '#primeDay', JSON.stringify(cfgVals));
+    await yp.locator('#ynab-cfg-bf').fill('BFRIDAY');
+    await yp.locator('#ynab-cfg-save').click();
+    await yp.waitForTimeout(1500);
+    const stored = await yp.evaluate(() => ({ g: localStorage.getItem('np_ynab_group'), bf: localStorage.getItem('np_ynab_tag_bf'), pd: localStorage.getItem('np_ynab_tag_pd') }));
+    check('…saving stores the group and the tags (a missing # is added) and re-syncs', stored.g === 'Health' && stored.bf === '#BFRIDAY' && stored.pd === '#primeDay' && syncs >= 2, JSON.stringify({ stored, syncs }));
+    const nov2 = await spent('Nov_' + Y), bf2 = await spent('Black Friday_' + Y);
+    check('…and the new tag drives the matching (nothing carries #BFRIDAY: Black Friday $0, Nov back to $407 with its scheduled one)', bf2 === 0 && nov2 === 407, JSON.stringify({ nov2, bf2 }));
+    await yc.close();
+  }
+
   // ── saving writes only what changed; a stale tab can't undo another device ──
   {
     const wc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
     const wp = await wc.newPage();
     const ten = Array.from({ length: 10 }, (_, i) => monthAt(i));
     const wBody = {
-      months: ten.map((m, i) => ({ month: m.month, year: m.year, position: i + 1, notes: '' })),
+      months: ten.flatMap((m) => [m, ...(m.month === 'Nov' ? [{ month: 'Black Friday', year: m.year }] : []), ...(m.month === 'Jun' ? [{ month: 'Prime Day', year: m.year }] : [])])
+        .map((m, i) => ({ month: m.month, year: m.year, position: i + 1, notes: '' })),
       orders: [
         { order_id: 'o_w1', month: M0.month, year: M0.year, merchant: 'Wide One', position: 1, status: 'Staged', notes: null },
         { order_id: 'o_w2', month: M0.month, year: M0.year, merchant: 'Wide Two', position: 2, status: 'Staged', notes: null },

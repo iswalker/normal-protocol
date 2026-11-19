@@ -1113,6 +1113,10 @@
     .month-sentinel { height: 0; }
     #tab-board .month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
     #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+    /* Black Friday / Prime Day: the name in the accent colour so they read as extras between the real months */
+    #tab-board .month--pseudo .month-title .mname { color: var(--accent-deep); white-space: nowrap; }
+    /* "Launch Preemptively" is about placing an order in the previous calendar month -- not a thing for these columns */
+    #tab-board .month--pseudo .ship-preempt { display: none; }
     /* Hidden by default (mobile) -- shown again on desktop, see the
        min-width:681px block below. Either way .msub still carries the year
        text that several places (jump-to-month, month sort/lookup) read via
@@ -1689,6 +1693,8 @@
       }
       #tab-board .month-title .mcount { margin-left: auto; }
       #tab-board .month-title .msub { display: inline; }
+      /* "Black Friday 2026" is longer than the fixed box a month name fits -- let it grow */
+      #tab-board .month--pseudo .month-title { width: auto; }
       /* "+ Order" aligned with "+ Item" -- tuned empirically like the rest
          of this block. */
       #tab-board .month-head .add-btn { margin-left: -2px; margin-bottom: -2px; }
@@ -2586,6 +2592,7 @@
         <div class="settings-panel" id="settings-panel">
           <div class="settings-panel-title">Settings</div>
           <button class="settings-action-btn" id="update-ynab">Update YNAB API Key</button>
+          <button class="settings-action-btn" id="config-ynab">Configure YNAB Matching</button>
           <button class="settings-action-btn" id="config-shorthand">Configure Merchants Shorthand</button>
           <button class="settings-toggle-row" id="show-cents-toggle" type="button" aria-pressed="false">
             <span>Show cents</span>
@@ -3390,7 +3397,7 @@
   // globalAutoshipOnly, same as text search is (see initGlobalSearch).
   let globalPinnedMerchant = '';
   let INV_MAP = {};     // lowercased-name -> Inventory row (set by applyInventory)
-  let SPENT_BY_MONTH = {}; // month name -> $ amount (set by YNAB sync)
+  let SPENT_BY_MONTH = {}; // month id ("Jun_2027") -> $ amount (set by YNAB sync); a bare month name is also read
   let PROJ_MAP = {};    // lowercased-name -> { daysLeft, runOut } after all board orders
 
   // ── sign-in (Cloudflare Access) ─────────────────────────────────────────────
@@ -3554,25 +3561,53 @@
 
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+  // ── pseudo-months ──────────────────────────────────────────────────────────
+  // Two extra columns that sit BETWEEN real months: "Black Friday" (after Nov,
+  // before Dec) and "Prime Day" (after Jun, before Jul). Each is stored like any
+  // month (name + year; the year is its anchor month's -- Black Friday 2026 is
+  // Nov 2026's). For recurring timing a pseudo-month counts as a real one --
+  // Black Friday as December, Prime Day as June (`timing`) -- see monthOrd and
+  // recurTargetIndex. They have no Needs Attention panel and no preemptive
+  // previews (they are not months of the calendar), and their Spent comes from
+  // YNAB transactions tagged in the memo rather than from a calendar month.
+  const PSEUDO_MONTHS = {
+    'Black Friday': { after: 10, timing: 11 },
+    'Prime Day':    { after: 5,  timing: 5 },
+  };
+  const isPseudoName = (name) => Object.prototype.hasOwnProperty.call(PSEUDO_MONTHS, name);
+  // Where a month sits on the board's timeline: year*12+month, a pseudo-month half a step after its anchor.
+  function monthSortKey(name, year) {
+    const y = parseInt(year, 10) || 0;
+    if (isPseudoName(name)) return y * 12 + PSEUDO_MONTHS[name].after + 0.5;
+    return y * 12 + MONTH_NAMES.indexOf(name);
+  }
+  // The real month a (pseudo-)month counts as, year*12+month, or null for an unknown name.
+  function monthTimingOrd(name, year) {
+    const y = parseInt(year, 10) || 0;
+    if (!y) return null;
+    if (isPseudoName(name)) return y * 12 + PSEUDO_MONTHS[name].timing;
+    const i = MONTH_NAMES.indexOf(name);
+    return i >= 0 ? y * 12 + i : null;
+  }
+  // The pseudo-months that anchor to a real month index (0-11).
+  const pseudoNamesAfter = (mIdx) => Object.keys(PSEUDO_MONTHS).filter((n) => PSEUDO_MONTHS[n].after === mIdx);
+
   function padMonths(count) {
     const now = SB.today();
     // key by "MonthName_Year" so year-boundary months (Jan 2027 ≠ Jan 2026) never collide
     const existing = new Set(structure.map(m => m.name + '_' + (parseInt(m.sub) || 0)));
+    const add = (name, year) => {
+      const key = name + '_' + year;
+      if (existing.has(key)) return;
+      structure.push({ id: key, name, sub: String(year), notes: '', blocks: [] });
+      existing.add(key);
+    };
     for (let i = 0; i < count; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const name = MONTH_NAMES[d.getMonth()];
-      const year = d.getFullYear();
-      const key = name + '_' + year;
-      if (!existing.has(key)) {
-        structure.push({ id: key, name, sub: String(year), notes: '', blocks: [] });
-        existing.add(key);
-      }
+      add(MONTH_NAMES[d.getMonth()], d.getFullYear());
+      pseudoNamesAfter(d.getMonth()).forEach((pn) => add(pn, d.getFullYear())); // Black Friday / Prime Day ride along with Nov / Jun
     }
-    structure.sort((a, b) => {
-      const ya = parseInt(a.sub) || 0, yb = parseInt(b.sub) || 0;
-      if (ya !== yb) return ya - yb;
-      return MONTH_NAMES.indexOf(a.name) - MONTH_NAMES.indexOf(b.name);
-    });
+    structure.sort((a, b) => monthSortKey(a.name, a.sub) - monthSortKey(b.name, b.sub));
   }
 
   // How many months the "Move to" / "Copy to" month pickers offer, from the current month.
@@ -3580,16 +3615,17 @@
 
   // The board's column for a month, created (in calendar order) if it isn't there yet --
   // the board only pads a window of months ahead, the pickers reach further.
-  function ensureMonthEl(year, mIdx) {
-    const id = MONTH_NAMES[mIdx] + '_' + year;
+  function ensureMonthEl(year, mIdx, pseudoName) {
+    const name = pseudoName || MONTH_NAMES[mIdx];
+    const id = name + '_' + year;
     const have = board.querySelector('.month[data-id="' + id + '"]');
     if (have) return have;
-    const node = el(monthHTML({ id, name: MONTH_NAMES[mIdx], sub: String(year), notes: '', blocks: [] }));
-    const ord = year * 12 + mIdx;
-    const later = [...board.querySelectorAll('.month')].find((m) => {
-      const y = parseInt(m.querySelector('.msub')?.textContent.trim(), 10) || 0;
-      return y * 12 + MONTH_NAMES.indexOf(m.querySelector('.mname')?.textContent.trim()) > ord;
-    });
+    const node = el(monthHTML({ id, name, sub: String(year), notes: '', blocks: [] }));
+    const key = monthSortKey(name, year);
+    const all = [...board.querySelectorAll('.month')];
+    const later = all.find((m) => monthSortKey(m.querySelector('.mname')?.textContent.trim(), m.querySelector('.msub')?.textContent.trim()) > key);
+    // the structure model stays parallel to the board's columns (recurrence maps one to the other by index)
+    structure.splice(later ? all.indexOf(later) : all.length, 0, { id, name, sub: String(year), notes: '', blocks: [] });
     if (later) board.insertBefore(node, later); else board.appendChild(node);
     makeMonthSortable(node.querySelector('.month-list'));
     observeSentinels();
@@ -3802,7 +3838,7 @@
 
   function monthHTML(m) {
     return `
-    <div class="month" data-id="${m.id}">
+    <div class="month${isPseudoName(m.name) ? ' month--pseudo' : ''}" data-id="${m.id}">
       <div class="month-sentinel"></div>
       <div class="month-head">
         <div class="month-title">
@@ -4030,7 +4066,7 @@
       if (c.ghostOf) {
         const { monthIdx: ghostMi } = findCardLocation(cardEl.dataset.id);
         const { monthIdx: rootMi } = findCardLocation(c.ghostOf);
-        const offset = (ghostMi >= 0 && rootMi >= 0) ? (ghostMi - rootMi) : 0;
+        const offset = (ghostMi >= 0 && rootMi >= 0) ? monthShift(rootMi, ghostMi) : 0;
         autoshipDate = offset > 0 ? addMonthsToDate(baseDate, offset) : baseDate;
       } else {
         autoshipDate = baseDate;
@@ -4142,7 +4178,8 @@
   // should still show up as Spent instead of always reading zero.
   function monthSpent(monthEl, searchAware) {
     const name = monthEl.querySelector('.mname')?.textContent.trim();
-    let base = searchAware ? 0 : (SPENT_BY_MONTH[name] || 0);
+    const sKey = monthEl.dataset.id in SPENT_BY_MONTH ? monthEl.dataset.id : name;
+    let base = searchAware ? 0 : (SPENT_BY_MONTH[sKey] || 0);
     // Add ordered shipment totals (Entered/Received are excluded — user has entered in YNAB)
     monthEl.querySelectorAll('.month-list > .shipment').forEach((shipEl) => {
       const sd = STATE.shipmentData[shipEl.dataset.id] || {};
@@ -4333,7 +4370,7 @@
       if (!c.ghostOf) return true;
       const { monthIdx: gMi } = findCardLocation(cardEl.dataset.id);
       const { monthIdx: rMi } = findCardLocation(c.ghostOf);
-      return (gMi >= 0 && rMi >= 0 && gMi > rMi ? addMonthsToDate(base, gMi - rMi) : base) < start;
+      return (gMi >= 0 && rMi >= 0 && gMi > rMi ? addMonthsToDate(base, monthShift(rMi, gMi)) : base) < start;
     });
   }
   // The automatic answer is a walk over the order's items, and a refresh asks
@@ -4347,6 +4384,7 @@
     try { return fn(); } finally { preemptMemo = null; }
   }
   function isShipPreemptive(shipEl) {
+    if (shipEl.closest('.month--pseudo')) return false; // Black Friday / Prime Day orders are placed in their own column
     const s = STATE.shipmentData[shipEl.dataset.id];
     if (s && typeof s.preemptive === 'boolean') return s.preemptive;
     if (!preemptMemo) return shipAutoPreemptive(shipEl);
@@ -4571,6 +4609,14 @@
   let dismissedWarnings = new Set();
   let SEEN_BEFORE_MONTH = [];
 
+  // The next real month after monthEls[mi] (skipping Black Friday / Prime Day);
+  // none for a pseudo-month itself.
+  function nextRealMonthEl(monthEls, mi) {
+    if (monthEls[mi]?.classList.contains('month--pseudo')) return null;
+    for (let j = mi + 1; j < monthEls.length; j++) if (!monthEls[j].classList.contains('month--pseudo')) return monthEls[j];
+    return null;
+  }
+
   function warnMonthWindows(monthEls) {
     const today = SB.today();
     const curStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
@@ -4696,7 +4742,7 @@
         // (11/22): an item running out before the preemptive order's month still
         // shows up until it's really ordered.
         const preOrdered = new Set();
-        monthEls[mi + 1]?.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
+        nextRealMonthEl(monthEls, mi)?.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
           if (!isShipPreemptive(shipEl)) return;
           shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]').forEach((cardEl) => {
             const c = STATE.cardData[cardEl.dataset.id];
@@ -5060,7 +5106,7 @@
       put(list, 'month-appr-head', appr);
       put(list, 'month-done-head', done);
       // next month's preemptive orders, previewed here: those same orders' own figures
-      const nextShips = [...(monthEls[mi + 1]?.querySelectorAll(':scope > .month-list > .shipment') || [])]
+      const nextShips = [...(nextRealMonthEl(monthEls, mi)?.querySelectorAll(':scope > .month-list > .shipment') || [])]
         .filter((s) => !(STATE.shipmentData[s.dataset.id] || {}).stage && isShipPreemptive(s) && !s.classList.contains('is-approved'));
       put(list, 'month-mirror-head', nextShips);
     });
@@ -5614,7 +5660,7 @@
       const list = monthEl.querySelector(':scope > .month-list');
       if (!list) return;
       const start = monthStartOf(monthEl);
-      const nextEl = monthEls[mi + 1];
+      const nextEl = nextRealMonthEl(monthEls, mi);
       const items = [];
       let nextName = '';
       if (nextEl && start && start >= curStart && !filterActive) {
@@ -6231,7 +6277,7 @@
       const memberMonthIdx = [...memberMonthEl.parentNode.children].indexOf(memberMonthEl);
       if (memberMonthIdx <= srcMonthIdx) return; // only future instances, never past ones
       touchedShipIds.add(memberShipEl.dataset.id);
-      const offset = memberMonthIdx - srcMonthIdx;
+      const offset = monthShift(srcMonthIdx, memberMonthIdx);
       const projectedDate = baseDate ? toISODate(addMonthsToDate(baseDate, offset)) : '';
       const sd = STATE.shipmentData[memberShipEl.dataset.id] || (STATE.shipmentData[memberShipEl.dataset.id] = {});
       sd.autoshipLink = link;
@@ -6400,11 +6446,30 @@
   const MONTH_RE = '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
   const SERIES_END_RE = new RegExp('^\\s*Ends after ' + MONTH_RE + '(?: (\\d{4}))?(?![A-Za-z])\\.?[\\s\\u00a0]*', 'i');
   // Month index in the board's own timeline as year*12 + month, or null if unknown.
+  // A pseudo-month counts as the real month it stands in for (Black Friday = Dec, Prime Day = Jun).
   function monthOrd(mi) {
     const m = structure[mi];
-    if (!m) return null;
-    const y = parseInt(m.sub, 10), i = MONTH_NAMES.indexOf(m.name);
-    return y && i >= 0 ? y * 12 + i : null;
+    return m ? monthTimingOrd(m.name, m.sub) : null;
+  }
+  // Calendar months from structure[aMi] to structure[bMi] (timing months, so Black Friday -> Prime Day is 6).
+  function monthShift(aMi, bMi) {
+    const a = monthOrd(aMi), b = monthOrd(bMi);
+    return a != null && b != null ? b - a : bMi - aMi;
+  }
+  // The column a recurring item lands in n months after structure[srcMi]: the real
+  // month of that timing -- unless the source itself sits in a pseudo-month, which then
+  // prefers the pseudo-month of that timing (Black Friday every 6 months -> Prime Day
+  // -> Black Friday, never the plain Jun/Dec). -1 when the board has no such month.
+  function recurTargetIndex(srcMi, n) {
+    const src = structure[srcMi], srcOrd = monthOrd(srcMi);
+    if (!src || srcOrd == null) return -1;
+    const want = srcOrd + n;
+    let normal = -1, pseudo = -1;
+    structure.forEach((m, i) => {
+      if (monthOrd(i) !== want) return;
+      if (isPseudoName(m.name)) pseudo = i; else normal = i;
+    });
+    return isPseudoName(src.name) && pseudo >= 0 ? pseudo : normal;
   }
   // Where the root's note says the series stops (a monthOrd), or null for "no end".
   // With no year ("Ends after Dec") it's the first such month on or after the root's.
@@ -6452,7 +6517,7 @@
     });
     const last = structure[lastMi];
     const long = (monthOrd(lastMi) ?? 0) - (monthOrd(rootMi) ?? 0) >= 12; // "Dec" alone would be ambiguous
-    const label = last ? last.name + (long ? ' ' + last.sub : '') : '';
+    const label = last ? (isPseudoName(last.name) ? MONTH_NAMES[PSEUDO_MONTHS[last.name].timing] : last.name) + (long ? ' ' + last.sub : '') : '';
     const first = structure[gMi];
     const n = doomed.length;
     return {
@@ -6587,9 +6652,12 @@
     const wanted = [];
     const srcOrd = monthOrd(srcMi);
     const endOrd = srcOrd == null ? null : seriesEndOrd(src, srcOrd); // "Ends after Dec" in the root's note
-    for (let off = N; srcMi + off < structure.length; off += N) {
-      if (endOrd != null) { const o = monthOrd(srcMi + off); if (o != null && o > endOrd) break; }
-      wanted.push(srcMi + off);
+    let lastOrd = -Infinity;
+    structure.forEach((m, i) => { const o = monthOrd(i); if (o != null && o > lastOrd) lastOrd = o; });
+    for (let off = N; srcOrd != null && srcOrd + off <= lastOrd; off += N) {
+      if (endOrd != null && srcOrd + off > endOrd) break;
+      const ti = recurTargetIndex(srcMi, off);
+      if (ti >= 0) wanted.push(ti);
     }
     const wantedSet = new Set(wanted);
 
@@ -6622,7 +6690,7 @@
         // direction, a brand new instance appearing after the date was set).
         const srcShipData = srcShipId ? STATE.shipmentData[srcShipId] : null;
         const projectedDate = srcShipData?.autoshipNextDate
-          ? toISODate(addMonthsToDate(SB.parseDate(srcShipData.autoshipNextDate), tMi - srcMi))
+          ? toISODate(addMonthsToDate(SB.parseDate(srcShipData.autoshipNextDate), monthShift(srcMi, tMi)))
           : '';
         STATE.shipmentData[tShipId] = {
           name: srcShipName, notes: '',
@@ -6794,7 +6862,7 @@
       STATE.cardData[firstId].notes = (src.notes.match(SERIES_END_RE)[0].replace(/[.\s\u00a0]+$/, '')) + (STATE.cardData[firstId].notes ? '.  ' + STATE.cardData[firstId].notes : '');
     }
     if (sourceMi >= 0 && firstMi > sourceMi && src.autoshipNextDate) {
-      STATE.cardData[firstId].autoshipNextDate = toISODate(addMonthsToDate(SB.parseDate(src.autoshipNextDate), firstMi - sourceMi));
+      STATE.cardData[firstId].autoshipNextDate = toISODate(addMonthsToDate(SB.parseDate(src.autoshipNextDate), monthShift(sourceMi, firstMi)));
     }
 
     // Promote: clear ghostOf on the new root...
@@ -6872,8 +6940,7 @@
     board.querySelectorAll('.month').forEach((monthEl) => {
       const name = monthEl.querySelector('.mname')?.textContent.trim() || '';
       const year = parseInt(monthEl.querySelector('.msub')?.textContent.trim(), 10) || 0;
-      const mIdx = MONTH_NAMES.indexOf(name);
-      const isPast = year < curYear || (year === curYear && mIdx < curMonth);
+      const isPast = monthSortKey(name, year) < curYear * 12 + curMonth;
       // Empty = no real orders. The list also holds .month-aux blocks (Needs
       // Attention panel, section headers, previews) that don't count -- the
       // panel in particular exists, hidden, in every month, so counting
@@ -9162,10 +9229,14 @@
     // against it straight away and closes the menu.
     function ctxMonthPick(label, currentMonthEl, onPick) {
       const now = SB.today();
-      const months = Array.from({ length: MONTH_PICK_COUNT }, (_, i) => {
+      // (Black Friday / Prime Day appear in the list right after the month they follow)
+      const months = [];
+      for (let i = 0; i < MONTH_PICK_COUNT; i++) {
         const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        return { year: d.getFullYear(), mIdx: d.getMonth(), label: MONTH_NAMES[d.getMonth()] + " '" + String(d.getFullYear()).slice(-2) };
-      });
+        const yy = " '" + String(d.getFullYear()).slice(-2);
+        months.push({ year: d.getFullYear(), mIdx: d.getMonth(), label: MONTH_NAMES[d.getMonth()] + yy });
+        pseudoNamesAfter(d.getMonth()).forEach((pn) => months.push({ year: d.getFullYear(), mIdx: d.getMonth(), pseudo: pn, label: pn + yy }));
+      }
       const row = document.createElement('div');
       row.className = 'ship-ctx-pick';
       const cap = document.createElement('span');
@@ -9178,7 +9249,7 @@
         const m = months[Number(sel.value)];
         if (!m) return;
         closeCtxMenu();
-        onPick(ensureMonthEl(m.year, m.mIdx));
+        onPick(ensureMonthEl(m.year, m.mIdx, m.pseudo));
       });
       row.append(cap, sel);
       return row;
@@ -9369,6 +9440,17 @@
   // HOVER_CAPABLE wiring, further down). e only needs clientX/clientY --
   // a synthetic tap/hover "event" is just a plain object with coordinates,
   // same contract buildCtxMenu already uses.
+  // The column "Next/Previous Month" means: from a real month the next REAL month
+  // (Black Friday / Prime Day are only reachable through the month pickers); from a
+  // pseudo-month its immediate neighbour.
+  function stepMonthEl(allMonths, idx, dir) {
+    const here = allMonths[idx];
+    const fromPseudo = !!here && here.classList.contains('month--pseudo');
+    for (let j = idx + dir; j >= 0 && j < allMonths.length; j += dir) {
+      if (fromPseudo || !allMonths[j].classList.contains('month--pseudo')) return allMonths[j];
+    }
+    return null;
+  }
   function openCardCtxMenu(cardEl, e) {
       e.preventDefault?.();
       closeCtxMenu();
@@ -9380,8 +9462,9 @@
       const myIdx = siblings.indexOf(cardEl);
       const isFirst = myIdx === 0;
       const isLast = myIdx === siblings.length - 1;
-      const hasPrev = monthIdx > 0;
-      const hasNext = monthIdx < allMonths.length - 1;
+      const prevMonthEl = stepMonthEl(allMonths, monthIdx, -1), nextMonthEl = stepMonthEl(allMonths, monthIdx, 1);
+      const hasPrev = !!prevMonthEl;
+      const hasNext = !!nextMonthEl;
       // Dividers reorder a shipment's contents, so — same as the "+ Item"
       // button already refuses to add into a locked shipment — this is a
       // no-op once the shipment is Ordered/Entered/Received. Loose cards in
@@ -9518,13 +9601,13 @@
         menu.appendChild(ctxItem('Move to Top', isFirst, () => { container.prepend(cardEl); recalcAll(); persist(); }));
         menu.appendChild(ctxItem('Move to End', isLast, () => { container.append(cardEl); recalcAll(); persist(); }));
         menu.appendChild(ctxDivider());
-        menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => moveCardToMonth(allMonths[monthIdx + 1])));
-        menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => moveCardToMonth(allMonths[monthIdx - 1])));
+        menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => moveCardToMonth(nextMonthEl)));
+        menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => moveCardToMonth(prevMonthEl)));
         menu.appendChild(ctxMonthPick('Move to', monthEl, moveCardToMonth));
         menu.appendChild(ctxOrderPickRow());
         menu.appendChild(ctxDivider());
-        menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => copyCardToMonth(allMonths[monthIdx + 1])));
-        menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => copyCardToMonth(allMonths[monthIdx - 1])));
+        menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => copyCardToMonth(nextMonthEl)));
+        menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => copyCardToMonth(prevMonthEl)));
         menu.appendChild(ctxMonthPick('Copy to', monthEl, copyCardToMonth));
         menu.appendChild(ctxOrderPickRow('Copy to', copyCardToOrder));
         menu.appendChild(ctxItem('Duplicate', false, () => {
@@ -9581,8 +9664,9 @@
     const firstLocked = listChildren.find((n) => n.classList.contains('shipment') && (STATE.shipmentData[n.dataset.id] || {}).stage);
     const unlockedEnd = firstLocked ? listChildren.indexOf(firstLocked) - 1 : listChildren.length - 1;
     const isLast = myIdx === unlockedEnd;
-    const hasPrev = monthIdx > 0;
-    const hasNext = monthIdx < allMonths.length - 1;
+    const prevMonthEl = stepMonthEl(allMonths, monthIdx, -1), nextMonthEl = stepMonthEl(allMonths, monthIdx, 1);
+    const hasPrev = !!prevMonthEl;
+    const hasNext = !!nextMonthEl;
 
     // Shared by the Next/Previous items and the month picker, so a month several
     // steps away behaves exactly like the one-step case.
@@ -9641,12 +9725,12 @@
         recalcAll(); persist();
       }));
       menu.appendChild(ctxDivider());
-      menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => moveShipToMonth(allMonths[monthIdx + 1])));
-      menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => moveShipToMonth(allMonths[monthIdx - 1])));
+      menu.appendChild(ctxItem('Move to Next Month', !hasNext, () => moveShipToMonth(nextMonthEl)));
+      menu.appendChild(ctxItem('Move to Previous Month', !hasPrev, () => moveShipToMonth(prevMonthEl)));
       menu.appendChild(ctxMonthPick('Move to', monthEl, moveShipToMonth));
       menu.appendChild(ctxDivider());
-      menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => copyShipToMonth(allMonths[monthIdx + 1])));
-      menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => copyShipToMonth(allMonths[monthIdx - 1])));
+      menu.appendChild(ctxItem('Copy to Next Month', !hasNext, () => copyShipToMonth(nextMonthEl)));
+      menu.appendChild(ctxItem('Copy to Previous Month', !hasPrev, () => copyShipToMonth(prevMonthEl)));
       menu.appendChild(ctxMonthPick('Copy to', monthEl, copyShipToMonth));
       menu.appendChild(ctxItem('Duplicate', false, () => {
         const sid = uid('s_');
@@ -9749,9 +9833,10 @@
       Object.assign(SPENT_BY_MONTH, spentByMonth);
       board.querySelectorAll('.month').forEach((monthEl) => {
         const name = monthEl.querySelector('.mname').textContent.trim();
-        if (!(name in spentByMonth)) return;
+        const k = monthEl.dataset.id in spentByMonth ? monthEl.dataset.id : name; // by id (Jun_2027); a bare name still works
+        if (!(k in spentByMonth)) return;
         const el = monthEl.querySelector('.spentv');
-        if (el) el.textContent = SB.fmtMoney(spentByMonth[name]);
+        if (el) el.textContent = SB.fmtMoney(spentByMonth[k]);
       });
       recalcAll();
     },
@@ -9920,6 +10005,27 @@
 
   function getGroupName() { try { return localStorage.getItem(GROUP_KEY) || 'Health'; } catch { return 'Health'; } }
 
+  // ── Black Friday / Prime Day ("pseudo-months") ──
+  // Their Spent is not a calendar month's activity: it is every transaction (in the
+  // category group above) whose Memo carries the period's tag, taken from a
+  // 3-month window around it -- Black Friday N: Nov N, Dec N, Jan N+1; Prime Day N:
+  // May, Jun, Jul N. Those transactions are then left out of the ordinary month
+  // they were dated in, so nothing is counted twice.
+  const PSEUDO = {
+    'Black Friday': { tagKey: 'np_ynab_tag_bf', defTag: '#blackFriday', yearOf: (y, m) => (m >= 11 ? y : m === 1 ? y - 1 : null), firstMonth: '11' },
+    'Prime Day':    { tagKey: 'np_ynab_tag_pd', defTag: '#primeDay',    yearOf: (y, m) => (m >= 5 && m <= 7 ? y : null),        firstMonth: '05' },
+  };
+  const normTag = (s, def) => { const v = String(s || '').trim().replace(/\s+/g, ''); return v ? (v[0] === '#' ? v : '#' + v) : def; };
+  function getTag(pname) {
+    const p = PSEUDO[pname];
+    try { return normTag(localStorage.getItem(p.tagKey), p.defTag); } catch { return p.defTag; }
+  }
+  function memoHasTag(memo, tag) {
+    if (!memo) return false;
+    const esc = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(^|[^A-Za-z0-9_])' + esc + '(?![A-Za-z0-9_])', 'i').test(memo);
+  }
+
   const connectBtn = document.getElementById('update-ynab');
   const warningEl  = document.getElementById('ynab-warning');
   const warningBtn = document.getElementById('ynab-warning-btn');
@@ -9964,21 +10070,60 @@
   // already counted in activityMilliunits below. A split scheduled
   // transaction carries its real categorization on subtransactions, not
   // the parent (same shape as a regular split transaction).
-  async function fetchScheduledByMonth(budgetId, token, groupName, categoryGroupMap) {
+  // Returns the group's individual lines: { date: 'YYYY-MM-DD', amount, memo }.
+  async function fetchScheduledLines(budgetId, token, groupName, categoryGroupMap) {
     const data = await ynabFetch(`/budgets/${budgetId}/scheduled_transactions`, token);
-    const byMonth = {};
+    const out = [];
     for (const st of data.data.scheduled_transactions || []) {
       if (st.deleted || !st.date_next) continue;
-      const key = st.date_next.slice(0, 7); // 'YYYY-MM'
       const lines = (st.subtransactions && st.subtransactions.length)
         ? st.subtransactions.filter((sub) => !sub.deleted)
         : [st];
       for (const line of lines) {
         if (categoryGroupMap[line.category_id] !== groupName) continue;
-        byMonth[key] = (byMonth[key] || 0) + (line.amount || 0);
+        out.push({ date: st.date_next, amount: line.amount || 0, memo: [line.memo, st.memo].filter(Boolean).join(' ') });
       }
     }
-    return byMonth;
+    return out;
+  }
+
+  // Posted transactions since `sinceDate`, as the group's individual lines (a split
+  // transaction contributes one line per split, carrying the parent's memo too).
+  async function fetchTransactionLines(budgetId, token, groupName, categoryGroupMap, sinceDate) {
+    const data = await ynabFetch(`/budgets/${budgetId}/transactions?since_date=${sinceDate}`, token);
+    const out = [];
+    for (const tx of data.data.transactions || []) {
+      if (tx.deleted) continue;
+      const lines = (tx.subtransactions && tx.subtransactions.length)
+        ? tx.subtransactions.filter((sub) => !sub.deleted)
+        : [tx];
+      for (const line of lines) {
+        if (categoryGroupMap[line.category_id] !== groupName) continue;
+        out.push({ date: tx.date, amount: line.amount || 0, memo: [line.memo, tx.memo].filter(Boolean).join(' ') });
+      }
+    }
+    return out;
+  }
+
+  // Sorts tagged lines into Black Friday / Prime Day. Returns
+  //   pseudoTotals: { 'Black Friday_2026': milliunits, ... } (only for columns on the board)
+  //   leaving:      { '2026-11': milliunits, ... } -- what to take back out of each ordinary month
+  function bucketTagged(lines, pseudoIds) {
+    const pseudoTotals = {}, leaving = {};
+    for (const line of lines) {
+      const y = Number(line.date.slice(0, 4)), m = Number(line.date.slice(5, 7));
+      for (const pname of Object.keys(PSEUDO)) {
+        const py = PSEUDO[pname].yearOf(y, m);
+        if (py == null || !memoHasTag(line.memo, getTag(pname))) continue;
+        const id = pname + '_' + py;
+        if (!pseudoIds.has(id)) break; // no such column on the board: it stays in its own month
+        pseudoTotals[id] = (pseudoTotals[id] || 0) + line.amount;
+        const ym = line.date.slice(0, 7);
+        leaving[ym] = (leaving[ym] || 0) + line.amount;
+        break;
+      }
+    }
+    return { pseudoTotals, leaving };
   }
 
   async function sync(token) {
@@ -9993,13 +10138,30 @@
 
     const groupName = getGroupName();
     const categoryGroupMap = await fetchCategoryGroupMap(budgetId, token);
-    const scheduledByMonth = await fetchScheduledByMonth(budgetId, token, groupName, categoryGroupMap);
+    const scheduledLines = await fetchScheduledLines(budgetId, token, groupName, categoryGroupMap);
 
     // collect visible months from the board DOM
     const board = document.getElementById('board');
     if (!board) { setStatus('Board not loaded', 'err'); return; }
     const monthEls = [...board.querySelectorAll('.month')];
     const spentByMonth = {};
+
+    // Black Friday / Prime Day columns on the board -> the tagged transactions that belong to them
+    const pseudoIds = new Set(monthEls.filter((m) => PSEUDO[m.querySelector('.mname')?.textContent.trim()]).map((m) => m.dataset.id));
+    let tagged = { pseudoTotals: {}, leaving: {} }, taggedScheduled = { pseudoTotals: {}, leaving: {} };
+    if (pseudoIds.size) {
+      let since = null;
+      pseudoIds.forEach((id) => {
+        const i = id.lastIndexOf('_'), pname = id.slice(0, i), yr = id.slice(i + 1);
+        const d = yr + '-' + PSEUDO[pname].firstMonth + '-01';
+        if (!since || d < since) since = d;
+      });
+      const posted = await fetchTransactionLines(budgetId, token, groupName, categoryGroupMap, since);
+      tagged = bucketTagged(posted, pseudoIds);
+      taggedScheduled = bucketTagged(scheduledLines, pseudoIds);
+    }
+    const scheduledByMonth = {};
+    for (const l of scheduledLines) { const k = l.date.slice(0, 7); scheduledByMonth[k] = (scheduledByMonth[k] || 0) + l.amount; }
 
     for (const monthEl of monthEls) {
       const name = monthEl.querySelector('.mname')?.textContent.trim();
@@ -10008,7 +10170,10 @@
       if (!mm || !year) continue;
 
       const ynabMonth = `${year}-${mm}-01`;
-      const scheduledMilliunits = scheduledByMonth[`${year}-${mm}`] || 0;
+      const ymKey = `${year}-${mm}`;
+      // (tagged lines belong to Black Friday / Prime Day, so they come back out of this month)
+      const scheduledMilliunits = (scheduledByMonth[ymKey] || 0) - (taggedScheduled.leaving[ymKey] || 0);
+      const postedLeaving = tagged.leaving[ymKey] || 0;
       let cats = [];
       try {
         const data = await ynabFetch(`/budgets/${budgetId}/months/${ynabMonth}`, token);
@@ -10018,7 +10183,7 @@
           // Month not in YNAB yet -- no posted activity, but a scheduled
           // transaction can still land here (e.g. a future month YNAB
           // hasn't auto-created a budget row for) and should still count.
-          spentByMonth[name] = Math.round(Math.abs(scheduledMilliunits)) / 1000;
+          spentByMonth[monthEl.dataset.id] = Math.round(Math.abs(scheduledMilliunits - postedLeaving)) / 1000;
           continue;
         }
         throw e; // re-throw real errors (401, network, etc.)
@@ -10032,8 +10197,12 @@
       // YNAB spending = negative activity; negate to get positive "spent".
       // scheduledMilliunits is likewise negative for an outflow, so it adds
       // the same way activity already does.
-      spentByMonth[name] = Math.round(Math.abs(activityMilliunits + scheduledMilliunits)) / 1000;
+      spentByMonth[monthEl.dataset.id] = Math.round(Math.abs(activityMilliunits + scheduledMilliunits - postedLeaving)) / 1000;
     }
+    // Black Friday / Prime Day: just what carries their tag
+    pseudoIds.forEach((id) => {
+      spentByMonth[id] = Math.round(Math.abs((tagged.pseudoTotals[id] || 0) + (taggedScheduled.pseudoTotals[id] || 0))) / 1000;
+    });
 
     if (window.SupplementBoard?.applyYnabSpent) {
       window.SupplementBoard.applyYnabSpent(spentByMonth);
@@ -10069,23 +10238,68 @@
     if (!t || !t.trim()) return;
     const token = t.trim();
 
-    const g = window.prompt(
-      'Which YNAB category group tracks health spending?\n\n' +
-      'Must match the group name exactly as it appears in YNAB.\n' +
-      '(Open the browser console after saving to see all group names returned by the API.)',
-      getGroupName()
-    );
-    if (g == null) return; // cancelled
     try {
       localStorage.setItem(TOKEN_KEY, token);
       localStorage.removeItem(BUDGET_KEY);
-      if (g.trim()) localStorage.setItem(GROUP_KEY, g.trim());
     } catch {}
     refreshLabels();
     runSync(token);
   }
 
   function refreshLabels() { showWarning(!getToken()); }
+
+  // ── Settings > "Configure YNAB Matching": which category group is "health
+  //    spending", and the memo tags that put a transaction in Black Friday / Prime Day ──
+  let cfgOv = null;
+  function openConfig() {
+    if (!cfgOv) {
+      cfgOv = document.createElement('div');
+      cfgOv.id = 'ynab-cfg-overlay'; cfgOv.className = 'scan-overlay'; cfgOv.style.display = 'none';
+      cfgOv.innerHTML = `
+        <div class="scan-modal shorthand-modal">
+          <div class="scan-modal-head"><span>YNAB Matching</span><button class="scan-close-btn" id="ynab-cfg-close" aria-label="Close">×</button></div>
+          <div class="sh-hint">Spent adds up the category group below. Black Friday and Prime Day count only transactions whose Memo contains their tag, from the three months around them (Nov–Jan and May–Jul), and those leave the ordinary month they were dated in.</div>
+          <div class="snm-fields">
+            <div class="snm-field full"><label for="ynab-cfg-group">Category Group name</label><input id="ynab-cfg-group" type="text" autocomplete="off" placeholder="Health"></div>
+            <div class="snm-field"><label for="ynab-cfg-bf">Black Friday tag</label><input id="ynab-cfg-bf" type="text" autocomplete="off" placeholder="#blackFriday"></div>
+            <div class="snm-field"><label for="ynab-cfg-pd">Prime Day tag</label><input id="ynab-cfg-pd" type="text" autocomplete="off" placeholder="#primeDay"></div>
+          </div>
+          <div class="snm-footer">
+            <button type="button" class="snm-cancel" id="ynab-cfg-cancel">Cancel</button>
+            <button type="button" class="snm-confirm" id="ynab-cfg-save">Save</button>
+          </div>
+        </div>`;
+      document.body.appendChild(cfgOv);
+      const close = () => { cfgOv.style.display = 'none'; };
+      cfgOv.querySelector('#ynab-cfg-close').addEventListener('click', close);
+      cfgOv.querySelector('#ynab-cfg-cancel').addEventListener('click', close);
+      cfgOv.addEventListener('click', (ev) => { if (ev.target === cfgOv) close(); });
+      document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && cfgOv.style.display !== 'none') close(); });
+      const save = () => {
+        const group = cfgOv.querySelector('#ynab-cfg-group').value.trim() || 'Health';
+        const bf = normTag(cfgOv.querySelector('#ynab-cfg-bf').value, PSEUDO['Black Friday'].defTag);
+        const pd = normTag(cfgOv.querySelector('#ynab-cfg-pd').value, PSEUDO['Prime Day'].defTag);
+        try {
+          localStorage.setItem(GROUP_KEY, group);
+          localStorage.setItem(PSEUDO['Black Friday'].tagKey, bf);
+          localStorage.setItem(PSEUDO['Prime Day'].tagKey, pd);
+        } catch {}
+        close();
+        if (getToken()) runSync(); // the new settings apply straight away
+      };
+      cfgOv.querySelector('#ynab-cfg-save').addEventListener('click', save);
+      cfgOv.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target.tagName === 'INPUT') { ev.preventDefault(); save(); } });
+    }
+    cfgOv.querySelector('#ynab-cfg-group').value = getGroupName();
+    cfgOv.querySelector('#ynab-cfg-bf').value = getTag('Black Friday');
+    cfgOv.querySelector('#ynab-cfg-pd').value = getTag('Prime Day');
+    cfgOv.style.display = 'flex';
+    cfgOv.querySelector('#ynab-cfg-group').focus();
+  }
+  document.getElementById('config-ynab')?.addEventListener('click', () => {
+    document.getElementById('settings-panel')?.classList.remove('open');
+    openConfig();
+  });
 
   if (connectBtn) connectBtn.addEventListener('click', promptForToken);
   if (warningBtn) warningBtn.addEventListener('click', promptForToken);
