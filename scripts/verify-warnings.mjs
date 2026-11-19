@@ -476,6 +476,34 @@ try {
   check('…and that is a real board filter (the clear-filters button lights up)', await page.evaluate(() => !document.getElementById('global-search-clear').disabled));
   await page.locator('#global-search-clear').click();
   await page.waitForTimeout(400);
+  // ── header "Attention" button: only the Needs Attention sections, across all months ──
+  {
+    const btn = page.locator('#warn-only-btn');
+    const order = await btn.evaluate((b) => { const a = document.getElementById('inv-autoship-btn'); return { exists: true, afterAutoship: a.nextElementSibling === b, text: b.textContent.trim() }; });
+    check('header: an "Attention" filter button sits right after Autoship', order.exists && order.afterAutoship && order.text === 'Attention', JSON.stringify(order));
+    const before = await page.evaluate(() => document.querySelectorAll('.shipment:not(.search-hide)').length);
+    await btn.click(); await page.waitForTimeout(500);
+    const on = await page.evaluate(() => {
+      const shown = [...document.querySelectorAll('#board > .month')].filter((m) => m.style.display !== 'none' && !m.classList.contains('search-hide'));
+      return {
+        active: document.getElementById('warn-only-btn').classList.contains('active'),
+        clearEnabled: !document.getElementById('global-search-clear').disabled,
+        months: shown.length,
+        ordersShown: shown.reduce((n, m) => n + m.querySelectorAll('.shipment:not(.search-hide), .month-list > .card:not(.search-hide)').length, 0),
+        allHavePanel: shown.every((m) => !!m.querySelector(':scope > .month-list > .month-warn, :scope > .month-list > .month-warn-tail')),
+        rows: shown.reduce((n, m) => n + m.querySelectorAll('.warn-row').length, 0),
+      };
+    });
+    check('Attention filter: on, the × lights up, and only months with a Needs Attention section remain', on.active && on.clearEnabled && on.months > 0 && on.allHavePanel && on.rows > 0, JSON.stringify(on));
+    check('Attention filter: no order or item is shown -- only the Needs Attention rows', on.ordersShown === 0, JSON.stringify(on));
+    await btn.click(); await page.waitForTimeout(500);
+    const off = await page.evaluate(() => ({ active: document.getElementById('warn-only-btn').classList.contains('active'), orders: document.querySelectorAll('.shipment:not(.search-hide)').length }));
+    check('Attention filter: clicking again brings every order back', !off.active && off.orders === before, JSON.stringify({ off, before }));
+    await btn.click(); await page.waitForTimeout(400);
+    await page.locator('#inv-autoship-btn').click(); await page.waitForTimeout(400);
+    check('Attention filter and Autoship are exclusive (picking one clears the other)', await page.evaluate(() => !document.getElementById('warn-only-btn').classList.contains('active') && document.getElementById('inv-autoship-btn').classList.contains('active')));
+    await page.locator('#global-search-clear').click(); await page.waitForTimeout(400);
+  }
   // the "runs out 12/3 · 23d" part is a link to the same Inventory item
   const roLinkEl = rowFor(page, 'Runner').locator('.warn-ro-link[data-act="warn-inv"]');
   check('run-out row: "runs out <date> · #d" is a link', (await roLinkEl.count()) === 1 && /^runs out \d+\/\d+ · \d+d$/.test((await roLinkEl.textContent()).trim()), await roLinkEl.allTextContents());
@@ -1447,6 +1475,47 @@ try {
     check('Prime Day: items ordered there are not flagged as running out in July (or in the first week of July)', !warned.includes('Pd Covered') && !warned.includes('Pd Early Covered'), JSON.stringify(warned));
     check('…while items with no order in either column still are', warned.includes('Bf Control') && warned.includes('Pd Control'), JSON.stringify(warned));
     await fc.close();
+  }
+
+  // ── Preemptive on a Black Friday / Prime Day order: just "pin it to the top of the column, in its own section" ──
+  {
+    const pc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    await pc.clock.setFixedTime(new Date(2026, 10, 12, 12, 0, 0));
+    const pp = await pc.newPage();
+    pp.on('pageerror', (e) => errors.push('pin test: ' + String(e)));
+    const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    const months = [['Nov', 2026], ['Black Friday', 2026], ['Dec', 2026], ['Jan', 2027]];
+    const orders = [['p_a', 'Alpha Co', 1], ['p_b', 'Beta Co', 2], ['p_c', 'Gamma Co', 3]].map(([id, name, pos]) => ({ order_id: id, month: 'Black Friday', year: 2026, merchant: name, position: pos, status: 'Staged', notes: null }));
+    const items = orders.map((o, k) => ({ order_item_id: 'pi' + k, order_id: o.order_id, month: 'Black Friday', year: 2026, block_position: o.position, item_position: 1, supplement: 'Item ' + o.merchant, price_per_bottle: 10, order_qty_bottles: 1, include_in_total: 1 }));
+    const pPatches = [];
+    await pp.route('**/api/orders', (r) => {
+      if (r.request().method() === 'GET') return jf(r, { months: months.map(([m, y], p) => ({ month: m, year: y, position: p + 1, notes: '' })), orders, items });
+      pPatches.push(JSON.parse(r.request().postData() || '{}'));
+      return jf(r, { ok: true, updated_at: 'x', prev_updated_at: 'x' });
+    });
+    await pp.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
+    await pp.route('**/api/board-settings', (r) => jf(r, { pinnedMerchants: [], dismissedWarnings: [] }));
+    await pp.route('**/api/inventory-items', (r) => jf(r, []));
+    await pp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, []));
+    await pp.goto(base, { waitUntil: 'load' });
+    await pp.waitForSelector('.month[data-id="Black Friday_2026"] .shipment', { state: 'attached', timeout: 15000 });
+    await pp.waitForTimeout(1000);
+    const bfShips = () => pp.evaluate(() => [...document.querySelectorAll('.month[data-id="Black Friday_2026"] > .month-list > .shipment')].map((s) => ({ name: s.querySelector('.ship-name').textContent.trim(), on: s.querySelector(':scope > .ship-head > .ship-preempt').classList.contains('is-on') })));
+    const btnShown = await pp.evaluate(() => { const b = document.querySelector('.month[data-id="Black Friday_2026"] .shipment .ship-preempt'); return getComputedStyle(b).display !== 'none'; });
+    check('Black Friday: orders have the Preemptive button again', btnShown);
+    check('Black Friday: nothing is "automatically" preemptive', (await bfShips()).every((s) => !s.on));
+    await pp.evaluate(() => document.querySelector('.shipment[data-id="p_c"] > .ship-head > .ship-preempt').click());
+    await pp.waitForTimeout(700);
+    const seq = await pp.evaluate(() => [...document.querySelectorAll('.month[data-id="Black Friday_2026"] > .month-list > *')].map((n) => n.classList.contains('month-pre-head') ? 'pre-head' : n.classList.contains('month-in-head') ? 'in-head' : n.classList.contains('shipment') ? n.querySelector('.ship-name').textContent.trim() + (n.querySelector(':scope > .ship-head > .ship-preempt.is-on') ? '*' : '') : null).filter(Boolean));
+    check('Black Friday: marking an order Preemptive pins it to the top, in a "Preemptive Orders" section above the rest', JSON.stringify(seq) === JSON.stringify(['pre-head', 'Gamma Co*', 'in-head', 'Alpha Co', 'Beta Co']), JSON.stringify(seq));
+    const mirrors = await pp.evaluate(() => document.querySelectorAll('.month-preempt .pre-host').length);
+    check('Black Friday: a pinned order is NOT previewed in any other month', mirrors === 0, String(mirrors));
+    check('Black Friday: the pin is saved (preemptive = 1)', pPatches.some((p) => ((p.orders || {}).set || []).some((s) => s.key.order_id === 'p_c' && s.cols.preemptive === 1)), JSON.stringify(pPatches.slice(-1)));
+    await pp.evaluate(() => document.querySelector('.shipment[data-id="p_c"] > .ship-head > .ship-preempt').click());
+    await pp.waitForTimeout(700);
+    const seq2 = await pp.evaluate(() => [...document.querySelectorAll('.month[data-id="Black Friday_2026"] > .month-list > .shipment')].map((n) => n.querySelector('.ship-name').textContent.trim() + (n.querySelector(':scope > .ship-head > .ship-preempt.is-on') ? '*' : '')));
+    check('Black Friday: clicking again unpins it (back to the ordinary section)', !seq2.some((s) => s.endsWith('*')) && (await pp.locator('.month[data-id="Black Friday_2026"] .month-pre-head').count()) === 0, JSON.stringify(seq2));
+    await pc.close();
   }
 
   // ── saving writes only what changed; a stale tab can't undo another device ──

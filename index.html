@@ -933,10 +933,10 @@
          the search box is the one flexible item absorbing whatever's left
          before .header-right's own fixed-size Scan/gear. */
       .brand { flex: 1 1 0; order: 1; min-width: 0; }
-      .brand img, .brand #inv-autoship-btn, .brand .global-clear-btn { flex: none; }
+      .brand img, .brand #inv-autoship-btn, .brand #warn-only-btn, .brand .global-clear-btn { flex: none; }
       /* While the search box is focused on a phone, the Autoship button
          steps aside so it gets the whole row (it's squeezed to a stub otherwise) */
-      .brand:has(.global-search-box:focus-within) #inv-autoship-btn { display: none; }
+      .brand:has(.global-search-box:focus-within) #inv-autoship-btn, .brand:has(.global-search-box:focus-within) #warn-only-btn { display: none; }
       .header-right { flex: 0 0 auto; order: 2; }
 
       /* Brought back as its own full-width row under the primary toolbar,
@@ -1114,8 +1114,6 @@
     #tab-board .month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
     #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
     #tab-board .month--pseudo .month-title .mname { white-space: nowrap; } /* "Black Friday" is longer than a month name; keep it on one line */
-    /* "Launch Preemptively" is about placing an order in the previous calendar month -- not a thing for these columns */
-    #tab-board .month--pseudo .ship-preempt { display: none; }
     /* Hidden by default (mobile) -- shown again on desktop, see the
        min-width:681px block below. Either way .msub still carries the year
        text that several places (jump-to-month, month sort/lookup) read via
@@ -2567,6 +2565,7 @@
     <h1>Normal Protocol</h1>
     <button class="inv-search-link" id="inv-search-link" title="Open Inventory"><svg viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true"><path d="m501.75 267.49c-29.352 0-52.895 27.434-52.895 60.457v86.434c-8.2344 3.543-16.188 7.7305-23.379 13.227-16.984 12.977-29.52 33.559-29.52 59.039v97.062c-0.011719 0.39453-0.011719 0.78516 0 1.1797v166.26c-0.027343 0.55078-0.027343 1.1016 0 1.6523v89.031c0 49.977 40.703 90.688 90.676 90.688h226.7c49.973 0 90.676-40.707 90.676-90.688v-89.504c0.015625-0.39062 0.015625-0.78516 0-1.1797v-166.26c0.023438-0.47266 0.023438-0.94531 0-1.418v-96.824c0-25.48-12.531-46.062-29.516-59.039-7.1914-5.4961-15.145-9.6797-23.379-13.227v-86.434c0-33.023-23.543-60.457-52.895-60.457h-196.47zm0 30.23h196.47c6.8203 0 22.668 13.012 22.668 30.23v75.57h-241.8v-75.57c0-17.219 15.852-30.23 22.668-30.23zm-13.695 136.03h223.86c16.887 3.5547 33.18 9.5586 44.156 17.949 11.352 8.6719 17.711 18.566 17.711 34.953v83.129h-347.59v-83.129c0-16.387 6.3594-26.277 17.711-34.953 10.98-8.3906 27.27-14.395 44.156-17.949zm-61.867 166.26h347.59v136.03h-347.59zm0 166.26h347.59v75.57c0 33.754-26.699 60.457-60.453 60.457h-226.7c-33.75 0-60.453-26.703-60.453-60.457v-75.57z"/></svg><span class="inv-search-label">Inventory</span></button>
     <button class="inv-scan-btn" id="inv-autoship-btn" title="Show only items with a saved Autoship link"><svg width="16" height="16" viewBox="0 0 1200 1200" fill="currentColor" aria-hidden="true" style="vertical-align:middle;margin:0px 2px 2px -1px"><path d="m1087.2 506.4c-12-12-31.199-12-43.199 0l-144 146.4c0-16.801 2.3984-31.199 2.3984-45.602 0-225.6-182.4-408-408-408-225.6 0-408 182.4-408 408 0 225.6 182.4 408 408 408 108 0 211.2-43.199 288-120 12-12 12-31.199 0-43.199s-31.199-12-43.199 0c-64.801 64.801-153.6 100.8-244.8 100.8-192 0-348-156-348-348s156-348 348-348 348 156 348 348c0 16.801-2.3984 38.398-2.3984 60l-163.2-160.8c-12-12-31.199-12-43.199 0s-12 31.199 0 43.199l208.8 208.8c2.3984 0 2.3984 2.3984 4.8008 2.3984 2.3984 0 4.8008 2.3984 4.8008 2.3984h4.8008 2.3984 2.3984 4.8008 4.8008c2.3984 0 4.8008-2.3984 4.8008-2.3984 2.3984 0 2.3984-2.3984 4.8008-2.3984h2.3984l204-204c12-14.395 12-33.598 0-45.598z"/></svg> Autoship</button>
+    <button class="inv-scan-btn" id="warn-only-btn" type="button" aria-pressed="false" title="Show only the Needs Attention sections, across all months"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:middle;margin:0 4px 1px -1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Attention</button>
     <div class="global-search-box" data-act="focus-global-search" title="Search every month">
       <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.4"/><line x1="9.2" y1="9.2" x2="12.5" y2="12.5"/></svg>
       <input type="text" id="global-search-input" class="global-search-input" placeholder="Search…" autocomplete="off" />
@@ -3297,6 +3296,9 @@
   // matching everything with a saved Autoship link instead of a text query.
   // Mutually exclusive with it: turning one on clears the other.
   let globalAutoshipOnly = false;
+  // Header "Attention" button: hide every order and item, leaving just each month's
+  // Needs Attention sections (and only the months that have one)
+  let globalAttentionOnly = false;
   // Shipment names pinned via "Pin Merchant" (context menu) -- synced via
   // /api/board-settings (Turso) so a merchant pinned on one device shows up
   // on every other one, not just localStorage on whichever device pinned it.
@@ -4379,7 +4381,13 @@
     try { return fn(); } finally { preemptMemo = null; }
   }
   function isShipPreemptive(shipEl) {
-    if (shipEl.closest('.month--pseudo')) return false; // Black Friday / Prime Day orders are placed in their own column
+    if (shipEl.closest('.month--pseudo')) {
+      // Black Friday / Prime Day orders are placed in their own column, so there is nothing
+      // "automatic" to detect and no previous-month preview: the button is just a manual flag
+      // that pins the order to the top of the column, in its own Preemptive Orders section.
+      const ps = STATE.shipmentData[shipEl.dataset.id];
+      return !!ps && ps.preemptive === true;
+    }
     const s = STATE.shipmentData[shipEl.dataset.id];
     if (s && typeof s.preemptive === 'boolean') return s.preemptive;
     if (!preemptMemo) return shipAutoPreemptive(shipEl);
@@ -4463,9 +4471,11 @@
     const forced = typeof (STATE.shipmentData[shipEl.dataset.id] || {}).preemptive === 'boolean';
     btn.classList.toggle('is-on', on);
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    btn.title = on
-      ? `Placed in the previous month${forced ? '' : ' (automatic: an autoship date in it is before this month)'} — click to turn off`
-      : 'Click if this order will actually be placed in the previous month';
+    btn.title = shipEl.closest('.month--pseudo')
+      ? (on ? 'Pinned to the top of this month — click to unpin' : 'Pin this order to the top of this month')
+      : on
+        ? `Placed in the previous month${forced ? '' : ' (automatic: an autoship date in it is before this month)'} — click to turn off`
+        : 'Click if this order will actually be placed in the previous month';
   }
   function toggleShipPreempt(shipEl) {
     const s = STATE.shipmentData[shipEl.dataset.id];
@@ -4508,7 +4518,7 @@
       // unrelated to which items happen to match the query) would mix an
       // always-present figure into a number that's supposed to represent
       // only the filtered results.
-      const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || !!globalPinnedMerchant;
+      const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || !!globalPinnedMerchant;
       let plannedItems = 0, maxItems = 0, itemCount = 0;
 
       [...list.children].forEach((node) => {
@@ -5064,7 +5074,7 @@
           list.appendChild(h);
         }
       };
-      ensure('month-pre-head', 'Preemptive Orders', 'Tracked in this month, but placed in the previous one', pre.length > 0);
+      ensure('month-pre-head', 'Preemptive Orders', monthEl.classList.contains('month--pseudo') ? 'Orders pinned to the top of this month' : 'Tracked in this month, but placed in the previous one', pre.length > 0);
       ensure('month-in-head', 'In-Month Orders', 'Orders placed during this month', std.length > 0);
       ensure('month-appr-head', 'Approved Orders', 'Every item is an approved autoship -- tucked away until it is placed', appr.length > 0);
       ensure('month-done-head', 'Completed Orders', 'Orders marked Ordered / Entered / Received collect here', done.length > 0);
@@ -5670,7 +5680,7 @@
     const monthEls = [...board.querySelectorAll('.month')];
     const today = SB.today();
     const curStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const filterActive = !!globalSearchQuery.trim() || globalAutoshipOnly || !!globalPinnedMerchant;
+    const filterActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || !!globalPinnedMerchant;
     monthEls.forEach((monthEl, mi) => {
       const list = monthEl.querySelector(':scope > .month-list');
       if (!list) return;
@@ -7841,7 +7851,7 @@
     // While searching, monthSpent drops the unattributable YNAB base but
     // keeps matching "Ordered" shipment totals -- a completed order that
     // matches the search still counts toward Spent.
-    const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || !!globalPinnedMerchant;
+    const searchActive = !!globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || !!globalPinnedMerchant;
     const spent = monthSpent(monthEl, searchActive);
     const spentEl = monthEl.querySelector('.spentv');
     if (spentEl) spentEl.textContent = SB.fmtMoney(spent);
@@ -8413,8 +8423,11 @@
     // same action was redundant. The × still shows for text/Autoship,
     // since those have no other "tap to clear" control of their own.
     // Enabled whenever ANY filter is on: text search, Autoship, or a pinned merchant
-    if (clearBtn) clearBtn.disabled = !(globalSearchQuery || globalAutoshipOnly || globalPinnedMerchant);
+    if (clearBtn) clearBtn.disabled = !(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalPinnedMerchant);
     autoshipBtn?.classList.toggle('active', globalAutoshipOnly);
+    const attnBtn = document.getElementById('warn-only-btn');
+    attnBtn?.classList.toggle('active', globalAttentionOnly);
+    attnBtn?.setAttribute('aria-pressed', globalAttentionOnly ? 'true' : 'false');
     renderPinnedMerchants();
     const firstShown = [...board.querySelectorAll('.month')].find((m) => m.style.display !== 'none' && !m.classList.contains('search-hide'));
     if (toStart === true && firstShown) anchorId = firstShown.dataset.id;
@@ -8440,6 +8453,7 @@
     const isActive = globalPinnedMerchant.toLowerCase() === name.toLowerCase();
     globalPinnedMerchant = isActive ? '' : name;
     globalAutoshipOnly = false;
+    globalAttentionOnly = false;
     // Typed search text and a pinned merchant are one-or-the-other (typing
     // already drops the pin), so picking a chip empties the search box too.
     globalSearchQuery = '';
@@ -8571,7 +8585,7 @@
     // exact name (case-insensitive), matching what was actually pinned.
     const merchantActive = !!globalPinnedMerchant;
     const lpm = globalPinnedMerchant.toLowerCase();
-    const filterActive = globalAutoshipOnly || !!lq || merchantActive;
+    const filterActive = globalAutoshipOnly || globalAttentionOnly || !!lq || merchantActive;
     const list = monthEl.querySelector('.month-list');
     if (!list) return;
     // search-hide on/off, noting what was hidden and is now shown (for the fade-in)
@@ -8582,6 +8596,12 @@
       if (was && freshList) freshList.push(el);
     };
     [...list.children].forEach((node) => {
+      // "Attention" mode: no order, item or divider is shown -- only the (aux) Needs Attention sections stay
+      if (globalAttentionOnly && (node.classList.contains('shipment') || node.classList.contains('card'))) {
+        if (node.classList.contains('shipment')) node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => cardEl.classList.add('search-hide'));
+        setHide(node, true);
+        return;
+      }
       if (node.classList.contains('shipment')) {
         const shipName = (node.querySelector('.ship-name')?.textContent || '').toLowerCase();
         // A pinned merchant is shipment-scoped -- a mismatch hides this
@@ -8645,7 +8665,7 @@
   // touched -- a no-op when no filter is active.
   function reapplySearchTo(monthEl) {
     if (!monthEl) return;
-    if (!globalAutoshipOnly && !globalSearchQuery.trim() && !globalPinnedMerchant) return;
+    if (!globalAutoshipOnly && !globalAttentionOnly && !globalSearchQuery.trim() && !globalPinnedMerchant) return;
     applyMonthSearch(monthEl, globalSearchQuery);
   }
 
@@ -8667,9 +8687,10 @@
     // freeform text search, rather than stacking "pinned merchant AND
     // text" the way it used to -- the pin chip itself stays pinned, just
     // deselected (same as unpinning-by-tap already does).
-    function applyToAllMonths(q, wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalPinnedMerchant)) {
+    function applyToAllMonths(q, wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalPinnedMerchant)) {
       globalSearchQuery = q;
       globalAutoshipOnly = false;
+      globalAttentionOnly = false;
       globalPinnedMerchant = '';
       // Clearing a filter returns to the root of the board (first month)
       refresh(!q.trim() && wasFiltered);
@@ -8683,7 +8704,7 @@
     // an active pinned-merchant selection all reset together (the pinned
     // chips themselves stay pinned, just deselected -- see globalPinnedMerchant).
     clearBtn.addEventListener('click', () => {
-      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalPinnedMerchant);
+      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalPinnedMerchant);
       input.value = '';
       globalPinnedMerchant = '';
       applyToAllMonths('', wasFiltered);
@@ -8694,10 +8715,22 @@
     // Toggles: clicking again while already active turns it back off.
     autoshipBtn?.addEventListener('click', () => {
       globalAutoshipOnly = !globalAutoshipOnly;
+      globalAttentionOnly = false;
       input.value = '';
       globalSearchQuery = '';
       globalPinnedMerchant = '';
       refresh();
+    });
+    // Header "Attention" button -- only the Needs Attention sections, in every month that
+    // has one. Another board-wide filter: toggling it clears the others (and vice versa).
+    document.getElementById('warn-only-btn')?.addEventListener('click', () => {
+      const wasFiltered = !!(globalSearchQuery || globalAutoshipOnly || globalAttentionOnly || globalPinnedMerchant);
+      globalAttentionOnly = !globalAttentionOnly;
+      globalAutoshipOnly = false;
+      globalPinnedMerchant = '';
+      globalSearchQuery = '';
+      input.value = '';
+      refresh(!globalAttentionOnly && wasFiltered); // turning it off returns to the first month, like clearing a search
     });
     // "/" jumps to the search box, same convention as GitHub/Slack/etc --
     // only when nothing else is already capturing keystrokes (typing "/"
