@@ -1738,6 +1738,15 @@ try {
     await sp.locator('#inv-modal-close').click(); await sp.waitForTimeout(500);
     f = await figs();
     check('…and the board follows at once: both items are out of Planned now ($0 / $80), Max unchanged', num(f.shipTot) === 0 && num(f.shipMax) === 80, JSON.stringify(f));
+    // Inventory's Next Order link clears a board filter that would hide the card
+    await sp.evaluate(() => document.getElementById('warn-only-btn').click());
+    await sp.waitForTimeout(300);
+    check('(setup) the Attention filter is on and hides the orders', await sp.evaluate(() => document.getElementById('warn-only-btn').classList.contains('active') && document.querySelector('.card[data-id="sb_f"]').classList.contains('search-hide')));
+    await sp.locator('#inv-search-link').click();
+    await sp.waitForSelector('#inv-modal-ov.open'); await sp.waitForTimeout(500);
+    await sp.locator('#inv-body tr[data-key="bf only item"] .inv-next-order').click();
+    await sp.waitForTimeout(900);
+    check('Inventory > Next Order: clears the board filter (Attention) and shows the card', await sp.evaluate(() => !document.getElementById('warn-only-btn').classList.contains('active') && !document.getElementById('filters-btn').classList.contains('active') && !document.querySelector('.card[data-id="sb_f"]').classList.contains('search-hide') && !document.querySelector('#inv-modal-ov').classList.contains('open')));
     // Add Item: the checkbox right of the Item Name
     await sp.locator('#inv-search-link').click();
     await sp.waitForSelector('#inv-modal-ov.open'); await sp.waitForTimeout(500);

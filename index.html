@@ -10066,6 +10066,17 @@
       // notify other modules (e.g. YNAB) that the board is ready
       document.dispatchEvent(new CustomEvent('boardReady'));
     },
+    // Clears every board-wide filter -- used when something else (Inventory's Next Order link) is about to
+    // take you to a card the filter may be hiding. Returns whether anything was on.
+    clearFilters() {
+      const was = !!(globalSearchQuery.trim() || globalAutoshipOnly || globalAttentionOnly || globalReceiveOnly || globalPinnedMerchant);
+      if (!was) return false;
+      globalSearchQuery = ''; globalAutoshipOnly = false; globalAttentionOnly = false; globalReceiveOnly = false; globalPinnedMerchant = '';
+      const input = document.getElementById('global-search-input');
+      if (input) input.value = '';
+      refreshBoardFilters();
+      return true;
+    },
     reset() {
       localStorage.removeItem(KEY);
       location.reload();
@@ -11425,12 +11436,17 @@
     const cardEl = document.querySelector(`#board .card[data-id="${cardId}"]`);
     if (!cardEl) return;
     document.getElementById('inv-modal-close')?.click();
+    // a board filter (Attention, Receive, Autoship, a search ...) could be hiding the card: clear it first
+    const hadFilter = window.SupplementBoard?.clearFilters?.();
     holdMonthRendered(cardEl.closest('.month'));
-    cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    cardEl.classList.remove('inv-highlight');
-    void cardEl.offsetWidth; // restart the animation if it's already mid-pulse
-    cardEl.classList.add('inv-highlight');
-    setTimeout(() => cardEl.classList.remove('inv-highlight'), 1600);
+    const go = () => {
+      cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      cardEl.classList.remove('inv-highlight');
+      void cardEl.offsetWidth; // restart the animation if it's already mid-pulse
+      cardEl.classList.add('inv-highlight');
+      setTimeout(() => cardEl.classList.remove('inv-highlight'), 1600);
+    };
+    if (hadFilter) requestAnimationFrame(() => requestAnimationFrame(go)); else go(); // (let the un-filtered board lay out first)
   }
 
   function barsHtml(fullCount, partialFraction) {
