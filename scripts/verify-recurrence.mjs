@@ -437,9 +437,19 @@ try {
     check('…and is saved as a month', serverBoard.months.some((m) => m.month === 'Black Friday' && m.year === Y + 1), JSON.stringify(serverBoard.months.filter((m) => m.month === 'Black Friday')));
     await ctx.close();
   }
+  {
+    // a long interval typed into "ev N mo" is kept (it used to be cut to 12)
+    serverBoard = FIXTURE(); patches.length = 0;
+    const { ctx, page } = await openBoard();
+    await setEv(page, 'oi_root', 18);
+    const shown = await page.locator('.card[data-id="oi_root"] .recur-ctl-n').inputValue();
+    check('"ev 18 mo" stays 18 (not clamped to 12), on the card and in the saved row', shown === '18' && dbItems().some((i) => i.order_item_id === 'oi_root' && Number(i.recur) === 18), JSON.stringify({ shown, saved: dbItems().map((i) => i.recur) }));
+    await ctx.close();
+  }
   // other intervals from a pseudo-month: 12 (Black Friday -> Black Friday), 3 / 4 (hit Prime Day / Black Friday only when the timing lines up)
   for (const [N, expectFn] of [
     [12, (Y) => ['Black Friday_' + Y, 'Black Friday_' + (Y + 1), 'Black Friday_' + (Y + 2)]],
+    [18, (Y) => ['Black Friday_' + Y, 'Prime Day_' + (Y + 2)]], // Dec Y + 18 months = Jun Y+2 -> Prime Day, never Black Friday Y+1
     [4, (Y) => ['Black Friday_' + Y, 'Apr_' + (Y + 1), 'Aug_' + (Y + 1), 'Black Friday_' + (Y + 1), 'Apr_' + (Y + 2), 'Aug_' + (Y + 2), 'Black Friday_' + (Y + 2)]],
     [3, (Y) => ['Black Friday_' + Y, 'Mar_' + (Y + 1), 'Prime Day_' + (Y + 1), 'Sep_' + (Y + 1), 'Black Friday_' + (Y + 1), 'Mar_' + (Y + 2), 'Prime Day_' + (Y + 2), 'Sep_' + (Y + 2), 'Black Friday_' + (Y + 2)]],
   ]) {
@@ -457,6 +467,8 @@ try {
     await settle(page);
     const ids = await page.evaluate(() => [...document.querySelectorAll('#board > .month')].filter((m) => [...m.querySelectorAll('.card[data-id] .card-name')].some((n) => n.textContent.trim() === 'BFRoot')).map((m) => m.dataset.id));
     check('from Black Friday every ' + N + ' months: ' + expectFn(Y).join(' > '), JSON.stringify(ids) === JSON.stringify(expectFn(Y)), JSON.stringify(ids));
+    const evs = await page.evaluate(() => [...document.querySelectorAll('.card[data-id]')].filter((c) => c.querySelector('.card-name').textContent.trim() === 'BFRoot').map((c) => c.querySelector('.recur-ctl-n').value));
+    check('…every copy reads "ev ' + N + ' mo"', evs.length > 0 && evs.every((v) => v === String(N)), JSON.stringify(evs));
     await ctx.close();
   }
 } catch (e) {
