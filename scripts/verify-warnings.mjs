@@ -1354,6 +1354,38 @@ try {
     await yc.close();
   }
 
+  // ── Black Friday orders cover December run-outs, Prime Day orders cover July's (clock fixed at Nov 12, 2026) ──
+  {
+    const fixed = new Date(2026, 10, 12, 12, 0, 0);
+    const day0 = new Date(2026, 10, 12);
+    const dTo = (y, m, d) => Math.round((new Date(y, m, d) - day0) / 86400000);
+    const fc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    await fc.clock.setFixedTime(fixed);
+    const fp = await fc.newPage();
+    fp.on('pageerror', (e) => errors.push('BF/PD test: ' + String(e)));
+    const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    const mk = (id, month, year, name, pos) => ({ order_item_id: id, order_id: null, month, year, block_position: pos, item_position: 1, supplement: name, price_per_bottle: 10, order_qty_bottles: 1, include_in_total: 1 });
+    const names = [['Bf Covered', 2026, 11, 20], ['Bf Early Covered', 2026, 11, 3], ['Bf Control', 2026, 11, 21], ['Pd Covered', 2027, 6, 20], ['Pd Control', 2027, 6, 21], ['Pd Early Covered', 2027, 6, 3]];
+    // huge bottles, so the order's own bottle pushes the NEXT run-out far past the board (it would otherwise be flagged in a later month, correctly)
+    const invItems = names.map(([n], k) => ({ id: 50 + k, name: n, bottle_size: 20000, daily_dose: 1 }));
+    const invLog = names.map(([n, y, m, d], k) => ({ id: 80 + k, item: n, type: 'Reset', amount: dTo(y, m, d), logged_on: '2026-11-12', order_id: null }));
+    const months = [['Nov', 2026], ['Black Friday', 2026], ['Dec', 2026], ['Jan', 2027], ['Feb', 2027], ['Mar', 2027], ['Apr', 2027], ['May', 2027], ['Jun', 2027], ['Prime Day', 2027], ['Jul', 2027], ['Aug', 2027]];
+    const items = [mk('c1', 'Black Friday', 2026, 'Bf Covered', 1), mk('c2', 'Black Friday', 2026, 'Bf Early Covered', 2), mk('c3', 'Prime Day', 2027, 'Pd Covered', 1), mk('c4', 'Prime Day', 2027, 'Pd Early Covered', 2)];
+    await fp.route('**/api/orders', (r) => jf(r, r.request().method() === 'GET' ? { months: months.map(([m, y], p) => ({ month: m, year: y, position: p + 1, notes: '' })), orders: [], items } : { ok: true, updated_at: 'x', prev_updated_at: 'x' }));
+    await fp.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
+    await fp.route('**/api/board-settings', (r) => jf(r, { pinnedMerchants: [], dismissedWarnings: [] }));
+    await fp.route('**/api/inventory-items', (r) => jf(r, invItems));
+    await fp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, r.request().method() === 'GET' ? invLog : { ok: true }));
+    await fp.goto(base, { waitUntil: 'load' });
+    await fp.waitForSelector('.month[data-id="Prime Day_2027"]', { state: 'attached', timeout: 15000 });
+    await fp.waitForTimeout(1500);
+    const warned = await fp.evaluate(() => [...document.querySelectorAll('.month-warn .warn-name')].map((e) => e.textContent.trim()));
+    check('Black Friday: items ordered there are not flagged as running out in December (or in the first week of December)', !warned.includes('Bf Covered') && !warned.includes('Bf Early Covered'), JSON.stringify(warned));
+    check('Prime Day: items ordered there are not flagged as running out in July (or in the first week of July)', !warned.includes('Pd Covered') && !warned.includes('Pd Early Covered'), JSON.stringify(warned));
+    check('…while items with no order in either column still are', warned.includes('Bf Control') && warned.includes('Pd Control'), JSON.stringify(warned));
+    await fc.close();
+  }
+
   // ── saving writes only what changed; a stale tab can't undo another device ──
   {
     const wc = await browser.newContext({ viewport: { width: 1400, height: 900 } });

@@ -1113,8 +1113,7 @@
     .month-sentinel { height: 0; }
     #tab-board .month-title { display: flex; align-items: baseline; gap: 7px; flex: none; }
     #tab-board .month-title .mname { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
-    /* Black Friday / Prime Day: the name in the accent colour so they read as extras between the real months */
-    #tab-board .month--pseudo .month-title .mname { color: var(--accent-deep); white-space: nowrap; }
+    #tab-board .month--pseudo .month-title .mname { white-space: nowrap; } /* "Black Friday" is longer than a month name; keep it on one line */
     /* "Launch Preemptively" is about placing an order in the previous calendar month -- not a thing for these columns */
     #tab-board .month--pseudo .ship-preempt { display: none; }
     /* Hidden by default (mobile) -- shown again on desktop, see the
@@ -3570,9 +3569,11 @@
   // recurTargetIndex. They have no Needs Attention panel and no preemptive
   // previews (they are not months of the calendar), and their Spent comes from
   // YNAB transactions tagged in the memo rather than from a calendar month.
+  // `covers`: the real month whose run-outs its orders cover in Needs Attention
+  // (Black Friday orders count as December's, Prime Day's as July's).
   const PSEUDO_MONTHS = {
-    'Black Friday': { after: 10, timing: 11 },
-    'Prime Day':    { after: 5,  timing: 5 },
+    'Black Friday': { after: 10, timing: 11, covers: 11 },
+    'Prime Day':    { after: 5,  timing: 5,  covers: 6 },
   };
   const isPseudoName = (name) => Object.prototype.hasOwnProperty.call(PSEUDO_MONTHS, name);
   // Where a month sits on the board's timeline: year*12+month, a pseudo-month half a step after its anchor.
@@ -4617,6 +4618,19 @@
     return null;
   }
 
+  // The Black Friday / Prime Day columns whose orders count as this real month's
+  // for run-out coverage (Black Friday 2026 -> Dec 2026, Prime Day 2027 -> Jul 2027).
+  function coveringPseudoEls(monthEls, realEl) {
+    if (!realEl || realEl.classList.contains('month--pseudo')) return [];
+    const idx = MONTH_NAMES.indexOf(realEl.querySelector('.mname')?.textContent.trim());
+    const year = parseInt(realEl.querySelector('.msub')?.textContent.trim(), 10);
+    return monthEls.filter((el) => {
+      if (!el.classList.contains('month--pseudo')) return false;
+      const pn = el.querySelector('.mname')?.textContent.trim();
+      return isPseudoName(pn) && PSEUDO_MONTHS[pn].covers === idx && parseInt(el.querySelector('.msub')?.textContent.trim(), 10) === year;
+    });
+  }
+
   function warnMonthWindows(monthEls) {
     const today = SB.today();
     const curStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
@@ -4732,16 +4746,22 @@
       wins.forEach((w, mi) => {
         if (!w) return;
         const ordered = new Set();
-        monthEls[mi].querySelectorAll('.card[data-id]').forEach((cardEl) => {
+        // an order in this month, or in the Black Friday / Prime Day column that counts as it
+        [monthEls[mi], ...coveringPseudoEls(monthEls, monthEls[mi])].forEach((mEl) => mEl.querySelectorAll('.card[data-id]').forEach((cardEl) => {
           const c = STATE.cardData[cardEl.dataset.id];
           if (c && c.name !== '__divider__' && Number(c.qty) > 0) ordered.add(String(c.name).trim().toLowerCase());
-        });
+        }));
         // A next-month order flagged Launch Preemptively is still next month's
         // order: it covers a run-out that lands in ITS month (12/3 -- the first
         // week of next month still sits in this window), but nothing earlier
         // (11/22): an item running out before the preemptive order's month still
         // shows up until it's really ordered.
         const preOrdered = new Set();
+        // (next month's Black Friday / Prime Day orders are placed ahead of it the same way)
+        coveringPseudoEls(monthEls, nextRealMonthEl(monthEls, mi)).forEach((pEl) => pEl.querySelectorAll('.card[data-id]').forEach((cardEl) => {
+          const c = STATE.cardData[cardEl.dataset.id];
+          if (c && c.name !== '__divider__' && Number(c.qty) > 0) preOrdered.add(String(c.name).trim().toLowerCase());
+        }));
         nextRealMonthEl(monthEls, mi)?.querySelectorAll(':scope > .month-list > .shipment').forEach((shipEl) => {
           if (!isShipPreemptive(shipEl)) return;
           shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]').forEach((cardEl) => {
