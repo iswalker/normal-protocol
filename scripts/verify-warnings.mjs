@@ -469,12 +469,13 @@ try {
   await page.locator('#inv-autoship-btn').click();
 
   const m1Panel = await page.locator(`.month[data-id="${M1.month}_${M1.year}"] .month-warn .warn-name`).allTextContents();
-  // ── links: name -> Inventory, order month -> the order ──
+  // ── links: name -> filters the board, run-out text -> Inventory, order month -> the order ──
   await rowFor(page, 'Runner').locator('.warn-name').click();
-  await page.waitForTimeout(300);
-  check('item name opens Inventory filtered to that item', (await page.locator('#inv-filter-item').inputValue()) === 'Runner' && await page.locator('#tab-inventory').isVisible());
-  await page.locator('#inv-modal-close').click();
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(400);
+  check('item name filters the board to that item (the header search box), without opening Inventory', (await page.locator('#global-search-input').inputValue()) === 'Runner' && !(await page.locator('#inv-modal-ov').evaluate((e) => e.classList.contains('open'))));
+  check('…and that is a real board filter (the clear-filters button lights up)', await page.evaluate(() => !document.getElementById('global-search-clear').disabled));
+  await page.locator('#global-search-clear').click();
+  await page.waitForTimeout(400);
   // the "runs out 12/3 · 23d" part is a link to the same Inventory item
   const roLinkEl = rowFor(page, 'Runner').locator('.warn-ro-link[data-act="warn-inv"]');
   check('run-out row: "runs out <date> · #d" is a link', (await roLinkEl.count()) === 1 && /^runs out \d+\/\d+ · \d+d$/.test((await roLinkEl.textContent()).trim()), await roLinkEl.allTextContents());
@@ -1227,8 +1228,8 @@ try {
   check('(setup) No Order and Soon are both on', await page.evaluate(() => ['inv-noorder-btn', 'inv-soon-btn'].every((id) => document.getElementById(id).classList.contains('active'))));
   await page.locator('#inv-modal-close').click();
   await page.waitForTimeout(500);
-  const openedName = (await page.locator('.month-warn .warn-name[data-act="warn-inv"]').first().textContent()).trim();
-  await page.locator('.month-warn .warn-name[data-act="warn-inv"]').first().click();
+  const openedName = (await page.locator('.month-warn .warn-ro-link[data-act="warn-inv"]').first().getAttribute('data-wname')).trim();
+  await page.locator('.month-warn .warn-ro-link[data-act="warn-inv"]').first().click();
   await page.waitForSelector('#inv-modal-ov.open'); await page.waitForTimeout(500);
   check('opening an item from the board clears the No Order / Soon filters left on earlier', await page.evaluate(() => ['inv-noorder-btn', 'inv-soon-btn'].every((id) => !document.getElementById(id).classList.contains('active'))));
   check('…so the item you clicked is actually listed', await page.evaluate((n) => [...document.querySelectorAll('#inv-body tr[data-key]')].some((tr) => tr.dataset.key === n.toLowerCase() && tr.style.display !== 'none'), openedName));

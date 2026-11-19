@@ -4796,9 +4796,10 @@
     const pending = p.autoship.length + p.runout.length;
     const rows = [], tailRows = [];
     const monthLink = (label, target) => `<span class="warn-month" data-act="warn-goto" data-wtargets="${escAttr(targetsAttr([target]))}" title="Jump to the order">${esc(label)}</span>`;
-    // An item linked to Inventory always opens Inventory; anything else is plain text
+    // An item's NAME filters the board to it (like clicking the name on a card); the run-out
+    // text opens it in Inventory; anything else is plain text
     const nameHTML = (name, isItem) => (isItem && INV_MAP[name.trim().toLowerCase()]
-      ? `<span class="warn-name" data-act="warn-inv" data-wname="${escAttr(name)}" title="Open in Inventory">${esc(name)}</span>`
+      ? `<span class="warn-name" data-act="warn-search" data-wname="${escAttr(name)}" title="Search the board for this item">${esc(name)}</span>`
       : `<span class="warn-name">${esc(name)}</span>`);
     p.autoship.forEach((r) => {
       const overdue = r.date < today;
@@ -8125,6 +8126,16 @@
     }
     if (a === 'toggle-preempt') { toggleShipPreempt(act.closest('.shipment')); return; }
     if (a === 'warn-inv') { openInventoryFor(act.dataset.wname); return; }
+    if (a === 'warn-search') {
+      // the name in a Needs Attention row: filter the whole board to the item, exactly as if
+      // it had been typed into the header Search box
+      const input = document.getElementById('global-search-input');
+      const name = String(act.dataset.wname || '').trim();
+      if (!name || !input) return;
+      input.value = name;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
     if (a === 'warn-approve') { setAutoshipApprovedMany(parseTargets(act.dataset.wtargets), true); return; }
     if (a === 'warn-ignore') { postWarningAction('dismiss', act.dataset.wkey); return; }
     if (a === 'warn-ign') {
