@@ -1987,6 +1987,9 @@
     @media (hover: hover) { #tab-board .ship-stage-select:hover {
       border-color: var(--accent); color: var(--accent-deep); background: #fff;
     } }
+    /* the link beside the Status: this order was moved to Entered by a matching YNAB transaction (hover for it) */
+    #tab-board .ship-ynab { flex: none; display: inline-flex; align-items: center; color: var(--accent-deep); cursor: help; margin-left: -2px; }
+    #tab-board .ship-ynab svg { width: 14px; height: 14px; display: block; }
     #tab-board .ship-stage-select::after {
       content: '▾'; font-size: 17px; color: var(--ink-3); margin: 0px -3px -2px -4px;
     }
@@ -2032,11 +2035,16 @@
        (not the full item detail); clicking the list opens the order, like the count pill does,
        and opening it hides the list */
     #tab-board .ship-names { display: none; }
-    #tab-board .shipment.is-locked.is-collapsed > .ship-names:not(:empty) {
-      display: block; padding: 0 14px 8px 14px; margin-top: -2px;
-      font-size: 12px; line-height: 1.4; color: var(--ink-3); cursor: pointer;
+    /* In the header, to the right of the Status: as much room as there is before the $ total (the
+       exact limit is measured in updateShipNames; 300px until then), cut off with an ellipsis */
+    #tab-board .shipment.is-locked.is-collapsed > .ship-head > .ship-names:not(:empty) {
+      display: block; flex: 0 1 auto; min-width: 0; max-width: 300px; margin-left: 8px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 12px; color: var(--ink-3); cursor: pointer;
     }
-    @media (hover: hover) { #tab-board .shipment.is-locked.is-collapsed > .ship-names:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; } }
+    @media (hover: hover) { #tab-board .shipment.is-locked.is-collapsed > .ship-head > .ship-names:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; } }
+    /* A completed order's Preemptive flag stays stored (it comes back if the status is cleared) but isn't shown */
+    #tab-board .shipment.is-locked > .ship-head > .ship-preempt { display: none; }
     /* "Approved" (every item an approved autoship): tucked away like a completed
        order -- header row only until the count pill is clicked -- but NOT
        locked, so nothing else about the order changes. */
@@ -2256,6 +2264,9 @@
       #tab-board .ship-head .ship-total { order: 2; margin-right: 0; }
       #tab-board .ship-add { order: 3; }
       #tab-board .ship-stage-select { order: 4; }
+      #tab-board .ship-ynab { order: 4; }
+      /* phones: the item names take a row of their own under the header's controls */
+      #tab-board .shipment.is-locked.is-collapsed > .ship-head > .ship-names:not(:empty) { order: 7; flex: 1 1 100%; max-width: none !important; margin-left: 0; }
       #tab-board .ship-autoship-date { order: 4; }
       #tab-board .ship-preempt { order: 4; }
       #tab-board .ship-head .notes-toggle {
@@ -3510,6 +3521,9 @@
         autoshipApproved: o.autoship_approved || '',
         // null = automatic (see isShipPreemptive); true/false = forced by the user
         preemptive: o.preemptive == null ? null : !!Number(o.preemptive),
+        // the YNAB transaction that advanced this order to Entered ('n/a' = stepped back by hand, never re-match)
+        ynabTxnId: o.ynab_txn_id || '',
+        ynabTxn: (() => { try { return o.ynab_txn ? JSON.parse(o.ynab_txn) : null; } catch { return null; } })(),
         ...(stage ? { stage } : {}),
       };
     });
@@ -3829,7 +3843,9 @@
         <button class="add-btn ship-add" data-act="add-card-ship">${ICON.plus} Item</button>
         <div class="ship-stage">${stageBtns}</div>
         <button class="ship-stage-select" data-act="open-stage-menu" aria-label="Status" aria-haspopup="true">${stageLabel}</button>
+        <span class="ship-ynab" style="display:none" role="img" aria-label="Matched to a YNAB transaction"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.7-1.7"/></svg></span>
         <span class="ship-autoship-date" data-act="open-autoship-link" style="display:none"></span>
+        <span class="ship-names" data-act="toggle-ship-collapse" title="Show the items"></span>
         <button class="notes-toggle" data-act="toggle-notes" title="Notes" aria-label="Toggle notes">${ICON.notes}</button>
         <span class="ship-min-date"></span>
         <button type="button" class="ship-preempt" data-act="toggle-preempt" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 3.5 4 8l4.5 4.5M13 3.5 8.5 8l4.5 4.5"/></svg>Preemptive</button>
@@ -3838,7 +3854,6 @@
         <span class="ship-notes" contenteditable="true" spellcheck="false" data-field="notes" placeholder="notes...">${esc(s.notes || '')}</span>
         <button type="button" class="ship-grip block-grip" data-act="open-ship-menu" title="Drag to reorder, or open menu" aria-label="Shipment menu">${ICON.menu}</button>
       </div>
-      <div class="ship-names" data-act="toggle-ship-collapse" title="Show the items"></div>
       <div class="ship-body" data-list="shipment">${cards}</div>
     </div>`;
   }
@@ -3883,6 +3898,7 @@
   }
 
   const STAGE_PRI = { ordered: 0, entered: 1, received: 2 };
+  let ynabAutoFlip = false; // true only while the YNAB matcher is pressing "Entered" itself
 
   // Places a shipment into a target month at the position render()'s own
   // layout would give it, instead of always prepending to the very top
@@ -4478,14 +4494,40 @@
       return !!(root.autoshipLink || root.autoshipNextDate);
     });
   }
+  // The link icon beside the Status: shown while a YNAB transaction is on record for this order.
+  function updateShipYnab(shipEl) {
+    const badge = shipEl.querySelector(':scope > .ship-head > .ship-ynab');
+    if (!badge) return;
+    const s = STATE.shipmentData[shipEl.dataset.id] || {};
+    const on = !!s.ynabTxnId && s.ynabTxnId !== 'n/a' && !!s.ynabTxn;
+    badge.style.display = on ? '' : 'none';
+    if (!on) { badge.removeAttribute('title'); return; }
+    const t = s.ynabTxn;
+    const amt = Number(t.amount);
+    const title = ['Moved to Entered by a matching YNAB transaction',
+      [t.date, t.payee].filter(Boolean).join(' · '),
+      isFinite(amt) ? SB.fmtMoney(amt) : '',
+      t.memo ? 'Memo: ' + t.memo : ''].filter(Boolean).join('\n');
+    if (badge.title !== title) badge.title = title;
+  }
   // The comma-separated item names a collapsed completed order shows under its header.
   function updateShipNames(shipEl) {
-    const box = shipEl.querySelector(':scope > .ship-names');
+    const box = shipEl.querySelector(':scope > .ship-head > .ship-names');
     if (!box) return;
     const text = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
       .map((el) => String((STATE.cardData[el.dataset.id] || {}).name || '').trim())
       .filter((n) => n && n !== '__divider__').join(', ');
     if (box.textContent !== text) box.textContent = text;
+    // Desktop: cap the list where the $ total starts (it ellipsizes there). Only while it is
+    // showing (a hidden box measures as 0), and only when something it depends on changed.
+    if (!box.offsetParent || window.matchMedia('(max-width: 680px)').matches) return;
+    const head = shipEl.querySelector(':scope > .ship-head');
+    const amt = head && head.querySelector('.ship-total .amt');
+    if (!amt) return;
+    const sig = [text, amt.textContent, head.querySelector('.ship-total .ship-max')?.textContent, head.querySelector('.ship-stage-select')?.textContent, head.querySelector('.ship-ynab')?.style.display].join('|');
+    if (box._fitSig === sig) return;
+    box._fitSig = sig;
+    box.style.maxWidth = Math.max(0, amt.getBoundingClientRect().left - box.getBoundingClientRect().left - 12) + 'px';
   }
   function updateShipPreempt(shipEl) {
     const btn = shipEl.querySelector(':scope > .ship-head > .ship-preempt');
@@ -4576,6 +4618,7 @@
           node._planned = sTot; node._max = sMax; // read by the section headers' totals (renderSectionTotals)
           node.querySelector('.scount').textContent = sCount;
           updateShipNames(node);
+          updateShipYnab(node);
           const md = node.querySelector('.ship-min-date');
           if (md) md.textContent = minRunOut ? SB.fmtDateShort(minRunOut) : '';
           updateShipAutoship(node);
@@ -7092,6 +7135,8 @@
             autoship_next_date: domAutoshipNext !== null ? (domAutoshipNext || null) : (s.autoshipNextDate || null),
             autoship_approved: s.autoshipApproved || null,
             preemptive: typeof s.preemptive === 'boolean' ? (s.preemptive ? 1 : 0) : null,
+            ynab_txn_id: s.ynabTxnId || null,
+            ynab_txn: s.ynabTxn ? JSON.stringify(s.ynabTxn) : null,
           });
           [...n.querySelectorAll(':scope .ship-body > .card')].forEach((cardEl, ci) => {
             pushItem(items, cardEl.dataset.id, oid, month, year, blockPos, ci + 1, cardEl);
@@ -7117,7 +7162,7 @@
     months: { key: ['month', 'year'], cols: { position: 'i', notes: 't' }, id: (r) => r.month + '|' + (r.year == null ? '' : r.year) },
     orders: {
       key: ['order_id'], id: (r) => r.order_id,
-      cols: { month: 't', year: 'i', merchant: 't', position: 'i', status: 't', notes: 't', autoship_link: 't', autoship_next_date: 't', autoship_approved: 't', preemptive: 'i' },
+      cols: { month: 't', year: 'i', merchant: 't', position: 'i', status: 't', notes: 't', autoship_link: 't', autoship_next_date: 't', autoship_approved: 't', preemptive: 'i', ynab_txn_id: 't', ynab_txn: 't' },
     },
     items: {
       key: ['order_item_id'], id: (r) => r.order_item_id,
@@ -7935,6 +7980,12 @@
       // this resolves. Kept as a function so the "Received" gate below can defer
       // it behind a confirmation instead of skipping straight to it.
       function commitStageChange() {
+        // Stepped BACK by hand from Entered / Received to Ordered (or cleared): any YNAB match on
+        // record is dropped, and 'n/a' stays in its place so the matching never tries this order again.
+        if (!ynabAutoFlip && (STAGE_PRI[oldStage] ?? -1) >= 1 && (newStage == null || newStage === 'ordered')) {
+          sd.ynabTxnId = 'n/a';
+          delete sd.ynabTxn;
+        }
         if (newStage == null) delete sd.stage; else sd.stage = newStage;
         // An order placed (Ordered/Entered) while sitting in a FUTURE month was
         // necessarily placed early, so it is flagged Launch Preemptively -- even
@@ -8079,6 +8130,7 @@
       const shipEl = act.closest('.shipment');
       if (!shipEl || !(shipEl.classList.contains('is-locked') || shipEl.classList.contains('is-approved'))) return;
       shipEl.classList.toggle('is-collapsed');
+      updateShipNames(shipEl); // (re-fit the name list now that it may be showing)
       return;
     }
     if (a === 'open-ship-menu') {
@@ -9991,6 +10043,53 @@
       localStorage.removeItem(KEY);
       location.reload();
     },
+    // YNAB matching: advance "Approved" / "Ordered" orders to "Entered" when a recent transaction
+    // in the Health category group matches them. txns: [{ id, date 'YYYY-MM-DD', payee, memo,
+    // outflow }] (outflow = dollars spent, positive). Returns how many orders moved.
+    //  - payee = the order's name, dated within 10 days of today, outflow within $2 of the
+    //    order's MAX figure;
+    //  - one transaction -> one order, orders taken in board order (earliest month first), so a
+    //    $100 order "Ordered" in November gets a $100 transaction before a $100 "Approved" one
+    //    in December does;
+    //  - the transaction id is stored on the order, so it is never used again; an order whose
+    //    id is 'n/a' (the user stepped it back by hand) is skipped.
+    applyYnabMatches(txns) {
+      if (!board || !Array.isArray(txns)) return 0;
+      const today = SB.today();
+      const used = new Set(Object.values(STATE.shipmentData).map((s) => s && s.ynabTxnId).filter((v) => v && v !== 'n/a'));
+      const DAYMS = 86400000;
+      const free = txns.filter((t) => t && t.id && !used.has(t.id) && t.payee && isFinite(t.outflow) && t.outflow > 0
+        && Math.abs((SB.parseDate(t.date) - today) / DAYMS) <= 10);
+      let moved = 0;
+      withPreemptMemo(() => [...board.querySelectorAll('#board > .month > .month-list > .shipment')].forEach((shipEl) => {
+        if (!free.length) return;
+        const id = shipEl.dataset.id;
+        const s = STATE.shipmentData[id];
+        if (!s || s.ynabTxnId) return; // already matched, or n/a
+        const eligible = s.stage === 'ordered' || (!s.stage && shipEl.classList.contains('is-approved'));
+        const max = Number(shipEl._max);
+        const name = String(s.name || '').trim().toLowerCase();
+        if (!eligible || !name || !(max > 0)) return;
+        let best = null;
+        free.forEach((t, i) => {
+          if (String(t.payee).trim().toLowerCase() !== name) return;
+          const diff = Math.abs(t.outflow - max);
+          if (diff > 2 + 1e-9) return;
+          if (!best || diff < best.diff - 1e-9 || (Math.abs(diff - best.diff) <= 1e-9 && t.date < free[best.i].date)) best = { i, diff };
+        });
+        if (!best) return;
+        const t = free.splice(best.i, 1)[0];
+        s.ynabTxnId = t.id;
+        s.ynabTxn = { id: t.id, date: t.date, payee: t.payee, memo: t.memo || '', amount: t.outflow };
+        const btn = shipEl.querySelector('.stage-btn[data-stage="entered"]');
+        if (!btn) return;
+        ynabAutoFlip = true;
+        try { btn.click(); } finally { ynabAutoFlip = false; } // the same path as clicking Entered by hand (lock, sort, inventory, save)
+        moved++;
+      }));
+      if (moved) { recalcAll(); persist(); }
+      return moved;
+    },
     // apply YNAB-derived "Spent" values per month name (e.g. { Jun: 480.50 })
     // Display-only: SPENT_BY_MONTH/.spentv are never part of toApi()'s payload
     // (YNAB is re-fetched live on every load, not stored in Turso), so there
@@ -10270,11 +10369,25 @@
         : [tx];
       for (const line of lines) {
         if (categoryGroupMap[line.category_id] !== groupName) continue;
-        out.push({ date: tx.date, amount: line.amount || 0, memo: [line.memo, tx.memo].filter(Boolean).join(' ') });
+        out.push({ date: tx.date, amount: line.amount || 0, memo: [line.memo, tx.memo].filter(Boolean).join(' '), txId: tx.id, payee: tx.payee_name || '', txMemo: tx.memo || '' });
       }
     }
     return out;
   }
+
+  // The posted lines as whole transactions for the board's order matching: the group's total per
+  // transaction id, as an outflow in dollars. Inflows (refunds) are left out.
+  function transactionsForMatching(lines) {
+    const byTx = new Map();
+    for (const l of lines) {
+      if (!l.txId) continue;
+      const r = byTx.get(l.txId) || { id: l.txId, date: l.date, payee: l.payee, memo: l.txMemo, milli: 0 };
+      r.milli += l.amount;
+      byTx.set(l.txId, r);
+    }
+    return [...byTx.values()].filter((r) => r.milli < 0).map((r) => ({ id: r.id, date: r.date, payee: r.payee, memo: r.memo, outflow: Math.round(-r.milli) / 1000 }));
+  }
+  const isoDaysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
   // Sorts tagged lines into Black Friday / Prime Day. Returns
   //   pseudoTotals: { 'Black Friday_2026': milliunits, ... } (only for columns on the board)
@@ -10320,14 +10433,16 @@
     // Black Friday / Prime Day columns on the board -> the tagged transactions that belong to them
     const pseudoIds = new Set(monthEls.filter((m) => PSEUDO[m.querySelector('.mname')?.textContent.trim()]).map((m) => m.dataset.id));
     let tagged = { pseudoTotals: {}, leaving: {} }, taggedScheduled = { pseudoTotals: {}, leaving: {} };
+    // Posted transactions: the last 10 days always (for matching orders to what was paid), reaching back
+    // to the first Black Friday / Prime Day window when the board has those columns.
+    let since = isoDaysAgo(10);
+    pseudoIds.forEach((id) => {
+      const i = id.lastIndexOf('_'), pname = id.slice(0, i), yr = id.slice(i + 1);
+      const d = yr + '-' + PSEUDO[pname].firstMonth + '-01';
+      if (d < since) since = d;
+    });
+    const posted = await fetchTransactionLines(budgetId, token, groupName, categoryGroupMap, since);
     if (pseudoIds.size) {
-      let since = null;
-      pseudoIds.forEach((id) => {
-        const i = id.lastIndexOf('_'), pname = id.slice(0, i), yr = id.slice(i + 1);
-        const d = yr + '-' + PSEUDO[pname].firstMonth + '-01';
-        if (!since || d < since) since = d;
-      });
-      const posted = await fetchTransactionLines(budgetId, token, groupName, categoryGroupMap, since);
       tagged = bucketTagged(posted, pseudoIds);
       taggedScheduled = bucketTagged(scheduledLines, pseudoIds);
     }
@@ -10378,6 +10493,8 @@
     if (window.SupplementBoard?.applyYnabSpent) {
       window.SupplementBoard.applyYnabSpent(spentByMonth);
     }
+    // Orders the Health transactions of the last 10 days now cover move to "Entered"
+    try { window.SupplementBoard?.applyYnabMatches?.(transactionsForMatching(posted)); } catch (e) { console.error('YNAB order matching failed:', e); }
 
     setStatus('synced', 'ok');
     try { localStorage.setItem('np_ynab_last_sync', new Date().toISOString()); } catch {}

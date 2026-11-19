@@ -112,6 +112,12 @@ async function ensureSchema(env) {
     // derived on the client, so it follows the date), 1 / 0 = the user forced
     // it on / off.
     "ALTER TABLE orders ADD COLUMN preemptive INTEGER",
+    // The YNAB transaction an order was auto-advanced to "Entered" by (see the board's YNAB
+    // matching): its id -- so one transaction is never used twice -- or 'n/a' once the user
+    // stepped the order back by hand (never try to match it again), plus the transaction's
+    // details (JSON: date, payee, memo, amount) for the link icon's tooltip.
+    "ALTER TABLE orders ADD COLUMN ynab_txn_id TEXT",
+    "ALTER TABLE orders ADD COLUMN ynab_txn TEXT",
   ]) {
     try { await pipeline(env, [exec(sql)]); } catch { /* already exists */ }
   }
@@ -143,7 +149,7 @@ export async function onRequestGet({ env }) {
     await ensureSchema(env);
     const results = await pipeline(env, [
       exec("SELECT month, year, position, notes FROM order_months ORDER BY position"),
-      exec("SELECT order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved, preemptive FROM orders ORDER BY position"),
+      exec("SELECT order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved, preemptive, ynab_txn_id, ynab_txn FROM orders ORDER BY position"),
       exec(
         `SELECT order_item_id, order_id, month, year, block_position, item_position, supplement,
                 price_per_bottle, order_qty_bottles, include_in_total, notes, untracked,
@@ -161,6 +167,8 @@ export async function onRequestGet({ env }) {
       autoship_next_date: o.autoship_next_date || null,
       autoship_approved: o.autoship_approved || null,
       preemptive: o.preemptive == null ? null : num(o.preemptive),
+      ynab_txn_id: o.ynab_txn_id || null,
+      ynab_txn: o.ynab_txn || null,
     }));
     const items = rowsFrom(results[2]).map((it) => ({
       order_item_id: it.order_item_id, order_id: it.order_id, month: it.month, year: num(it.year),
@@ -206,8 +214,8 @@ export async function onRequestPut({ request, env }) {
   }
   for (const o of orders) {
     reqs.push(exec(
-      "INSERT INTO orders (order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved, preemptive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [T(o.order_id), T(o.month), I(o.year), T(o.merchant), I(o.position), T(o.status), T(o.notes), T(o.autoship_link), T(o.autoship_next_date), T(o.autoship_approved), I(o.preemptive)]
+      "INSERT INTO orders (order_id, month, year, merchant, position, status, notes, autoship_link, autoship_next_date, autoship_approved, preemptive, ynab_txn_id, ynab_txn) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [T(o.order_id), T(o.month), I(o.year), T(o.merchant), I(o.position), T(o.status), T(o.notes), T(o.autoship_link), T(o.autoship_next_date), T(o.autoship_approved), I(o.preemptive), T(o.ynab_txn_id), T(o.ynab_txn)]
     ));
   }
   for (const it of items) {
@@ -241,7 +249,7 @@ const TABLES = {
   months: { table: "order_months", key: { month: T, year: I }, cols: { position: I, notes: T } },
   orders: {
     table: "orders", key: { order_id: T },
-    cols: { month: T, year: I, merchant: T, position: I, status: T, notes: T, autoship_link: T, autoship_next_date: T, autoship_approved: T, preemptive: I },
+    cols: { month: T, year: I, merchant: T, position: I, status: T, notes: T, autoship_link: T, autoship_next_date: T, autoship_approved: T, preemptive: I, ynab_txn_id: T, ynab_txn: T },
   },
   items: {
     table: "order_items", key: { order_item_id: T },

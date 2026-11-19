@@ -1110,10 +1110,25 @@ try {
     const lockedNotes = await page.evaluate(() => { const n = document.querySelector('.shipment[data-id="o_locked"] > .ship-head > .ship-notes'); const cs = getComputedStyle(n); return { display: cs.display, editable: n.isContentEditable, w: Math.round(n.getBoundingClientRect().width) }; });
     check('completed order: its Notes field is shown and editable (not hidden / disabled)', lockedNotes.display !== 'none' && lockedNotes.editable && lockedNotes.w > 20, JSON.stringify(lockedNotes));
     // a collapsed completed order lists its item names under the header; opening it hides the list
-    const names = () => page.evaluate(() => { const s = document.querySelector('.shipment[data-id="o_locked"]'); const n = s.querySelector(':scope > .ship-names'); return { collapsed: s.classList.contains('is-collapsed'), shown: getComputedStyle(n).display !== 'none', text: n.textContent }; });
+    const names = () => page.evaluate(() => { const s = document.querySelector('.shipment[data-id="o_locked"]'); const n = s.querySelector(':scope > .ship-head > .ship-names'); return { collapsed: s.classList.contains('is-collapsed'), shown: getComputedStyle(n).display !== 'none', text: n.textContent }; });
     const n0 = await names();
     check('collapsed completed order: the item names are listed under the header (comma-separated)', n0.collapsed && n0.shown && n0.text === 'Locked One', JSON.stringify(n0));
-    await page.locator('.shipment[data-id="o_locked"] > .ship-names').click(); await page.waitForTimeout(200);
+    const geo = await page.evaluate(() => {
+      const s = document.querySelector('.shipment[data-id="o_locked"]');
+      const box = s.querySelector(':scope > .ship-head > .ship-names'), st = s.querySelector(':scope > .ship-head > .ship-stage-select'), amt = s.querySelector('.ship-total .amt');
+      const full = box.textContent;
+      const r = () => box.getBoundingClientRect();
+      const base = { afterStatus: r().left >= st.getBoundingClientRect().right - 1, beforeTotal: r().right <= amt.getBoundingClientRect().left + 1, sameRow: Math.abs((r().top + r().height / 2) - (st.getBoundingClientRect().top + st.getBoundingClientRect().height / 2)) < 10 };
+      box.textContent = 'Whey, Pumpkin Seed Meal, Clove, ' + 'Another Long Supplement Name, '.repeat(12); // overflows the room it has
+      const over = { cut: box.scrollWidth > box.clientWidth, ellipsis: getComputedStyle(box).textOverflow === 'ellipsis', stillBeforeTotal: r().right <= amt.getBoundingClientRect().left + 1 };
+      box.textContent = full;
+      return { ...base, over, preemptHidden: getComputedStyle(s.querySelector(':scope > .ship-head > .ship-preempt')).display === 'none' };
+    });
+    check('completed order: the item names sit in the header, right of the Status and before the $ total', geo.afterStatus && geo.beforeTotal && geo.sameRow, JSON.stringify(geo));
+    check('…and a long list is cut off with an ellipsis before it reaches the total', geo.over.cut && geo.over.ellipsis && geo.over.stillBeforeTotal, JSON.stringify(geo.over));
+    check('completed order: the Preemptive button is not shown', geo.preemptHidden);
+    check('…while an open order still has it', await page.evaluate(() => getComputedStyle(document.querySelector('.shipment:not(.is-locked) > .ship-head > .ship-preempt')).display !== 'none'));
+    await page.locator('.shipment[data-id="o_locked"] > .ship-head > .ship-names').click(); await page.waitForTimeout(200);
     const n1 = await names();
     check('clicking the name list expands the order and hides the list', !n1.collapsed && !n1.shown, JSON.stringify(n1));
     await page.evaluate(() => document.querySelector('.shipment[data-id="o_locked"] .scount').click()); await page.waitForTimeout(200);
@@ -1578,6 +1593,86 @@ try {
     const seq2 = await pp.evaluate(() => [...document.querySelectorAll('.month[data-id="Black Friday_2026"] > .month-list > .shipment')].map((n) => n.querySelector('.ship-name').textContent.trim() + (n.querySelector(':scope > .ship-head > .ship-preempt.is-on') ? '*' : '')));
     check('Black Friday: clicking again unpins it (back to the ordinary section)', !seq2.some((s) => s.endsWith('*')) && (await pp.locator('.month[data-id="Black Friday_2026"] .month-pre-head').count()) === 0, JSON.stringify(seq2));
     await pc.close();
+  }
+
+  // ── YNAB matching: Ordered / Approved orders move to Entered when a recent Health transaction pays for them ──
+  {
+    const mc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    await mc.clock.setFixedTime(new Date(2026, 10, 12, 12, 0, 0)); // Nov 12, 2026
+    await mc.addInitScript(() => { localStorage.setItem('np_ynab_token', 'tok'); localStorage.setItem('np_ynab_budget_id', 'b1'); });
+    const mp = await mc.newPage();
+    mp.on('pageerror', (e) => errors.push('ynab match test: ' + String(e)));
+    const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    const MONTHS = [['Nov', 2026], ['Dec', 2026], ['Jan', 2027]];
+    const ord = (id, name, mon, pos, status = 'Ordered') => ({ order_id: id, month: mon, year: mon === 'Jan' ? 2027 : 2026, merchant: name, position: pos, status, notes: null });
+    const it = (id, orderId, mon, price, extra = {}) => ({ order_item_id: id, order_id: orderId, month: mon, year: mon === 'Jan' ? 2027 : 2026, block_position: 1, item_position: 1, supplement: 'Thing ' + id, price_per_bottle: price, order_qty_bottles: 1, include_in_total: 1, ...extra });
+    const model = {
+      months: MONTHS.map(([m, y], p) => ({ month: m, year: y, position: p + 1, notes: '' })),
+      orders: [
+        ord('m_a1', 'Amazon', 'Nov', 1), ord('m_a2', 'Amazon', 'Dec', 1), ord('m_ih', 'iHerb', 'Nov', 2, 'Staged'),
+        ord('m_tol', 'Tol Co', 'Nov', 3), ord('m_far', 'Far Co', 'Nov', 4), ord('m_old', 'Old Co', 'Nov', 5), ord('m_oth', 'Other Co', 'Nov', 6),
+      ],
+      items: [
+        it('mi_a1', 'm_a1', 'Nov', 100), it('mi_a2', 'm_a2', 'Dec', 100),
+        it('mi_ih', 'm_ih', 'Nov', 50, { autoship_next_date: '2026-11-20', autoship_approved: '2026-11-20' }), // an Approved order
+        it('mi_tol', 'm_tol', 'Nov', 55), it('mi_far', 'm_far', 'Nov', 55), it('mi_old', 'm_old', 'Nov', 40), it('mi_oth', 'm_oth', 'Nov', 30),
+      ],
+    };
+    const mPatches = [];
+    await mp.route('**/api/orders', (r) => {
+      if (r.request().method() === 'GET') return jf(r, model);
+      const body = JSON.parse(r.request().postData() || '{}'); mPatches.push(body); applyPatch(model, body);
+      return jf(r, { ok: true, updated_at: 'x' + mPatches.length, prev_updated_at: 'x' });
+    });
+    await mp.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
+    await mp.route('**/api/board-settings', (r) => jf(r, { pinnedMerchants: [], dismissedWarnings: [] }));
+    await mp.route('**/api/inventory-items', (r) => jf(r, []));
+    await mp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, []));
+    const tx = (id, date, payee, amt, cat = 'c_h', memo = '') => ({ id, date, payee_name: payee, amount: -Math.round(amt * 1000), memo, category_id: cat });
+    const txns = [
+      tx('t_a', '2026-11-10', 'Amazon', 100, 'c_h', 'Magnesium + D'),
+      tx('t_a_other', '2026-11-10', 'Amazon', 100, 'c_f'), // not in the Health group: ignored
+      tx('t_ih', '2026-11-11', 'iHerb', 49),
+      tx('t_tol', '2026-11-11', 'Tol Co', 56.5), // within $2 of a $55 max
+      tx('t_far', '2026-11-11', 'Far Co', 58),   // $3 off: no
+      tx('t_old', '2026-10-20', 'Old Co', 40),   // 23 days ago: no
+    ];
+    let txCalls = 0;
+    await mp.route('https://api.ynab.com/v1/**', (r) => {
+      const path = new URL(r.request().url()).pathname.replace('/v1', '');
+      if (path === '/budgets/b1/categories') return jf(r, { data: { category_groups: [{ name: 'Health', categories: [{ id: 'c_h' }] }, { name: 'Fun', categories: [{ id: 'c_f' }] }] } });
+      if (path === '/budgets/b1/scheduled_transactions') return jf(r, { data: { scheduled_transactions: [] } });
+      if (path === '/budgets/b1/transactions') { txCalls++; return jf(r, { data: { transactions: txns } }); }
+      return jf(r, { data: { month: { categories: [] } } });
+    });
+    const state = () => mp.evaluate(() => Object.fromEntries([...document.querySelectorAll('.shipment')].map((s) => [s.dataset.id, {
+      label: s.querySelector(':scope > .ship-head > .ship-stage-select').textContent.trim(),
+      link: getComputedStyle(s.querySelector(':scope > .ship-head > .ship-ynab')).display !== 'none',
+      title: s.querySelector(':scope > .ship-head > .ship-ynab').title,
+    }])));
+    await mp.goto(base, { waitUntil: 'load' });
+    await mp.waitForSelector('.shipment[data-id="m_a1"]', { state: 'attached', timeout: 15000 });
+    await mp.waitForTimeout(2500);
+    let st = await state();
+    check('YNAB matching: an Ordered order whose payee, date (within 10 days) and amount ($100 max) match moves to Entered', st.m_a1.label === 'Entered' && st.m_a1.link, JSON.stringify(st.m_a1));
+    check('…one transaction pays for ONE order: the later Ordered "Amazon" ($100, December) is left alone', st.m_a2.label === 'Ordered' && !st.m_a2.link, JSON.stringify(st.m_a2));
+    check('…an Approved order matches too ($49 against a $50 max)', st.m_ih.label === 'Entered' && st.m_ih.link, JSON.stringify(st.m_ih));
+    check('…an amount within $2 matches ($56.50 against $55)', st.m_tol.label === 'Entered' && st.m_tol.link, JSON.stringify(st.m_tol));
+    check('…a $3 difference, a transaction older than 10 days, and orders nothing paid for are left alone', ['m_far', 'm_old', 'm_oth'].every((k) => st[k].label === 'Ordered' && !st[k].link), JSON.stringify([st.m_far, st.m_old, st.m_oth]));
+    check('…the link icon has the transaction in its tooltip (date, payee, memo, amount)', /2026-11-10/.test(st.m_a1.title) && /Amazon/.test(st.m_a1.title) && /Magnesium \+ D/.test(st.m_a1.title) && /100/.test(st.m_a1.title), st.m_a1.title);
+    const a1 = model.orders.find((o) => o.order_id === 'm_a1');
+    check('…and the transaction id is saved on the order (never reused)', a1.ynab_txn_id === 't_a' && a1.status === 'Entered' && JSON.parse(a1.ynab_txn).payee === 'Amazon', JSON.stringify(a1));
+    check('…a second sync with the same transactions changes nothing more (the id is already spent)', await (async () => { const n = mPatches.length; await mp.reload({ waitUntil: 'load' }); await mp.waitForSelector('.shipment[data-id="m_a1"]', { state: 'attached' }); await mp.waitForTimeout(2200); const s2 = await state(); return mPatches.length === n && s2.m_a2.label === 'Ordered' && s2.m_a1.label === 'Entered' && s2.m_a1.link; })());
+    // stepping back by hand: the link goes, 'n/a' is stored, and it is never matched again
+    await mp.evaluate(() => document.querySelector('.shipment[data-id="m_a1"] .stage-btn[data-stage="ordered"]').click());
+    await mp.waitForTimeout(800);
+    st = await state();
+    const a1b = model.orders.find((o) => o.order_id === 'm_a1');
+    check('manually moving it back to Ordered removes the link icon and stores "n/a" as its transaction id', st.m_a1.label === 'Ordered' && !st.m_a1.link && a1b.ynab_txn_id === 'n/a' && !a1b.ynab_txn, JSON.stringify({ s: st.m_a1, a1b }));
+    await mp.reload({ waitUntil: 'load' }); await mp.waitForSelector('.shipment[data-id="m_a1"]', { state: 'attached' }); await mp.waitForTimeout(2200);
+    st = await state();
+    check('…and a later sync does not move it again', st.m_a1.label === 'Ordered' && !st.m_a1.link && model.orders.find((o) => o.order_id === 'm_a1').ynab_txn_id === 'n/a', JSON.stringify(st.m_a1));
+    await mc.close();
   }
 
   // ── saving writes only what changed; a stale tab can't undo another device ──
