@@ -437,6 +437,28 @@ try {
     check('…and is saved as a month', serverBoard.months.some((m) => m.month === 'Black Friday' && m.year === Y + 1), JSON.stringify(serverBoard.months.filter((m) => m.month === 'Black Friday')));
     await ctx.close();
   }
+  // other intervals from a pseudo-month: 12 (Black Friday -> Black Friday), 3 / 4 (hit Prime Day / Black Friday only when the timing lines up)
+  for (const [N, expectFn] of [
+    [12, (Y) => ['Black Friday_' + Y, 'Black Friday_' + (Y + 1), 'Black Friday_' + (Y + 2)]],
+    [4, (Y) => ['Black Friday_' + Y, 'Apr_' + (Y + 1), 'Aug_' + (Y + 1), 'Black Friday_' + (Y + 1), 'Apr_' + (Y + 2), 'Aug_' + (Y + 2), 'Black Friday_' + (Y + 2)]],
+    [3, (Y) => ['Black Friday_' + Y, 'Mar_' + (Y + 1), 'Prime Day_' + (Y + 1), 'Sep_' + (Y + 1), 'Black Friday_' + (Y + 1), 'Mar_' + (Y + 2), 'Prime Day_' + (Y + 2), 'Sep_' + (Y + 2), 'Black Friday_' + (Y + 2)]],
+  ]) {
+    const Y = now.getMonth() <= 10 ? now.getFullYear() : now.getFullYear() + 1;
+    const months = [];
+    for (let k = 0; k < 27; k++) { // Oct Y .. Dec Y+2, with only Black Friday Y and the Prime Days -- no later Black Friday column yet
+      const d = new Date(Y, 9 + k, 1);
+      months.push({ month: MON[d.getMonth()], year: d.getFullYear() });
+      if (d.getMonth() === 10 && d.getFullYear() === Y) months.push({ month: 'Black Friday', year: Y });
+      if (d.getMonth() === 5) months.push({ month: 'Prime Day', year: d.getFullYear() });
+    }
+    serverBoard = { months: months.map((m, p) => ({ ...m, position: p + 1, notes: '' })), orders: [], items: [card('oi_bf', null, { month: 'Black Friday', year: Y }, 1, 1, 'BFRoot', { recur: N })] };
+    patches.length = 0;
+    const { ctx, page } = await openBoard();
+    await settle(page);
+    const ids = await page.evaluate(() => [...document.querySelectorAll('#board > .month')].filter((m) => [...m.querySelectorAll('.card[data-id] .card-name')].some((n) => n.textContent.trim() === 'BFRoot')).map((m) => m.dataset.id));
+    check('from Black Friday every ' + N + ' months: ' + expectFn(Y).join(' > '), JSON.stringify(ids) === JSON.stringify(expectFn(Y)), JSON.stringify(ids));
+    await ctx.close();
+  }
 } catch (e) {
   errors.push('TEST CRASH: ' + (e && e.stack || e));
 }
