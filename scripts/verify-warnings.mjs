@@ -1032,6 +1032,32 @@ try {
   await setDate('oi_locked', day(M2, 9));
   check('Autoship: an item in a placed (Ordered) order stays in its order', (await inMonth('oi_locked')).month === monthIdOf(M0));
   await setDate('oi_locked', D_LOCKED);
+  // a completed (Ordered) order stays in its section but its fields are editable, un-dimmed, like an open order's
+  {
+    const lc = '.card[data-id="oi_locked"]';
+    await page.evaluate(() => document.querySelector('.shipment[data-id="o_locked"]').classList.remove('is-collapsed')); // completed orders start collapsed to their header
+    const st = await page.evaluate((sel) => {
+      const c = document.querySelector(sel);
+      const q = (s) => c.querySelector(s);
+      return {
+        locked: !!c.closest('.shipment.is-locked'),
+        disabled: ['input[data-field="price"]', 'input[data-field="qty"]', '.recur-ctl-n', '.incl-toggle'].map((s) => q(s).disabled),
+        opacity: ['input[data-field="price"]', 'input[data-field="qty"]', '.incl-toggle'].map((s) => getComputedStyle(q(s)).opacity),
+      };
+    }, lc);
+    check('completed order: still in its (locked) section, but Price / Qty / ev / include are enabled and not dimmed', st.locked && st.disabled.every((d) => !d) && st.opacity.every((o) => o === '1'), JSON.stringify(st));
+    const spentBefore = await page.locator('.month[data-id="' + monthIdOf(M0) + '"] .spentv').first().textContent();
+    await page.locator(lc + ' input[data-field="price"]').fill('25');
+    await page.locator(lc + ' input[data-field="qty"]').fill('2');
+    await page.waitForTimeout(300);
+    const after = await page.evaluate((sel) => document.querySelector(sel).querySelector('.ototal .amt').textContent, lc);
+    const spentAfter = await page.locator('.month[data-id="' + monthIdOf(M0) + '"] .spentv').first().textContent();
+    check('completed order: editing Price / Qty updates the line total ($50) and still counts toward Spent', parseFloat(after.replace(/[^0-9.-]/g, '')) === 50 && spentAfter !== spentBefore, JSON.stringify({ after, spentBefore, spentAfter }));
+    check('completed order: it stays locked (still in its section) after the edit', await page.evaluate((sel) => !!document.querySelector(sel).closest('.shipment.is-locked'), lc));
+    await page.locator(lc + ' input[data-field="price"]').fill('10');
+    await page.locator(lc + ' input[data-field="qty"]').fill('1');
+    await page.waitForTimeout(300);
+  }
 
   // ── at 0 left to act on, the whole panel goes away ──
   for (let i = 0; i < 40; i++) {

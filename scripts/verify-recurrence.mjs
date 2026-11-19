@@ -415,6 +415,28 @@ try {
     check('the pseudo-months are saved as months of their own', patches.some((p) => ((p.months || {}).add || []).some((m) => m.month === 'Black Friday')) || serverBoard.months.some((m) => m.month === 'Black Friday'));
     await ctx.close();
   }
+  {
+    // Black Friday N every 6 months: Prime Day N+1, then Black Friday N+1 -- even though the board
+    // only holds a plain Dec N+1 (no Black Friday column that far ahead yet)
+    const Y = now.getMonth() <= 10 ? now.getFullYear() : now.getFullYear() + 1;
+    const months = [];
+    for (let k = 0; k < 15; k++) { // Oct Y .. Dec Y+1; Black Friday Y and Prime Day Y+1 exist, Black Friday Y+1 does not
+      const d = new Date(Y, 9 + k, 1);
+      months.push({ month: MON[d.getMonth()], year: d.getFullYear() });
+      if (d.getMonth() === 10 && d.getFullYear() === Y) months.push({ month: 'Black Friday', year: Y });
+      if (d.getMonth() === 5) months.push({ month: 'Prime Day', year: d.getFullYear() });
+    }
+    serverBoard = { months: months.map((m, p) => ({ ...m, position: p + 1, notes: '' })), orders: [], items: [card('oi_bf', null, { month: 'Black Friday', year: Y }, 1, 1, 'BFRoot', { recur: 6 })] };
+    patches.length = 0;
+    const { ctx, page } = await openBoard();
+    await settle(page);
+    const ids = await page.evaluate(() => [...document.querySelectorAll('#board > .month')].filter((m) => [...m.querySelectorAll('.card[data-id] .card-name')].some((n) => n.textContent.trim() === 'BFRoot')).map((m) => m.dataset.id));
+    check('Black Friday every 6 months reaches "Black Friday N+1" (its column is created), not the plain Dec N+1', JSON.stringify(ids) === JSON.stringify(['Black Friday_' + Y, 'Prime Day_' + (Y + 1), 'Black Friday_' + (Y + 1)]), JSON.stringify(ids));
+    const order = await page.evaluate(() => [...document.querySelectorAll('#board > .month')].map((m) => m.dataset.id));
+    check('…and that new column sits between Nov and Dec', order.indexOf('Black Friday_' + (Y + 1)) === order.indexOf('Nov_' + (Y + 1)) + 1 && order.indexOf('Dec_' + (Y + 1)) === order.indexOf('Black Friday_' + (Y + 1)) + 1, order.join(' '));
+    check('…and is saved as a month', serverBoard.months.some((m) => m.month === 'Black Friday' && m.year === Y + 1), JSON.stringify(serverBoard.months.filter((m) => m.month === 'Black Friday')));
+    await ctx.close();
+  }
 } catch (e) {
   errors.push('TEST CRASH: ' + (e && e.stack || e));
 }

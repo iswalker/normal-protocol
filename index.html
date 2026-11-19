@@ -2021,12 +2021,6 @@
        a locked/received shipment or line item same as the old × always did. */
     #tab-board .shipment.is-locked > .ship-head > .ship-grip,
     #tab-board .shipment.is-locked .ship-body .card-grip { opacity: 0.5; cursor: default; }
-    #tab-board .shipment.is-locked .ship-body input[disabled] {
-      background: transparent; opacity: 0.45; cursor: default;
-    }
-    #tab-board .shipment.is-locked .ship-body .incl-toggle[disabled] {
-      opacity: 0.35; cursor: default; pointer-events: none;
-    }
     #tab-board .shipment.is-locked .ship-add { display: none; }
     /* Completed orders default to just their header row -- clicking the
        item-count pill (scount) expands/collapses the items underneath.
@@ -3673,15 +3667,15 @@
     });
     const stageMenuBtn = shipEl.querySelector(':scope > .ship-head > .ship-stage-select');
     if (stageMenuBtn) stageMenuBtn.textContent = stage ? stage[0].toUpperCase() + stage.slice(1) : 'Status';
-    shipEl.querySelectorAll('.ship-body input[data-field="price"], .ship-body input[data-field="qty"]').forEach((inp) => {
-      inp.disabled = locked;
-    });
-    shipEl.querySelectorAll('.ship-body .recur-ctl-n').forEach((inp) => {
-      inp.disabled = locked;
+    // A completed order (Ordered / Entered / Received) keeps its place in its section but
+    // stays editable -- Price, Qty, "ev N mo" and the include toggle work exactly as they do
+    // on an open order (like an Approved one), so a total can still be corrected afterwards.
+    // (A projection's own fields stay off: it is a copy of its root.)
+    shipEl.querySelectorAll('.ship-body input[data-field="price"], .ship-body input[data-field="qty"], .ship-body .recur-ctl-n').forEach((inp) => {
+      if (!inp.closest('.card--ghost')) inp.disabled = false;
     });
     shipEl.querySelectorAll('.ship-body .incl-toggle').forEach((btn) => {
-      if (btn.closest('.card--ghost')) return; // ghost toggles always enabled
-      btn.disabled = locked;
+      btn.disabled = false;
     });
     // Reordering is off-limits once locked, but the grip button that used
     // to ALSO be the drag handle now doubles as the menu opener (Delete
@@ -6480,6 +6474,22 @@
   // month of that timing -- unless the source itself sits in a pseudo-month, which then
   // prefers the pseudo-month of that timing (Black Friday every 6 months -> Prime Day
   // -> Black Friday, never the plain Jun/Dec). -1 when the board has no such month.
+  // A series that lives in the pseudo-months needs its next pseudo-month to exist even
+  // when the board hasn't padded that far ahead yet (it only pads ~10 months): Black Friday
+  // 2026 every 6 months must reach "Black Friday 2027", not fall back to the plain Dec 2027
+  // that happens to be on the board. So create the columns the chain will land in.
+  function ensurePseudoTargets(srcMi, n) {
+    const src = structure[srcMi], srcOrd = monthOrd(srcMi);
+    if (!src || srcOrd == null || !isPseudoName(src.name)) return;
+    let lastOrd = -Infinity;
+    structure.forEach((m, i) => { const o = monthOrd(i); if (o != null && o > lastOrd) lastOrd = o; });
+    for (let off = n; srcOrd + off <= lastOrd; off += n) {
+      const want = srcOrd + off;
+      const pn = Object.keys(PSEUDO_MONTHS).find((p) => PSEUDO_MONTHS[p].timing === want % 12);
+      if (!pn) continue;
+      if (!structure.some((m, i) => m.name === pn && monthOrd(i) === want)) ensureMonthEl(Math.floor(want / 12), PSEUDO_MONTHS[pn].after, pn);
+    }
+  }
   function recurTargetIndex(srcMi, n) {
     const src = structure[srcMi], srcOrd = monthOrd(srcMi);
     if (!src || srcOrd == null) return -1;
@@ -6663,6 +6673,7 @@
     const src = STATE.cardData[sourceId];
     if (!src || !src.recur || src.recur < 1) { cleanGhostsForSource(sourceId); if (!skipRecalc) recalcAll(); return; }
     const N = Math.max(1, Math.min(12, Math.round(Number(src.recur))));
+    { const at = findCardLocation(sourceId).monthIdx; if (at !== -1) ensurePseudoTargets(at, N); } // (may add columns, so the indexes are read after it)
     const { monthIdx: srcMi, shipId: srcShipId } = findCardLocation(sourceId);
     if (srcMi === -1) return;
     const srcShipName = srcShipId ? (STATE.shipmentData[srcShipId]?.name || '').trim() : null;
@@ -7690,7 +7701,13 @@
       const id = cardEl.dataset.id;
       const c = STATE.cardData[id];
       const newVal = t.value.trim() ? Math.max(1, Math.min(12, Math.round(Number(t.value)))) : null;
-      if (newVal !== c.recur) {
+      if (newVal !== c.recur && isCardLocked(id)) {
+        // a placed (Ordered / Entered / Received) order: the series is driven by its
+        // active root, so this just records the number
+        c.recur = newVal;
+        cardEl.dataset.recur = String(newVal || '');
+        persistSoon();
+      } else if (newVal !== c.recur) {
         c.recur = newVal;
         cardEl.dataset.recur = String(newVal || '');
         // Clearing the interval is the "start over" gesture: the series' end goes with it.
