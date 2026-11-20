@@ -537,14 +537,33 @@
     @media (hover: hover) { #inv-table .inv-name-edit:hover { background: rgba(112,196,187,0.12); color: #3f8f87; } }
     /* "Track via Separate Budget": a small checkbox at the right end of the Item cell / beside the card's name */
     .inv-sb { float: right; display: inline-flex; align-items: center; margin-left: 8px; cursor: pointer; }
-    .inv-sb input { margin: 0; width: 14px; height: 14px; accent-color: var(--teal); cursor: pointer; }
+    /* The Separate Budget checkbox is drawn by hand: the browser's own picks a DARK tick on a light teal fill,
+       and this one wants a white check on teal. */
+    .inv-sb input, .snm-sb input {
+      -webkit-appearance: none; appearance: none; display: inline-block; vertical-align: middle;
+      margin: 0; width: 16px; height: 16px; border: 1.5px solid #b9c2c4; border-radius: 4px;
+      background: #fff; cursor: pointer; flex: none; transition: background-color .12s, border-color .12s;
+    }
+    .inv-sb input:checked, .snm-sb input:checked {
+      background: var(--teal) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.3 5 8.9l4.6-5.4' fill='none' stroke='%23fff' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+      border-color: var(--teal);
+    }
+    .inv-sb input:focus-visible, .snm-sb input:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+    .inv-sb input:disabled { opacity: .6; cursor: default; }
     #inv-table td.inv-sb-cell, #inv-table th.inv-th-sb { text-align: center; }
     #inv-table .inv-sb { float: none; margin: 0; }
     .inv-card-name-group .inv-sb { float: none; margin-left: 8px; vertical-align: middle; }
+    /* the row being re-read after a dose / bottle-size edit: its run-out cell shows a spinner for a moment */
+    #inv-table tr.inv-loading td.inv-runout { position: relative; color: transparent; }
+    #inv-table tr.inv-loading td.inv-runout * { visibility: hidden; }
+    #inv-table tr.inv-loading td.inv-runout::after, .inv-card.inv-loading .inv-card-runout::after {
+      content: ''; position: absolute; left: 10px; top: 50%; width: 13px; height: 13px; margin-top: -7px;
+      border: 2px solid #d3dcde; border-top-color: var(--teal); border-radius: 50%; animation: inv-spin .7s linear infinite;
+    }
+    .inv-card.inv-loading .inv-card-runout { position: relative; color: transparent; min-width: 28px; display: inline-block; }
     .snm-name-row { display: flex; align-items: center; gap: 10px; }
     .snm-name-row > input { flex: 1 1 auto; min-width: 0; }
     .snm-sb { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-60); cursor: pointer; white-space: nowrap; }
-    .snm-sb input { margin: 0; width: 14px; height: 14px; accent-color: var(--teal); }
     #inv-table .inv-onhand {
       font-variant-numeric: tabular-nums; cursor: pointer;
       border-radius: 4px; transition: background 0.12s;
@@ -1965,6 +1984,14 @@
       outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       cursor: text;
     }
+    /* an item whose run-out numbers are being recalculated: its Supply metrics give way to a spinner */
+    #tab-board .card.proj-loading .proj { position: relative; min-height: 18px; }
+    #tab-board .card.proj-loading .proj > * { visibility: hidden; }
+    #tab-board .card.proj-loading .proj::after {
+      content: ''; position: absolute; left: 6px; top: 50%; width: 13px; height: 13px; margin-top: -8px;
+      border: 2px solid #d3dcde; border-top-color: var(--accent); border-radius: 50%;
+      animation: board-spin .7s linear infinite;
+    }
     #tab-board .card-notes:empty::before { content: attr(placeholder); opacity: .35; pointer-events: none; }
     /* Desktop: field stays inline and always visible, same as before -- the
        toggle icon is a mobile-only affordance. See max-width:680px block. */
@@ -2798,6 +2825,8 @@
     // something was edited, re-read from Turso to pick up the server's own
     // copy. A look-around with no edits costs no network.
     if (window._INV_LOG_ROWS) window.InventoryWriter?.syncBoard(window._INV_LOG_ROWS);
+    // the board now holds the new numbers: the spinners of the items edited meanwhile can go
+    if (window._INV_STALE_ITEMS && window._INV_STALE_ITEMS.size) { window._INV_STALE_ITEMS.clear(); window.SupplementBoard?.setItemLoading?.(null, false); }
     if (window._INV_DIRTY) window.InventoryWriter?.run().catch(() => {});
   }
   function closeInventory() {
@@ -4539,6 +4568,7 @@
   }
   // The comma-separated item names a collapsed completed order shows under its header.
   function updateShipNames(shipEl) {
+    if (!shipEl.classList.contains('is-locked')) return; // only a completed order shows the list (and this runs for every order on every recalc)
     const box = shipEl.querySelector(':scope > .ship-head > .ship-names');
     if (!box) return;
     const text = [...shipEl.querySelectorAll(':scope > .ship-body > .card[data-id]')]
@@ -4547,7 +4577,8 @@
     if (box.textContent !== text) box.textContent = text;
     // Desktop: cap the list where the $ total starts (it ellipsizes there). Only while it is
     // showing (a hidden box measures as 0), and only when something it depends on changed.
-    if (!box.offsetParent || window.matchMedia('(max-width: 680px)').matches) return;
+    if (!shipEl.classList.contains('is-collapsed') || window.matchMedia('(max-width: 680px)').matches) return; // (hidden while expanded: nothing to measure)
+    if (!box.offsetParent) return;
     const head = shipEl.querySelector(':scope > .ship-head');
     const amt = head && head.querySelector('.ship-total .amt');
     if (!amt) return;
@@ -10140,6 +10171,17 @@
       // notify other modules (e.g. YNAB) that the board is ready
       document.dispatchEvent(new CustomEvent('boardReady'));
     },
+    // Swaps the run-out metrics of every card of an item for a spinner while its numbers are stale (a dose or
+    // bottle-size edit in Inventory reaches the board when Inventory closes). name = null clears all of them.
+    setItemLoading(name, on) {
+      if (!board) return;
+      const k = String(name || '').trim().toLowerCase();
+      board.querySelectorAll('.card[data-id]').forEach((cardEl) => {
+        if (!k) { if (!on) cardEl.classList.remove('proj-loading'); return; }
+        const c = STATE.cardData[cardEl.dataset.id];
+        if (c && String(c.name || '').trim().toLowerCase() === k) cardEl.classList.toggle('proj-loading', !!on);
+      });
+    },
     // Clears every board-wide filter -- used when something else (Inventory's Next Order link) is about to
     // take you to a card the filter may be hiding. Returns whether anything was on.
     clearFilters() {
@@ -11919,6 +11961,16 @@
       const onHandCell = tr && tr.querySelector('.inv-onhand');
       const currentCaps = onHandCell ? (Number(onHandCell.dataset.amount) || 0) : 0;
       const doseChanged = field === 'daily_dose' && parsed !== Number(curVal);
+      // Dose or bottle size moves the run-out: until the board has re-read it, this item's numbers there (and
+      // its run-out cell here) show a spinner instead of the old figures
+      const runOutMoves = parsed !== Number(curVal) && (field === 'daily_dose' || field === 'bottle_size');
+      const itemName = meta.name || key;
+      const rowEls = () => [...document.querySelectorAll('#inv-body tr[data-key="' + key + '"], #inv-cards .inv-card[data-key="' + key + '"]')];
+      if (runOutMoves) {
+        (window._INV_STALE_ITEMS = window._INV_STALE_ITEMS || new Set()).add(itemName);
+        window.SupplementBoard?.setItemLoading?.(itemName, true);
+        rowEls().forEach((e) => e.classList.add('inv-loading'));
+      }
 
       // When dose changes, snapshot current on-hand as a new Reset dated today so the
       // new dose only applies going forward — not retroactively from the last Reset date.
@@ -11967,8 +12019,11 @@
         // last Reset, whose amount is NOT the same as what's on hand now.
         const base = computeOnHand(window._INV_LOG_ROWS || [])[key] || null;
         refreshRow(key, currentCaps, base ? base.loggedOn : null, itemMap, base);
+        rowEls().forEach((e) => e.classList.remove('inv-loading')); // (this list is current; the board's spinner stays until it is)
       } catch (e) {
         console.error('Meta save failed:', e);
+        window._INV_STALE_ITEMS?.delete(itemName);
+        window.SupplementBoard?.setItemLoading?.(itemName, false);
         renderInventory();
       }
     };

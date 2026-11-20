@@ -1703,7 +1703,7 @@ try {
       if (m === 'POST') { const body = JSON.parse(r.request().postData() || '{}'); itemPosts.push(body); invItems.push({ id: 90 + itemPosts.length, ...body }); return jf(r, { ok: true }); }
       return jf(r, invItems);
     });
-    await sp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, r.request().method() === 'GET' ? [] : { ok: true }));
+    await sp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, r.request().method() === 'GET' ? [{ id: 1, item: 'Plain Item', type: 'Reset', amount: 60, logged_on: '2026-11-12', order_id: null }] : { ok: true }));
     await sp.goto(base, { waitUntil: 'load' });
     await sp.waitForSelector('.card[data-id="sb_a"]', { state: 'attached', timeout: 15000 });
     await sp.waitForTimeout(1800);
@@ -1726,6 +1726,8 @@ try {
     check('Inventory: a "Separate Budget" column (with its header) right after Item holds each item\'s checkbox, reflecting its setting', boxes.sep === true && boxes.plain === false && boxes.rightOfName && boxes.ownColumn && boxes.header[1] === 'Separate Budget', JSON.stringify(boxes));
     const nextCells = await sp.evaluate(() => Object.fromEntries(['sep item', 'plain item', 'bf only item'].map((k) => [k, document.querySelector('#inv-body tr[data-key="' + k + '"] .inv-next-order').textContent.trim()])));
     check('Inventory "Next Order" counts Black Friday / Prime Day columns (an item ordered only in Black Friday shows it), and the earlier real month still wins', nextCells['bf only item'] === 'Black Friday' && nextCells['plain item'] === 'Nov' && nextCells['sep item'] === 'Nov', JSON.stringify(nextCells));
+    const tick = await sp.evaluate(() => { const cs = getComputedStyle(document.querySelector('#inv-body tr[data-key="sep item"] .inv-sb-chk')); return { appearance: cs.appearance, bg: cs.backgroundColor, img: cs.backgroundImage }; });
+    check('Separate Budget: a checked box is teal with a WHITE check mark (drawn by hand, not the browser\'s dark tick)', tick.appearance === 'none' && /^url\(/.test(tick.img) && decodeURIComponent(tick.img).includes("stroke='#fff'") && tick.bg !== 'rgba(0, 0, 0, 0)', JSON.stringify(tick));
     await sp.locator('#inv-body tr[data-key="plain item"] .inv-sb-chk').click();
     await sp.waitForTimeout(900);
     check('Inventory: ticking it saves separate_budget = 1 for that item', itemPatches.length === 1 && itemPatches[0].id === '72' && itemPatches[0].body.separate_budget === 1, JSON.stringify(itemPatches));
@@ -1747,6 +1749,18 @@ try {
     await sp.locator('#inv-body tr[data-key="bf only item"] .inv-next-order').click();
     await sp.waitForTimeout(900);
     check('Inventory > Next Order: clears the board filter (Attention) and shows the card', await sp.evaluate(() => !document.getElementById('warn-only-btn').classList.contains('active') && !document.getElementById('filters-btn').classList.contains('active') && !document.querySelector('.card[data-id="sb_f"]').classList.contains('search-hide') && !document.querySelector('#inv-modal-ov').classList.contains('open')));
+    // a Dose / Day edit: the item's run-out metrics on the board give way to a spinner until the board has the new numbers
+    await sp.locator('#inv-search-link').click();
+    await sp.waitForSelector('#inv-modal-ov.open'); await sp.waitForTimeout(500);
+    await sp.locator('#inv-body tr[data-key="plain item"] .inv-dose').click();
+    await sp.locator('#inv-body tr[data-key="plain item"] input.inv-edit-input').fill('2');
+    await sp.locator('#inv-body tr[data-key="plain item"] input.inv-edit-input').press('Enter');
+    await sp.waitForTimeout(800);
+    const during = await sp.evaluate(() => { const c = document.querySelector('.card[data-id="sb_b"]'); return { boardLoading: c.classList.contains('proj-loading'), spinner: getComputedStyle(c.querySelector('.proj'), '::after').content, hidden: getComputedStyle(c.querySelector('.proj > *')).visibility, rowLoading: document.querySelector('#inv-body tr[data-key="plain item"]').classList.contains('inv-loading'), otherItemLoading: document.querySelector('.card[data-id="sb_a"]').classList.contains('proj-loading') }; });
+    check('Dose edit: the item\'s run-out metrics on the board are replaced by a spinner (old figures hidden), other items untouched, and the Inventory row is back to normal', during.boardLoading && during.spinner !== 'none' && during.hidden === 'hidden' && !during.rowLoading && !during.otherItemLoading, JSON.stringify(during));
+    await sp.locator('#inv-modal-close').click(); await sp.waitForTimeout(1500);
+    const done = await sp.evaluate(() => ({ stuck: document.querySelectorAll('.card.proj-loading').length, dose: document.querySelector('.card[data-id="sb_b"] .dose-tag')?.textContent }));
+    check('…and once the board has the new numbers the spinner is gone and the figures show the new dose (2x)', done.stuck === 0 && done.dose === '2x', JSON.stringify(done));
     // Add Item: the checkbox right of the Item Name
     await sp.locator('#inv-search-link').click();
     await sp.waitForSelector('#inv-modal-ov.open'); await sp.waitForTimeout(500);
