@@ -1793,7 +1793,7 @@ try {
       await pg.goto(base, { waitUntil: 'load' });
       await pg.waitForSelector('.card[data-id="c_bf"]', { state: 'attached' });
       await pg.waitForTimeout(1800);
-      const txt = await pg.evaluate((id) => (document.querySelector('.card[data-id="' + id + '"] .proj')?.textContent || '').replace(/\s+/g, ' '), 'c_bf');
+      const txt = await pg.evaluate(() => Object.fromEntries(['c_a', 'c_b', 'c_bf'].map((id) => [id, (document.querySelector('.card[data-id="' + id + '"] .proj')?.textContent || '').replace(/\s+/g, ' ')])));
       await pg.close();
       return txt;
     };
@@ -1802,11 +1802,14 @@ try {
     const reset = { id: 1, item: 'Cand', type: 'Reset', amount: 6, logged_on: '2026-11-19', order_id: null };
     const ordered = (oid) => ({ id: 2, item: 'Cand', type: 'Ordered', amount: 120, logged_on: '2026-11-19', order_id: oid });
     // one logged Entered order, plus a second Entered order that holds the same item with no inventory row
-    const both = await run([nov('o_a', 'Blue Sky', 'Entered'), nov('o_b', 'iHerb', 'Entered'), bf], [it('c_a', 'o_a', 'Nov', 95), it('c_b', 'o_b', 'Nov', 71), it('c_bf', 'o_bf', 'Black Friday', 71)], [reset, ordered('o_a')]);
-    check('carry-forward: Black Friday starts from the completed November order (3/25/27), not the old 11/25 -- even with a second, unlogged completed order of the item', /126d/.test(both) && /3\/25\/27/.test(both), both);
+    // two completed orders of the item (the second one's Include toggle OFF -- a placed order counts anyway), then Black Friday
+    const both = await run([nov('o_a', 'Blue Sky', 'Entered'), nov('o_b', 'iHerb', 'Entered'), bf], [it('c_a', 'o_a', 'Nov', 95), { ...it('c_b', 'o_b', 'Nov', 71), include_in_total: 0 }, it('c_bf', 'o_bf', 'Black Friday', 71)], [reset, ordered('o_a'), { ...ordered('o_b'), id: 3 }]);
+    check('completed orders: the first starts from the inventory baseline (6d, 11/25) and ends 3/25/27', /6d/.test(both.c_a) && /11\/25/.test(both.c_a) && /3\/25\/27/.test(both.c_a), both.c_a);
+    check('completed orders stack: the SECOND completed order of the item starts where the first left off (3/25/27) and runs another bottle (7/23/27) -- even with its toggle off', /126d/.test(both.c_b) && /3\/25\/27/.test(both.c_b) && /7\/23\/27/.test(both.c_b), both.c_b);
+    check('carry-forward: Black Friday then starts after BOTH completed orders (7/23/27)', /246d/.test(both.c_bf) && /7\/23\/27/.test(both.c_bf), both.c_bf);
     // only an unlogged Entered order
     const solo = await run([nov('o_b', 'iHerb', 'Entered'), bf], [it('c_b', 'o_b', 'Nov', 71), it('c_bf', 'o_bf', 'Black Friday', 71)], [reset]);
-    check('carry-forward: an Entered order with no inventory row still counts for the next month (starts after its bottle)', /126d/.test(solo) && /3\/25\/27/.test(solo), solo);
+    check('carry-forward: an Entered order with no inventory row still counts for the next month (starts after its bottle)', /126d/.test(solo.c_bf) && /3\/25\/27/.test(solo.c_bf), solo.c_bf);
     await cc.close();
   }
 

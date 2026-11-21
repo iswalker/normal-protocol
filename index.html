@@ -4343,42 +4343,39 @@
       if (!isQtyMode) delete c._effectiveQty;
       if (!hasInv && !isQtyMode) return;
       const key = c.name.trim().toLowerCase();
+      const inLocked = !!cardEl.closest('.shipment.is-locked');
       if (isQtyMode) {
         // No lock/pre-order distinction here (unlike the dose-based branch
         // below) -- quantity mode just chains the running on-hand count
         // straight through in calendar order.
         if (seenQty.has(key)) c._effectiveQty = seenQty.get(key);
         else delete c._effectiveQty;
-        if (c.includeInMonthTotal) {
+        if (c.includeInMonthTotal || inLocked) { // (an order already placed counts whatever its toggle says)
           const rq = calcQtyCard(c);
           seenQty.set(key, rq.newOnHand);
         }
         return;
       }
-      const inLocked = !!cardEl.closest('.shipment.is-locked');
       if (inLocked) {
-        // Show pre-order run-out — don't absorb carry-forward; use _preOrderAmount in calcForCard.
-        // Still advance 'seen' so future unlocked orders project from the correct post-order baseline.
-        delete c._effectiveDays;
-        if (c.includeInMonthTotal) {
-          // computeOnHand folds only 'Received' rows into c.amount, so for an Ordered or
-          // Entered shipment c.amount is still the pre-order figure and curDaysLeft would
-          // hand the next month a baseline as if this order never happened. Carry forward
-          // the card's own post-order number, which is right for either stage.
+        const shipStage = (STATE.shipmentData[cardEl.closest('.shipment')?.dataset.id] || {}).stage;
+        if (shipStage === 'received') {
+          // Received: the receipt is already in On Hand (computeOnHand folds 'Received' rows into c.amount),
+          // so it shows its pre-order figure and hands on the current one.
+          delete c._effectiveDays;
           const r = calcForCard(c);
-          const shipStage = (STATE.shipmentData[cardEl.closest('.shipment')?.dataset.id] || {}).stage;
-          if (c._preOrderAmount !== undefined) {
-            seen.set(key, { daysLeft: r.newDaysLeft, runOut: r.newRunOut });
-          } else if (shipStage === 'received') {
-            seen.set(key, { daysLeft: r.curDaysLeft, runOut: r.curRunOut }); // (the receipt is already in On Hand)
-          } else if (!seen.has(key)) {
-            // An Ordered / Entered order the inventory log has no row for (so On Hand does not include
-            // it yet): its bottle is on the way, so the next order starts after it ...
-            seen.set(key, { daysLeft: r.newDaysLeft, runOut: r.newRunOut });
-          }
-          // ... and when an earlier order already set the baseline, an unlogged card is left out of it
-          // rather than resetting it to "before any of these orders" (that made the next month restart
-          // from the old run-out date).
+          seen.set(key, c._preOrderAmount !== undefined
+            ? { daysLeft: r.newDaysLeft, runOut: r.newRunOut }
+            : { daysLeft: r.curDaysLeft, runOut: r.curRunOut });
+        } else {
+          // Ordered / Entered: the bottle is on its way -- "yes we are getting this" -- whatever the Include
+          // toggle says, and the order stacks on whatever came before it exactly like a staged order does:
+          // the first one starts from the inventory log's baseline (_preOrderAmount), each later one (another
+          // completed order of the item, or an earlier month's) starts where the previous one left off.
+          // (On Hand does not include it yet, so the log's own figure can't be the next order's start.)
+          if (seen.has(key)) c._effectiveDays = seen.get(key).daysLeft;
+          else delete c._effectiveDays;
+          const r = calcForCard(c);
+          seen.set(key, { daysLeft: r.newDaysLeft, runOut: r.newRunOut });
         }
       } else {
         delete c._preOrderAmount; // clear stale value if shipment was unlocked
