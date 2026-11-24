@@ -189,6 +189,9 @@ const check = (name, cond, detail = '') => checks.push({ name, ok: !!cond, detai
 await new Promise((r) => server.listen(0, r));
 const base = `http://localhost:${server.address().port}`;
 const browser = await chromium.launch();
+// Items inside an order now sort themselves by default (Settings > "Sort Items Manually" off). Most of these checks
+// assume items stay where the fixture put them, so their pages start with the setting ON; the sort tests below switch it off.
+{ const nc = browser.newContext.bind(browser); browser.newContext = async (o) => { const c = await nc(o); await c.addInitScript(() => { try { if (localStorage.getItem('np_sort_manual') === null) localStorage.setItem('np_sort_manual', '1'); } catch {} }); return c; }; }
 const errors = [];
 
 async function openBoard(viewport, setup) {
@@ -1867,6 +1870,58 @@ try {
     await gc.close();
   }
 
+  // ── Settings > "Sort Items Manually" (off by default): items inside an order sort themselves ──
+  {
+    const qc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    await qc.addInitScript(() => { try { localStorage.setItem('np_sort_manual', '0'); } catch {} }); // (the default: off)
+    const qp = await qc.newPage();
+    qp.on('pageerror', (e) => errors.push('sort test: ' + String(e)));
+    const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
+    const row = (id, name, price, pos, extra = {}) => ({ order_item_id: id, order_id: 'q_o', month: 'Nov', year: 2026, block_position: 1, item_position: pos, supplement: name, price_per_bottle: price, order_qty_bottles: 1, include_in_total: 1, ...extra });
+    const qModel = {
+      months: [{ month: 'Nov', year: 2026, position: 1 }, { month: 'Dec', year: 2026, position: 2 }],
+      orders: [{ order_id: 'q_o', month: 'Nov', year: 2026, merchant: 'Sorty', position: 1, status: 'Staged' }],
+      // deliberately listed in a jumbled order
+      items: [
+        row('q_g', 'Golf', 999, 1, { include_in_total: 0 }), row('q_e', 'Echo', -50, 2), row('q_c', 'Charlie', 30, 3), row('q_b', 'RecurThing', 300, 4, { recur: 6 }),
+        row('q_f', 'Foxtrot', -200, 5), row('q_a', 'SepThing', 10, 6), row('q_d', 'Delta', 500, 7), row('q_h', 'Alpha', 30, 8),
+      ],
+    };
+    await qp.route('**/api/orders', (r) => jf(r, r.request().method() === 'GET' ? qModel : { ok: true, updated_at: 'x', prev_updated_at: 'x' }));
+    await qp.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
+    await qp.route('**/api/board-settings', (r) => jf(r, { pinnedMerchants: [], dismissedWarnings: [] }));
+    await qp.route('**/api/inventory-items**', (r) => jf(r, [{ id: 1, name: 'SepThing', bottle_size: 60, daily_dose: 1, separate_budget: 1 }]));
+    await qp.route((u) => new URL(u).pathname === '/api/inventory', (r) => jf(r, []));
+    await qp.goto(base, { waitUntil: 'load' });
+    await qp.waitForSelector('.card[data-id="q_a"]', { state: 'attached', timeout: 15000 });
+    await qp.waitForTimeout(1500);
+    const names = () => qp.evaluate(() => [...document.querySelectorAll('.shipment[data-id="q_o"] > .ship-body > .card .card-name')].map((n) => n.textContent.trim()));
+    check('Sort (default): ON + Separate Budget, then ON, then OFF; non-recurring first; positives big to small, then negatives; ties alphabetical', JSON.stringify(await names()) === JSON.stringify(['SepThing', 'Delta', 'Alpha', 'Charlie', 'Foxtrot', 'Echo', 'RecurThing', 'Golf']), JSON.stringify(await names()));
+    check('Sort: the setting reads OFF in the Settings menu by default', await qp.evaluate(() => document.getElementById('sort-manual-toggle').getAttribute('aria-pressed') === 'false'));
+    // an edit re-sorts once the box is left (not mid-typing)
+    await qp.locator('.card[data-id="q_d"] input[data-field="price"]').click();
+    await qp.locator('.card[data-id="q_d"] input[data-field="price"]').fill('1');
+    await qp.waitForTimeout(300);
+    check('Sort: typing in a price does not move the item under the cursor', (await names())[1] === 'Delta' && await qp.evaluate(() => document.activeElement && document.activeElement.matches('input[data-field="price"]')));
+    await qp.keyboard.press('Tab'); await qp.waitForTimeout(500);
+    check('Sort: …and once you leave the box the item takes its new place (Delta is now only $1)', JSON.stringify(await names()) === JSON.stringify(['SepThing', 'Alpha', 'Charlie', 'Delta', 'Foxtrot', 'Echo', 'RecurThing', 'Golf']), JSON.stringify(await names()));
+    await qp.evaluate(() => document.querySelector('.card[data-id="q_g"] .incl-toggle').click()); await qp.waitForTimeout(500);
+    check('Sort: switching an item\'s Include toggle on moves it out of the OFF group', (await names()).indexOf('Golf') < (await names()).indexOf('RecurThing') === false || (await names()).indexOf('Golf') < 7, JSON.stringify(await names()));
+    // Settings > Sort Items Manually: ON leaves things where they are
+    await qp.locator('#settings-btn').click();
+    await qp.locator('#sort-manual-toggle').click();
+    check('Sort Items Manually: the toggle turns ON (and is remembered)', await qp.evaluate(() => document.getElementById('sort-manual-toggle').getAttribute('aria-pressed') === 'true' && localStorage.getItem('np_sort_manual') === '1'));
+    const before = await names();
+    await qp.locator('.card[data-id="q_h"] input[data-field="price"]').click();
+    await qp.locator('.card[data-id="q_h"] input[data-field="price"]').fill('9999');
+    await qp.keyboard.press('Tab'); await qp.waitForTimeout(500);
+    check('Sort Items Manually ON: items stay where they are even when an amount changes', JSON.stringify(await names()) === JSON.stringify(before), JSON.stringify({ before, after: await names() }));
+    await qp.locator('#settings-btn').click().catch(() => {});
+    await qp.evaluate(() => document.getElementById('sort-manual-toggle').click()); await qp.waitForTimeout(500);
+    check('…and turning it OFF again sorts the order at once (Alpha is now the biggest)', (await names())[1] === 'Alpha' && (await names())[0] === 'SepThing', JSON.stringify(await names()));
+    await qc.close();
+  }
+
   // ── saving writes only what changed; a stale tab can't undo another device ──
   {
     const wc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
@@ -2421,6 +2476,7 @@ try {
   // ── a lapsed Cloudflare Access sign-in must not look like "server down" ──
   // (localhost has no Access in front, so use a fake non-local hostname mapped to this server)
   const b2 = await chromium.launch({ args: ['--host-resolver-rules=MAP np.test 127.0.0.1'] });
+  { const nc = b2.newContext.bind(b2); b2.newContext = async (o) => { const c = await nc(o); await c.addInitScript(() => { try { if (localStorage.getItem('np_sort_manual') === null) localStorage.setItem('np_sort_manual', '1'); } catch {} }); return c; }; } // (same as the main browser: items stay where the fixture put them)
   try {
     const host = `http://np.test:${server.address().port}`;
     // (1) page load while /api/orders is unreachable -- what a lapsed sign-in looks like to fetch(): ONE reload (to reach the login page), no loop

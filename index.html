@@ -2659,6 +2659,10 @@
             <span>Show cents</span>
             <span class="settings-toggle"><i></i></span>
           </button>
+          <button class="settings-toggle-row" id="sort-manual-toggle" type="button" aria-pressed="false" title="Off: items inside an order sort themselves. On: they stay where you put them.">
+            <span>Sort Items Manually</span>
+            <span class="settings-toggle"><i></i></span>
+          </button>
           <div class="settings-panel-title">Item Border Legend</div>
           <div class="settings-legend">
             <div class="settings-legend-row"><span class="settings-swatch" style="background:#d2d9da"></span><b>Grey:</b> untracked, or 45+ days left</div>
@@ -4679,6 +4683,7 @@
           let sTot = 0, sMax = 0, sCount = 0, minRunOut = null;
           node.querySelectorAll(':scope .ship-body > .card').forEach((cardEl) => {
             const cost = updateCard(cardEl);
+            cardEl._cost = cost; // (what autoSortShipItems orders by)
             const c = STATE.cardData[cardEl.dataset.id];
             const inc = c && c.includeInMonthTotal;
             const plan = countsTowardPlanned(c); // (not for a Separate Budget item -- it still counts in Max)
@@ -4737,11 +4742,63 @@
       monthEl.querySelector('.maxv').textContent = SB.fmtMoney(spent + maxItems);
       monthEl.querySelector('.mcount').textContent = `${itemCount}`;
     });
+    autoSortShipItems();
     renderWarnings();
     renderMonthSections();
     updateMonthVisibility();
     updateMonthStrip();
   }
+
+  // ── Items inside an order: sorted automatically unless Settings > "Sort Items Manually" is on ──
+  // Order of precedence:
+  //   1. Include toggle: ON + Separate Budget, then ON (ordinary), then OFF
+  //   2. non-recurring items before recurring ones (a recurring root or its projections)
+  //   3. positive amounts, largest first ($500, then $30 ...)
+  //   4. negative amounts, largest first (-$200, then -$50 ...)
+  //   5. alphabetical by item name
+  // Dividers still split an order into stretches, and each stretch is sorted on its own. A drag inside an order only
+  // sticks while the setting is on. Never mid-edit (moving a node under a focused box would drop the cursor): a sort
+  // waits for the box to lose focus.
+  const SORT_MANUAL_KEY = 'np_sort_manual';
+  let SORT_MANUAL = (() => { try { return localStorage.getItem(SORT_MANUAL_KEY) === '1'; } catch { return false; } })();
+  let sortPending = false;
+  function autoSortShipItems() {
+    if (SORT_MANUAL || document.body.classList.contains('sb-dragging')) return;
+    const ae = document.activeElement;
+    if (ae && ae.closest && ae.closest('.ship-body') && ae.matches('input, [contenteditable]')) { sortPending = true; return; }
+    sortPending = false;
+    const keyOf = (cardEl) => {
+      const c = STATE.cardData[cardEl.dataset.id] || {};
+      const cost = Number(cardEl._cost) || 0;
+      return {
+        grp: c.includeInMonthTotal ? (isSepBudget(c) ? 0 : 1) : 2,
+        rec: (c.recur || c.ghostOf) ? 1 : 0,
+        neg: cost < 0 ? 1 : 0,
+        mag: cost < 0 ? cost : -cost, // positives: biggest first; negatives: most negative first
+        name: String(c.name || '').trim(),
+      };
+    };
+    const cmp = (a, b) => (a.k.grp - b.k.grp) || (a.k.rec - b.k.rec) || (a.k.neg - b.k.neg) || (a.k.mag - b.k.mag)
+      || a.k.name.localeCompare(b.k.name, undefined, { sensitivity: 'base', numeric: true });
+    board.querySelectorAll('.ship-body').forEach((body) => {
+      const cards = [...body.children].filter((n) => n.classList.contains('card'));
+      if (cards.length < 2) return;
+      const out = [];
+      let run = [];
+      const flush = () => { run.sort(cmp).forEach((r) => out.push(r.el)); run = []; };
+      cards.forEach((el) => {
+        if (el.classList.contains('card--divider')) { flush(); out.push(el); return; }
+        run.push({ el, k: keyOf(el) });
+      });
+      flush();
+      if (out.every((el, i) => el === cards[i])) return;
+      out.forEach((el) => body.appendChild(el));
+    });
+  }
+  board.addEventListener('focusout', () => {
+    if (!sortPending) return;
+    setTimeout(() => { const ae = document.activeElement; if (!(ae && ae.closest && ae.closest('.ship-body') && ae.matches('input, [contenteditable]'))) recalcAll(); }, 0);
+  });
 
   // ── Needs-attention panel ─────────────────────────────────────────────────
   // Rendered at the top of each month (today's month onward), computed fresh
@@ -8510,6 +8567,17 @@
     shorthandOv.style.display = 'flex';
     shorthandOv.querySelector('#shorthand-name').focus();
   }
+  (function initSortManualToggle() {
+    const toggle = document.getElementById('sort-manual-toggle');
+    if (!toggle) return;
+    toggle.setAttribute('aria-pressed', String(SORT_MANUAL));
+    toggle.addEventListener('click', () => {
+      SORT_MANUAL = !SORT_MANUAL;
+      try { localStorage.setItem(SORT_MANUAL_KEY, SORT_MANUAL ? '1' : '0'); } catch {}
+      toggle.setAttribute('aria-pressed', String(SORT_MANUAL));
+      recalcAll(); // (turning it off sorts every order right away)
+    });
+  })();
   document.getElementById('config-shorthand')?.addEventListener('click', () => {
     document.getElementById('settings-panel')?.classList.remove('open');
     openShorthandModal();
@@ -10207,6 +10275,13 @@
         if (c && String(c.name || '').trim().toLowerCase() === k) cardEl.classList.toggle('proj-loading', !!on);
       });
     },
+    // Settings > "Sort Items Manually" (default off = items in an order sort themselves)
+    setSortManual(v) {
+      SORT_MANUAL = !!v;
+      try { localStorage.setItem(SORT_MANUAL_KEY, SORT_MANUAL ? '1' : '0'); } catch {}
+      recalcAll();
+    },
+    getSortManual() { return SORT_MANUAL; },
     // Clears every board-wide filter -- used when something else (Inventory's Next Order link) is about to
     // take you to a card the filter may be hiding. Returns whether anything was on.
     clearFilters() {
