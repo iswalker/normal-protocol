@@ -548,6 +548,8 @@
       background: var(--teal) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.3 5 8.9l4.6-5.4' fill='none' stroke='%23fff' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
       border-color: var(--teal);
     }
+    /* (in the Add Item dialog the generic ".snm-field input" -- width 100%, padding -- would stretch it) */
+    .snm-field .snm-sb input { width: 16px; height: 16px; padding: 0; border-radius: 4px; flex: none; }
     .inv-sb input:focus-visible, .snm-sb input:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
     .inv-sb input:disabled { opacity: .6; cursor: default; }
     #inv-table td.inv-sb-cell, #inv-table th.inv-th-sb { text-align: center; }
@@ -710,7 +712,10 @@
     .scan-overlay {
       position: fixed; inset: 0; background: rgba(23,26,28,0.55); z-index: 300;
       display: flex; align-items: center; justify-content: center;
+      /* pinned to the VISIBLE area (see pinDialogsToVisibleArea): above a phone's keyboard the dialog re-centres there */
+      top: var(--vv-top, 0px); bottom: var(--vv-bottom, 0px);
     }
+    .scan-overlay > .scan-modal { max-height: calc(100% - 16px); overflow-y: auto; }
     .scan-modal {
       background: var(--cream); border-radius: 14px; padding: 22px 24px 20px;
       width: 390px; max-width: 95vw; box-shadow: 0 12px 40px rgba(23,26,28,0.2);
@@ -2848,6 +2853,29 @@
   // the screen that is actually visible (top = how far the page was panned, bottom =
   // what the keyboard covers): a pan can't push the search bar out of view, and the
   // list ends above the keyboard instead of running under it.
+  // Every dialog (Add Item, Scan, Autoship, Settings dialogs ...) is a .scan-overlay centred in the screen. On a
+  // phone the keyboard covers the bottom of the screen without resizing the layout the overlay is centred in, so a
+  // dialog stayed where it was, half behind the keyboard. Pinned to the visual viewport (what is actually visible),
+  // it re-centres in the space above the keyboard -- and goes back when the keyboard does.
+  (function pinDialogsToVisibleArea() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    let raf = 0;
+    function pin() {
+      raf = 0;
+      const live = vv.scale < 1.01; // pinch-zoomed: leave it alone
+      document.querySelectorAll('.scan-overlay').forEach((ov) => {
+        if (!live || ov.style.display === 'none') { ov.style.removeProperty('--vv-top'); ov.style.removeProperty('--vv-bottom'); return; }
+        ov.style.setProperty('--vv-top', Math.max(0, vv.offsetTop) + 'px');
+        ov.style.setProperty('--vv-bottom', Math.max(0, window.innerHeight - vv.offsetTop - vv.height) + 'px');
+      });
+    }
+    const queue = () => { if (!raf) raf = requestAnimationFrame(pin); };
+    vv.addEventListener('resize', queue);
+    vv.addEventListener('scroll', queue);
+    document.addEventListener('focusin', () => { queue(); setTimeout(queue, 350); }); // (the keyboard slides in over a few frames)
+    document.addEventListener('focusout', () => setTimeout(queue, 350));
+  })();
   (function pinInventoryToVisibleArea() {
     const vv = window.visualViewport;
     if (!vv || !invOv) return;

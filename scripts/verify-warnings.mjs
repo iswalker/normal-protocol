@@ -1679,6 +1679,8 @@ try {
   {
     const sc = await browser.newContext({ viewport: { width: 1400, height: 900 } });
     await sc.clock.setFixedTime(new Date(2026, 10, 12, 12, 0, 0));
+    // a stand-in visualViewport the test can shrink, like a phone's keyboard coming up
+    await sc.addInitScript(() => { const fake = Object.assign(new EventTarget(), { offsetTop: 0, offsetLeft: 0, scale: 1, width: innerWidth, height: innerHeight }); Object.defineProperty(window, 'visualViewport', { value: fake, configurable: true }); window.__fakeVV = fake; });
     const sp = await sc.newPage();
     sp.on('pageerror', (e) => errors.push('separate budget test: ' + String(e)));
     const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
@@ -1769,6 +1771,19 @@ try {
     await sp.waitForSelector('#snm-name', { state: 'visible' }); await sp.waitForTimeout(250);
     const dlg = await sp.evaluate(() => { const n = document.getElementById('snm-name').getBoundingClientRect(), c = document.getElementById('snm-sb').getBoundingClientRect(); return { rightOf: c.left >= n.right - 1, sameRow: Math.abs((c.top + c.height / 2) - (n.top + n.height / 2)) < 12, unchecked: !document.getElementById('snm-sb').checked }; });
     check('Add Item: the Separate Budget checkbox is on the right of Item Name (unchecked by default)', dlg.rightOf && dlg.sameRow && dlg.unchecked, JSON.stringify(dlg));
+    const boxSize = await sp.evaluate(() => { const r = document.getElementById('snm-sb').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; });
+    check('Add Item: …and it is a normal small checkbox (not stretched across the dialog)', boxSize.w <= 20 && boxSize.h <= 20, JSON.stringify(boxSize));
+    // a phone's keyboard comes up: the dialog re-centres in the visible area above it, and returns when it goes
+    const midY = () => sp.evaluate(() => { const m = document.querySelector('#snm-overlay > .scan-modal').getBoundingClientRect(); const o = document.getElementById('snm-overlay').getBoundingClientRect(); return { cy: Math.round(m.top + m.height / 2), bottom: Math.round(o.bottom), ih: innerHeight }; });
+    const noKb = await midY();
+    await sp.evaluate(() => { const v = window.__fakeVV; v.height = innerHeight - 340; v.dispatchEvent(new Event('resize')); });
+    await sp.waitForTimeout(250);
+    const kb = await midY();
+    check('Add Item on a phone: with the keyboard up the dialog sits centred in the visible space above it (not where it was)', kb.bottom === kb.ih - 340 && Math.abs(kb.cy - (kb.ih - 340) / 2) <= 4 && kb.cy < noKb.cy - 100, JSON.stringify({ noKb, kb }));
+    await sp.evaluate(() => { const v = window.__fakeVV; v.height = innerHeight; v.dispatchEvent(new Event('resize')); });
+    await sp.waitForTimeout(250);
+    const back = await midY();
+    check('…and it goes back to the middle of the screen when the keyboard closes', Math.abs(back.cy - noKb.cy) <= 2 && back.bottom === back.ih, JSON.stringify({ noKb, back }));
     await sp.locator('#snm-sb').check();
     await sp.locator('#snm-confirm-btn').click(); await sp.waitForTimeout(900);
     check('Add Item: the new item is saved with separate_budget = 1', itemPosts.length === 1 && itemPosts[0].name === 'Brand New Thing' && itemPosts[0].separate_budget === 1, JSON.stringify(itemPosts));
