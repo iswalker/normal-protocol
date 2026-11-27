@@ -4164,11 +4164,15 @@
     // for a ghost's base date/link, not the ghost's own (possibly stale)
     // copy, so a link/date edited on the root after a ghost's creation is
     // still reflected on that ghost's display.
-    const rootData = c.ghostOf ? (STATE.cardData[c.ghostOf] || c) : c;
+    // (a completed card shows its own -- see cardOwnsAutoship; the lock is read
+    // off the element here, since this runs for every card on every recalc)
+    const inShip = cardEl.closest('.shipment');
+    const ownsAutoship = !!c.ghostOf && cardOwnsAutoship(cardEl.dataset.id, c, !!(inShip && STATE.shipmentData[inShip.dataset.id]?.stage));
+    const rootData = c.ghostOf && !ownsAutoship ? (STATE.cardData[c.ghostOf] || c) : c;
     let autoshipDate = null;
     if (r.hasOrder && rootData.autoshipNextDate) {
       const baseDate = SB.parseDate(rootData.autoshipNextDate);
-      if (c.ghostOf) {
+      if (c.ghostOf && !ownsAutoship) {
         const { monthIdx: ghostMi } = findCardLocation(cardEl.dataset.id);
         const { monthIdx: rootMi } = findCardLocation(c.ghostOf);
         const offset = (ghostMi >= 0 && rootMi >= 0) ? monthShift(rootMi, ghostMi) : 0;
@@ -4263,10 +4267,11 @@
         }
       }
     }
-    // Teal once approved. Only a real root's own date can be approved -- a
-    // ghost (or a demoted, already-locked former root) displays a date
-    // projected from someone else's, which is never approved in advance.
-    const approved = !c.ghostOf && isAutoshipApproved(c);
+    // Teal once approved. Only a date of the card's own can be approved -- a
+    // ghost displays one projected from its root's, which is never approved in
+    // advance (a completed card showing its own is different: see
+    // cardOwnsAutoship).
+    const approved = (!c.ghostOf || ownsAutoship) && isAutoshipApproved(c);
     autoshipDateEl?.classList.toggle('is-approved', approved);
     autoshipBadgeEl?.classList.toggle('is-approved', approved);
     cardEl.querySelector('.ototal .amt').textContent = SB.fmtMoney(r.cost);
@@ -6411,6 +6416,36 @@
       }
     }
     return { monthIdx: -1, shipId: null };
+  }
+
+  // Whose Autoship link/date does this card show? A recurring ghost mirrors its
+  // root -- but a card in a COMPLETED (Ordered/Entered/Received) order is a real
+  // placed record with a date of its own, editable like any other's (see
+  // openAutoshipCalFor / the card menu, which both let a locked card be edited).
+  // Reading the root's date for it anyway meant an edit was saved on the card
+  // while the screen kept showing the root's, so "nothing changed". Two kinds of
+  // completed card still carry ghostOf (see promoteFirstGhost):
+  //  - a FORMER ROOT (in or before the month of the card it now points at): the
+  //    series moved on to a later card, so this one's own date is its real one,
+  //    and the successor's is not;
+  //  - a LATER ghost that was placed: its stored date starts out as a snapshot of
+  //    the root's, which displays as the root's date projected forward -- so it
+  //    keeps showing that until it has been changed to something else.
+  // `locked` can be passed in by a caller that already knows (updateCard does).
+  function cardOwnsAutoship(id, c, locked) {
+    if (!c || !c.ghostOf) return false;
+    if (locked === undefined) locked = isCardLocked(id);
+    if (!locked) return false;
+    const root = STATE.cardData[c.ghostOf];
+    if (!root) return true;
+    const { monthIdx: gMi } = findCardLocation(id);
+    const { monthIdx: rMi } = findCardLocation(c.ghostOf);
+    if (gMi >= 0 && rMi >= 0 && gMi <= rMi) return true;
+    return !!c.autoshipNextDate && c.autoshipNextDate !== root.autoshipNextDate;
+  }
+  // The record whose link/date a card displays (see cardOwnsAutoship)
+  function autoshipSourceOf(id, c) {
+    return c.ghostOf && !cardOwnsAutoship(id, c) ? (STATE.cardData[c.ghostOf] || c) : c;
   }
 
   // Is this card sitting in a shipment that's been staged (Ordered/Entered/
@@ -8873,8 +8908,7 @@
   function cardMatchesAutoshipFilter(cardEl) {
     const c = STATE.cardData[cardEl.dataset.id];
     if (!c) return false;
-    const rootData = c.ghostOf ? (STATE.cardData[c.ghostOf] || c) : c;
-    return !!rootData.autoshipLink;
+    return !!autoshipSourceOf(cardEl.dataset.id, c).autoshipLink;
   }
   // A shipment can now carry its own Autoship link/date directly (see
   // saveShipAutoship), independent of any item inside it -- the header
@@ -10032,7 +10066,7 @@
         // for an untracked/free-text card too. Only disabled for dividers
         // (not real items) here -- a ghost never reaches this branch at all
         // now (see isGhostCard above).
-        const rootData = cData.ghostOf ? (STATE.cardData[cData.ghostOf] || cData) : cData;
+        const rootData = autoshipSourceOf(cardEl.dataset.id, cData);
         const autoshipDisabled = !cData.name || cData.name === '__divider__';
         menu.appendChild(ctxItem(
           rootData.autoshipLink ? 'Edit Autoship' : 'Add Autoship',
