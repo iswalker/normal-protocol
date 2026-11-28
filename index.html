@@ -10565,8 +10565,8 @@
   function getGroupName() { try { return localStorage.getItem(GROUP_KEY) || 'Health'; } catch { return 'Health'; } }
 
   // ── Black Friday / Prime Day ("pseudo-months") ──
-  // Their Spent is not a calendar month's activity: it is every transaction (in the
-  // category group above) whose Memo carries the period's tag, taken from a
+  // Their Spent is not a calendar month's activity: it is every transaction (in ANY
+  // category) whose Memo carries the period's tag, taken from a
   // 3-month window around it -- Black Friday N: Nov N, Dec N, Jan N+1; Prime Day N:
   // May, Jun, Jul N. Those transactions are then left out of the ordinary month
   // they were dated in, so nothing is counted twice.
@@ -10629,7 +10629,9 @@
   // already counted in activityMilliunits below. A split scheduled
   // transaction carries its real categorization on subtransactions, not
   // the parent (same shape as a regular split transaction).
-  // Returns the group's individual lines: { date: 'YYYY-MM-DD', amount, memo }.
+  // Returns EVERY categorised line (any category), flagged with whether it is in the configured group:
+  //   { date: 'YYYY-MM-DD', amount, memo, inGroup }. Black Friday / Prime Day match on tag + date whatever the
+  // category; the ordinary months' Spent and the order matching only ever use the in-group ones.
   async function fetchScheduledLines(budgetId, token, groupName, categoryGroupMap) {
     const data = await ynabFetch(`/budgets/${budgetId}/scheduled_transactions`, token);
     const out = [];
@@ -10639,14 +10641,14 @@
         ? st.subtransactions.filter((sub) => !sub.deleted)
         : [st];
       for (const line of lines) {
-        if (categoryGroupMap[line.category_id] !== groupName) continue;
-        out.push({ date: st.date_next, amount: line.amount || 0, memo: [line.memo, st.memo].filter(Boolean).join(' ') });
+        if (!line.category_id || st.transfer_account_id) continue; // a transfer, or nothing categorised: not spending
+        out.push({ date: st.date_next, amount: line.amount || 0, memo: [line.memo, st.memo].filter(Boolean).join(' '), inGroup: categoryGroupMap[line.category_id] === groupName });
       }
     }
     return out;
   }
 
-  // Posted transactions since `sinceDate`, as the group's individual lines (a split
+  // Posted transactions since `sinceDate`, as individual categorised lines in ANY category, flagged inGroup (a split
   // transaction contributes one line per split, carrying the parent's memo too).
   async function fetchTransactionLines(budgetId, token, groupName, categoryGroupMap, sinceDate) {
     const data = await ynabFetch(`/budgets/${budgetId}/transactions?since_date=${sinceDate}`, token);
@@ -10657,8 +10659,8 @@
         ? tx.subtransactions.filter((sub) => !sub.deleted)
         : [tx];
       for (const line of lines) {
-        if (categoryGroupMap[line.category_id] !== groupName) continue;
-        out.push({ date: tx.date, amount: line.amount || 0, memo: [line.memo, tx.memo].filter(Boolean).join(' '), txId: tx.id, payee: tx.payee_name || '', txMemo: tx.memo || '' });
+        if (!line.category_id || tx.transfer_account_id) continue; // a transfer, or nothing categorised: not spending
+        out.push({ date: tx.date, amount: line.amount || 0, memo: [line.memo, tx.memo].filter(Boolean).join(' '), txId: tx.id, payee: tx.payee_name || '', txMemo: tx.memo || '', inGroup: categoryGroupMap[line.category_id] === groupName });
       }
     }
     return out;
@@ -10669,7 +10671,7 @@
   function transactionsForMatching(lines) {
     const byTx = new Map();
     for (const l of lines) {
-      if (!l.txId) continue;
+      if (!l.txId || !l.inGroup) continue; // (order matching stays within the configured category group)
       const r = byTx.get(l.txId) || { id: l.txId, date: l.date, payee: l.payee, memo: l.txMemo, milli: 0 };
       r.milli += l.amount;
       byTx.set(l.txId, r);
@@ -10679,8 +10681,9 @@
   const isoDaysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
   // Sorts tagged lines into Black Friday / Prime Day. Returns
-  //   pseudoTotals: { 'Black Friday_2026': milliunits, ... } (only for columns on the board)
-  //   leaving:      { '2026-11': milliunits, ... } -- what to take back out of each ordinary month
+  //   pseudoTotals: { 'Black Friday_2026': milliunits, ... } (only for columns on the board) -- any category
+  //   leaving:      { '2026-11': milliunits, ... } -- what to take back out of each ordinary month: only the part that
+  //                 was counted there in the first place, i.e. the lines in the configured category group
   function bucketTagged(lines, pseudoIds) {
     const pseudoTotals = {}, leaving = {};
     for (const line of lines) {
@@ -10691,8 +10694,10 @@
         const id = pname + '_' + py;
         if (!pseudoIds.has(id)) break; // no such column on the board: it stays in its own month
         pseudoTotals[id] = (pseudoTotals[id] || 0) + line.amount;
-        const ym = line.date.slice(0, 7);
-        leaving[ym] = (leaving[ym] || 0) + line.amount;
+        if (line.inGroup) {
+          const ym = line.date.slice(0, 7);
+          leaving[ym] = (leaving[ym] || 0) + line.amount;
+        }
         break;
       }
     }
@@ -10736,7 +10741,7 @@
       taggedScheduled = bucketTagged(scheduledLines, pseudoIds);
     }
     const scheduledByMonth = {};
-    for (const l of scheduledLines) { const k = l.date.slice(0, 7); scheduledByMonth[k] = (scheduledByMonth[k] || 0) + l.amount; }
+    for (const l of scheduledLines) { if (!l.inGroup) continue; const k = l.date.slice(0, 7); scheduledByMonth[k] = (scheduledByMonth[k] || 0) + l.amount; }
 
     for (const monthEl of monthEls) {
       const name = monthEl.querySelector('.mname')?.textContent.trim();
@@ -10835,7 +10840,7 @@
       cfgOv.innerHTML = `
         <div class="scan-modal shorthand-modal">
           <div class="scan-modal-head"><span>YNAB Matching</span><button class="scan-close-btn" id="ynab-cfg-close" aria-label="Close">×</button></div>
-          <div class="sh-hint">Spent adds up the category group below. Black Friday and Prime Day count only transactions whose Memo contains their tag, from the three months around them (Nov–Jan and May–Jul), and those leave the ordinary month they were dated in.</div>
+          <div class="sh-hint">Spent adds up the category group below. Black Friday and Prime Day count every transaction (any category) whose Memo contains their tag, from the three months around them (Nov–Jan and May–Jul); the part of those in the category group leaves the ordinary month it was dated in.</div>
           <div class="snm-fields">
             <div class="snm-field full"><label for="ynab-cfg-group">Category Group name</label><input id="ynab-cfg-group" type="text" autocomplete="off" placeholder="Health"></div>
             <div class="snm-field"><label for="ynab-cfg-bf">Black Friday tag</label><input id="ynab-cfg-bf" type="text" autocomplete="off" placeholder="#blackFriday"></div>

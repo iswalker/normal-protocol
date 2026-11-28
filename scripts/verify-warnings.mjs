@@ -249,7 +249,9 @@ try {
   if (process.env.SHOT_DIR) await page.screenshot({ path: join(process.env.SHOT_DIR, 'ro-rows.png'), clip: { x: 0, y: 100, width: 760, height: 460 } });
   check('autoship row shows the item\'s run-out next to the autoship date', /^autoships \d+\/\d+ · runs out \d+\/\d+/.test(await detailOf('Alpha')), await detailOf('Alpha'));
   check('a run-out later than the autoship is not flagged', (await rowFor(page, 'Alpha').locator('.warn-ro.is-gap').count()) === 0 && (await rowFor(page, 'Alpha').locator('.warn-ro').count()) === 1);
-  check('a run-out BEFORE the autoship ships is flagged red', (await rowFor(page, 'Gap Item').locator('.warn-ro.is-gap').count()) === 1 && /runs out/.test(await rowFor(page, 'Gap Item').locator('.warn-ro').textContent()));
+  // (the row sits in the month's main box -- or its 'Autoships . next month 1-7' box when the autoship date falls past the month's end)
+  const gapRow = page.locator('.month[data-id="' + M0.month + '_' + M0.year + '"] .warn-row', { has: page.locator('.warn-name', { hasText: /^Gap Item$/ }) });
+  check('a run-out BEFORE the autoship ships is flagged red', (await gapRow.locator('.warn-ro.is-gap').count()) === 1 && /runs out/.test(await gapRow.locator('.warn-ro').textContent()));
   check('items with no Inventory data show no run-out', !/runs out/.test(await detailOf('Stale Approval')) && !/runs out/.test(await detailOf('Ship-level Co')));
   check('no label pills left', (await panel(page).locator('.warn-tag').count()) === 0);
   check('item name comes first in the row', await rowFor(page, 'Runner').locator('.warn-main').evaluate((e) => e.firstElementChild.classList.contains('warn-name')));
@@ -1472,7 +1474,7 @@ try {
     const yp = await yc.newPage();
     const jf = (r, obj) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
     const ymMonths = [];
-    for (let k = 0; k < 6; k++) { const d = new Date(Y, 9 + k, 1); ymMonths.push({ month: MON3[d.getMonth()], year: d.getFullYear() }); if (d.getMonth() === 10) ymMonths.push({ month: 'Black Friday', year: d.getFullYear() }); }
+    for (let k = 0; k < 9; k++) { const d = new Date(Y, 9 + k, 1); ymMonths.push({ month: MON3[d.getMonth()], year: d.getFullYear() }); if (d.getMonth() === 10) ymMonths.push({ month: 'Black Friday', year: d.getFullYear() }); if (d.getMonth() === 5) ymMonths.push({ month: 'Prime Day', year: d.getFullYear() }); }
     await yp.route('**/api/orders', (r) => jf(r, r.request().method() === 'GET' ? { months: ymMonths.map((m, p) => ({ ...m, position: p + 1, notes: '' })), orders: [], items: [] } : { ok: true, updated_at: 'x', prev_updated_at: 'x' }));
     await yp.route('**/api/meta', (r) => jf(r, { updated_at: 'x' }));
     await yp.route('**/api/board-settings', (r) => jf(r, { pinnedMerchants: [], dismissedWarnings: [] }));
@@ -1489,6 +1491,7 @@ try {
       { date: d(Y, 11, 26), amount: -999000, memo: '#blackFriday but not Health', category_id: 'c_f' },
       { date: d(Y, 11, 27), amount: -77000,  memo: '#blackFridayNope not the tag', category_id: 'c_h' },
       { date: d(Y + 1, 2, 5), amount: -40000, memo: '#blackFriday outside the three months', category_id: 'c_h' },
+      { date: d(Y + 1, 6, 10), amount: -40000, memo: '#primeDay gadget', category_id: 'c_f' }, // Prime Day, not a Health category
     ];
     const activity = { [d(Y, 11, 1)]: -100000 - 200000 - 77000, [d(Y, 12, 1)]: -150000, [d(Y + 1, 1, 1)]: -20000 };
     let sinceDates = [], syncs = 0;
@@ -1506,8 +1509,9 @@ try {
     await yp.waitForTimeout(1500);
     const spent = (id) => yp.locator('.month[data-id="' + id + '"] .spentv').first().textContent().then((s) => parseFloat(s.replace(/[^0-9.-]/g, '')));
     const nov = await spent('Nov_' + Y), bfv = await spent('Black Friday_' + Y), dec = await spent('Dec_' + Y), jan = await spent('Jan_' + (Y + 1));
-    check('YNAB: Black Friday = Health transactions tagged #blackFriday in Nov / Dec / Jan (any case) plus the tagged scheduled one -- $200', bfv === 200, String(bfv));
-    check('YNAB: tagged transactions leave the ordinary month they were dated in (Nov $277, Dec $100, Jan $0)', nov === 277 && dec === 100 && jan === 0, JSON.stringify({ nov, dec, jan }));
+    check('YNAB: Black Friday = every transaction tagged #blackFriday in Nov / Dec / Jan (any case, ANY category) plus the tagged scheduled one -- $200 Health + the $999 Fun one', bfv === 1199, String(bfv));
+    check('YNAB: only the tagged Health lines leave the ordinary month they were dated in (Nov $277 -- the Fun one was never counted there --, Dec $100, Jan $0)', nov === 277 && dec === 100 && jan === 0, JSON.stringify({ nov, dec, jan }));
+    check('YNAB: Prime Day takes a tagged transaction from ANY category too ($40 in Jun)', (await spent('Prime Day_' + (Y + 1))) === 40, String(await spent('Prime Day_' + (Y + 1))));
     check('YNAB: the transactions request starts at the first window (Nov 1)', sinceDates.length > 0 && sinceDates.every((s) => s === d(Y, 11, 1)), JSON.stringify(sinceDates));
     // the settings dialog
     await yp.locator('#settings-btn').click();
